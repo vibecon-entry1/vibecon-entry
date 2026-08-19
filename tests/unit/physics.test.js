@@ -44,3 +44,18 @@ test('ceiling bonk zeroes vy', () => {
   let r; for (let i = 0; i < 10; i++) r = moveAndCollide(b, L, DT);
   assert.equal(b.vy >= 0, true);
 });
+
+test('right wall rests flush at exact position', () => {
+  const b = body(130, 48, 500, 0);             // sprint into right OOB wall (x>=160 solid)
+  for (let i = 0; i < 30; i++) moveAndCollide(b, L, DT);
+  assert.equal(b.x, 150);                      // 160 - w/2, no EPS residue
+  assert.equal(b.vx, 0);
+});
+
+test('ceiling bonk rests flush at exact position', () => {
+  const b = body(24, 40, 0, -400);
+  const r = moveAndCollide(b, L, DT);          // head crosses y=0 into ty=-1 (solid)
+  assert.equal(r.hitCeil, true);
+  assert.equal(b.y, 44);                       // head flush with level top: y = 0 + h
+  assert.equal(b.vy, 0);
+});

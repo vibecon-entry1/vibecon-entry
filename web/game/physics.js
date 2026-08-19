@@ -22,7 +22,7 @@ export function moveAndCollide(b, level, dt) {
   if (b.vx > 0) {
     const edge = nx + b.w / 2, tx = t(edge);
     for (let ty = t(top()); ty <= t(bot()); ty++)
-      if (level.solidAt(tx, ty)) { nx = tx * TILE - b.w / 2 - EPS; b.vx = 0; out.hitWall = true; break; }
+      if (level.solidAt(tx, ty)) { nx = tx * TILE - b.w / 2; b.vx = 0; out.hitWall = true; break; }
   } else if (b.vx < 0) {
     const edge = nx - b.w / 2, tx = t(edge);
     for (let ty = t(top()); ty <= t(bot()); ty++)
@@ -40,7 +40,7 @@ export function moveAndCollide(b, level, dt) {
   } else if (b.vy < 0) {
     const ty = t(ny - b.h);
     for (let tx = left; tx <= right; tx++)
-      if (level.solidAt(tx, ty)) { ny = (ty + 1) * TILE + b.h + EPS; b.vy = 0; out.hitCeil = true; break; }
+      if (level.solidAt(tx, ty)) { ny = (ty + 1) * TILE + b.h; b.vy = 0; out.hitCeil = true; break; }
   } else {
     // resting check: probe one EPS below feet
     const ty = t(b.y + EPS);
