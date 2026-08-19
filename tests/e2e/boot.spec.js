@@ -36,12 +36,16 @@ test('viewer renders every anim without errors', async ({ page }) => {
   page.on('pageerror', e => errors.push(String(e)));
   await page.goto('http://localhost:8123/');
   await page.waitForFunction(() => window.__blast?.ready === true);
-  await page.keyboard.press('F1');                        // → viewer
+  await page.keyboard.press('F1', { delay: 30 });          // → viewer
+  await page.waitForFunction(() => window.__blast.state().scene === 'viewer');
+  const seen = new Set();
   for (let i = 0; i < 20; i++) {
     await page.waitForTimeout(150);
     const name = (await page.evaluate(() => window.__blast.state())).viewerAnim;
+    seen.add(name);
     await page.screenshot({ path: `tests/artifacts/anim-${String(i).padStart(2, '0')}-${name}.png` });
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight', { delay: 30 });
   }
+  expect(seen.size).toBe(20);
   expect(errors).toEqual([]);
 });
