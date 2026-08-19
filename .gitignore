@@ -1,7 +1,8 @@
-assets/
+/assets/
 reference/
 node_modules/
 .DS_Store
 *.zip
 tests/artifacts/
 package-lock.json
+__pycache__/
