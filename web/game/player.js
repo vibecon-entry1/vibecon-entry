@@ -115,7 +115,8 @@ export function makePlayer(spawnFeet) {
         setState(Math.abs(b.vx) > 10 || dir !== 0 ? 'walk' : 'idle');
     } else {
       pl.coyote = Math.max(0, pl.coyote - dt);
-      if (pl.state !== 'slide' && pl.coyote === 0) setState('air');
+      if (pl.state !== 'slide' && pl.coyote === 0 && bodyFits(level, b.x, b.y, b.w, STAND_H))
+        setState('air');   // pinned airborne keeps its shrunken pose (mirror of the slide guard)
     }
 
     // shrunken hitbox outside slide/duck (fell out of a slide): restore when clear

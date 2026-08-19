@@ -160,3 +160,24 @@ test('muzzle origin recorded; cleared by pit respawn', () => {
   assert.equal(pl.state, 'spawn');
   assert.equal(pl.muzzle, null);
 });
+
+test('duck-hop under a low ceiling holds the duck pose airborne', () => {
+  const SHORT = parseChunk([                      // 48px clearance: a stand box fits while
+    '............................',               // grounded, but the hop lifts it into the
+    '............................',               // out-of-bounds ceiling, so it never fits
+    '..P.........................',               // mid-air (the 7-row FLAT is too roomy)
+    '############################',
+  ]);
+  const pl = makePlayer(SHORT.spawn); drive(pl, SHORT, 150, () => ({}));
+  drive(pl, SHORT, 1, () => ({ down: true }));                  // duck (h 32)
+  drive(pl, SHORT, 2, i => ({ down: true, fire: i === 0 }));    // duck-hop
+  let sawShrunkAirborne = false;
+  for (let i = 0; i < 10; i++) {
+    drive(pl, SHORT, 1, () => ({}));
+    if (pl.body.h < 44) {
+      sawShrunkAirborne = true;
+      assert.ok(pl.state === 'duck' || pl.state === 'slide');
+    }
+  }
+  assert.ok(sawShrunkAirborne);
+});
