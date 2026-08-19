@@ -20,7 +20,7 @@ export function makePlayer(spawnFeet) {
 
   function fire(bullets, dx, dy, fromX, fromY) {
     bullets.spawn(fromX, fromY, dx, dy);
-    pl.muzzle = { t: 0, dx, dy };
+    pl.muzzle = { t: 0, dx, dy, x: fromX, y: fromY };
     pl.fireCd = P.FIRE_CD;
   }
 
@@ -43,6 +43,10 @@ export function makePlayer(spawnFeet) {
       if (pl.stateT > 39 / 20) setState('idle');      // spawn anim = 39f @ 20fps
       return;
     }
+
+    // honest ground truth for THIS frame (coyote alone is one frame stale)
+    const onGround = !bodyFits(level, b.x, b.y + 1, b.w, 1);
+    if (onGround) pl.coyote = P.COYOTE;
 
     // horizontal intent + facing
     const dir = (act.right ? 1 : 0) - (act.left ? 1 : 0);
@@ -72,8 +76,11 @@ export function makePlayer(spawnFeet) {
         if (tryStand(level)) setState('idle');        // pinned → stay ducked
       }
       if (pl.state !== 'duck') {
-        if (dir !== 0) b.vx = clampMag(b.vx + dir * P.RUN_ACCEL * dt, P.RUN);
-        else b.vx = Math.max(0, Math.abs(b.vx) - P.FRICTION * dt) * Math.sign(b.vx);
+        const drag = (onGround ? P.FRICTION : P.AIR_DRAG) * dt;
+        if (dir !== 0 && Math.sign(b.vx) === dir && Math.abs(b.vx) > P.RUN)
+          b.vx = Math.max(P.RUN, Math.abs(b.vx) - drag) * dir;      // keep launch/burst speed
+        else if (dir !== 0) b.vx = clampMag(b.vx + dir * P.RUN_ACCEL * dt, P.RUN);
+        else b.vx = Math.max(0, Math.abs(b.vx) - drag) * Math.sign(b.vx);
       }
     }
 
@@ -103,20 +110,22 @@ export function makePlayer(spawnFeet) {
       pl.coyote = P.COYOTE;
       if (pl.airCharges < P.AIR_CHARGES) pl.airCharges = P.AIR_CHARGES;
       if (pl.state !== 'slide' && pl.state !== 'duck')
-        setState(Math.abs(b.vx) > 10 ? 'walk' : 'idle');
+        setState(Math.abs(b.vx) > 10 || dir !== 0 ? 'walk' : 'idle');
     } else {
       pl.coyote = Math.max(0, pl.coyote - dt);
       if (pl.state !== 'slide' && pl.coyote === 0) setState('air');
     }
 
     // shrunken hitbox outside slide/duck (fell out of a slide): restore when clear
-    if (b.h < STAND_H && pl.state !== 'slide' && pl.state !== 'duck') tryStand(level);
+    if (b.h < STAND_H && pl.state !== 'slide' && pl.state !== 'duck' && !tryStand(level))
+      setState(b.h <= SLIDE_H ? 'slide' : 'duck');   // pinned: pose must match the box
 
     // pit death → respawn beam at checkpoint
     if (b.y > level.h + 64) {
       pl.deaths++;
       Object.assign(b, { x: pl.checkpoint.x, y: pl.checkpoint.y, vx: 0, vy: 0, h: STAND_H });
       pl.airCharges = P.AIR_CHARGES;
+      pl.muzzle = null;
       setState('spawn');
     }
     // checkpoint capture

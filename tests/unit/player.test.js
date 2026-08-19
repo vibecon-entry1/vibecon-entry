@@ -106,3 +106,54 @@ test('duck applies friction, no infinite glide', () => {
   assert.equal(pl.state, 'duck');
   assert.equal(pl.body.vx, 0);
 });
+
+test('down-fire on the first playable frame hops, not boosts', () => {
+  const pl = makePlayer(FLAT.spawn);
+  drive(pl, FLAT, 118, () => ({}));                            // beam ends
+  assert.equal(pl.state, 'idle');
+  drive(pl, FLAT, 1, () => ({ down: true, fire: true }));
+  assert.equal(pl.airCharges, P.AIR_CHARGES);                  // hop is free
+  assert.ok(pl.body.vy < -200);
+});
+
+test('airborne momentum above RUN persists while holding direction', () => {
+  const L2 = parseChunk([
+    '............', '............', '............',
+    '..P.........',
+    '#####.......',
+  ]);
+  const pl = makePlayer(L2.spawn); drive(pl, L2, 150, () => ({}));
+  drive(pl, L2, 8, () => ({ right: true }));
+  drive(pl, L2, 16, i => ({ right: true, down: true, fire: i === 2 }));  // slide + burst off the edge
+  assert.equal(pl.state, 'air');
+  assert.ok(Math.abs(pl.body.vx) > P.RUN + 50);                // launched fast, not clamped
+  drive(pl, L2, 6, () => ({ right: true }));
+  assert.ok(Math.abs(pl.body.vx) > P.RUN + 20);                // still above RUN under AIR_DRAG
+});
+
+test('landing pinned under a ceiling keeps pose matching the hitbox', () => {
+  const TUN = parseChunk([
+    '..............',
+    '..............',
+    '......########',
+    '..P...........',
+    '######........',
+    '......########',
+  ]);
+  const pl = makePlayer(TUN.spawn); drive(pl, TUN, 150, () => ({}));
+  drive(pl, TUN, 6, () => ({ right: true }));
+  drive(pl, TUN, 40, () => ({ right: true, down: true }));     // slide off the step into the low passage
+  assert.ok(pl.body.h < 44);
+  assert.ok(pl.state === 'slide' || pl.state === 'duck');
+});
+
+test('muzzle origin recorded; cleared by pit respawn', () => {
+  const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
+  const pl = makePlayer(PIT.spawn); drive(pl, PIT, 150, () => ({}));
+  drive(pl, PIT, 1, () => ({ fire: true }));
+  assert.equal(pl.muzzle.x, pl.body.x + pl.facing * 26);
+  assert.equal(pl.muzzle.y, pl.body.y - 30);
+  drive(pl, PIT, 400, i => ({ right: true, fire: i % 8 === 0 }));
+  assert.equal(pl.state, 'spawn');
+  assert.equal(pl.muzzle, null);
+});
