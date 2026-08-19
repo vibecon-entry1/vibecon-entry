@@ -180,4 +180,5 @@ test('duck-hop under a low ceiling holds the duck pose airborne', () => {
     }
   }
   assert.ok(sawShrunkAirborne);
+  assert.ok(pl.stateT > 0.1);   // pose held continuously, not re-entered every frame
 });
