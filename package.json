@@ -5,7 +5,7 @@
   "scripts": {
     "assets": "python3 tools/build_assets.py",
     "serve": "node tools/serve.mjs 8123",
-    "test:unit": "node --test tests/unit/",
+    "test:unit": "node --test",
     "test:e2e": "playwright test",
     "test": "npm run test:unit && npm run test:e2e"
   },
