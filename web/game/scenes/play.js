@@ -26,7 +26,7 @@ export function makePlay({ atlas, input, save, go }) {
       player.update(dt, input.actions(), level, bullets);
       bullets.update(dt, level);
       cam.follow(player.body.x, player.body.y, player.facing, dt, level);
-      if (player.body.x > level.w - 48) won = true;   // end pad (Plan 2: real ship)
+      if (player.coyote > 0 && player.body.x > level.w - 48) won = true;   // grounded on the end pad (Plan 2: real ship)
     },
     render(ctx) {
       ctx.save(); cam.apply(ctx);
@@ -42,12 +42,15 @@ export function makePlay({ atlas, input, save, go }) {
       const anim = ANIM_FOR[player.state];
       atlas.drawFeet(ctx, anim, animFrame(atlas.anims[anim], player.stateT),
                      player.body.x, player.body.y, player.facing < 0);
-      // muzzle flash at the recorded shot origin
+      // muzzle flash at the recorded shot origin (mirrored for leftward shots)
       if (player.muzzle) {
         const m = player.muzzle;
+        ctx.save();
+        if (m.dx < 0) { ctx.translate(m.x, m.y); ctx.scale(-1, 1); ctx.translate(-m.x, -m.y); }
         atlas.drawCentered(ctx, 'blast_muzzle',
           animFrame(atlas.anims.blast_muzzle, m.t), m.x, m.y,
           m.dy ? Math.PI / 2 : 0);
+        ctx.restore();
       }
       bullets.render(ctx, atlas);
       ctx.restore();
