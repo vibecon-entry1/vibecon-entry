@@ -1,7 +1,7 @@
 // Camera: exponential follow + facing lookahead + vertical deadzone + shake.
 export function makeCamera({ vw, vh, lookahead = 40, kx = 8, ky = 6, deadY = 24 }) {
   const cam = {
-    x: 0, y: 0, shakeT: 0, shakeMag: 0,
+    x: 0, y: 0, shakeT: 0, shakeDur: 1, shakeMag: 0,
     snap(x, y) { cam.x = x; cam.y = y; },
     follow(tx, ty, facing, dt, bounds) {
       const gx = tx + facing * lookahead - vw / 2;
@@ -13,9 +13,9 @@ export function makeCamera({ vw, vh, lookahead = 40, kx = 8, ky = 6, deadY = 24 
       cam.y = Math.min(Math.max(cam.y, 0), Math.max(0, bounds.h - vh));
       if (cam.shakeT > 0) cam.shakeT -= dt;
     },
-    shake(mag, dur) { cam.shakeMag = mag; cam.shakeT = dur; },
+    shake(mag, dur) { cam.shakeMag = mag; cam.shakeT = dur; cam.shakeDur = dur; },
     apply(ctx, rng = Math.random) {
-      const s = cam.shakeT > 0 ? cam.shakeMag * (cam.shakeT * 4) : 0;
+      const s = cam.shakeT > 0 ? cam.shakeMag * (cam.shakeT / cam.shakeDur) : 0;
       ctx.translate(-Math.round(cam.x + (rng() - 0.5) * s), -Math.round(cam.y + (rng() - 0.5) * s));
     },
   };
