@@ -1,5 +1,6 @@
 // Versioned, corruption-proof persistence. Never throws, never crashes the game
 // over a high score. Storage is injectable for tests.
+// Treat .data as read-only; all writes go through patch().
 const KEY = 'suchblast_v1';
 export const DEFAULTS = { v: 1, best: { gauntlet: 0, wow: 0 }, wowUnlocked: false, muted: false };
 
@@ -12,7 +13,8 @@ export function makeSave(storage) {
   return {
     get data() { return data; },
     patch(p) {
-      data = { ...data, ...p };
+      const best = p.best ? { ...data.best, ...p.best } : data.best;
+      data = { ...data, ...p, best };
       try { storage.setItem(KEY, JSON.stringify(data)); } catch { /* private mode etc. */ }
     },
   };

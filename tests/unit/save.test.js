@@ -33,3 +33,12 @@ test('throwing storage is survived', () => {
   s.patch({ muted: true });               // must not throw
   assert.equal(s.data.muted, true);       // in-memory still works
 });
+
+test('partial best patches merge, not replace', () => {
+  const store = fakeStorage();
+  const s = makeSave(store);
+  s.patch({ best: { gauntlet: 500 } });
+  s.patch({ best: { wow: 77 } });
+  assert.deepEqual(s.data.best, { gauntlet: 500, wow: 77 });
+  assert.deepEqual(makeSave(store).data.best, { gauntlet: 500, wow: 77 });
+});
