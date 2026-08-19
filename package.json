@@ -1,0 +1,15 @@
+{
+  "name": "such-blast",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets": "python3 tools/build_assets.py",
+    "serve": "node tools/serve.mjs 8123",
+    "test:unit": "node --test tests/unit/",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}
