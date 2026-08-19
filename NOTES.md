@@ -59,3 +59,11 @@ source art, downscale at load or pre-slice.
 Hero look: shiba in a navy jacket + light blue tie, carrying a red/orange blaster.
 Enemies: white one-eyed hopper and a red flying variant. Palette reads as
 black bg / cream + tan fur / navy / red-orange accents.
+
+## Dev quickstart
+- `npm run assets`  rebuild atlas from ../assets source pack
+- `npm run serve`   → http://localhost:8123 (F1 = anim viewer, R = restart)
+- `npm test`        unit + e2e (screenshots in tests/artifacts/)
+- Live tuning: open devtools console, edit `__blast.P` (e.g. `__blast.P.HOP_VY = -320`)
+- Chunk authoring: ≥3 empty rows above any standing surface (44px player + OOB ceiling)
+Plan 1 delivers: graybox verb prototype (M1+M2). Feel gate: user plays before Plan 2.

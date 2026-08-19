@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { P } from '../../web/game/physics.js';
 
 // Tapes are frame-indexed STATE CHANGES: an entry's actions hold until the next
 // entry; end every tape with an { a: null } release. Same-frame entries collapse.
@@ -61,7 +62,7 @@ test('slide-fire burst accelerates past run speed', async ({ page }) => {
   ];
   await runTape(page, tape);
   const st = await page.evaluate(() => window.__blast.state());
-  expect(Math.abs(st.vx)).toBeGreaterThan(150);
+  expect(Math.abs(st.vx)).toBeGreaterThan(P.RUN);
   await page.screenshot({ path: 'tests/artifacts/verb-burst.png' });
   expect(errors).toEqual([]);
 });
@@ -81,6 +82,10 @@ test('full gauntlet tape makes real progress', async ({ page }) => {
   // block the grounded-hop fire branch), then re-presses right one frame
   // later. Airborne down+fire is safe to hold alongside right (wantSlide
   // requires grounded), so the boosts just add `down/fire` on top of `right`.
+
+  // Frame numbers assume P as of this commit (HOP_VY -290, BOOST_VY -320, RUN 150,
+  // RUN_ACCEL 1400, GRAV 900, FIRE_CD 0.12). Retune by iterating against the live
+  // sim after any feel-gate change — arithmetic won't get you there.
   const tape = [];
   const at = (f, a) => tape.push({ f, a });
   at(0, { right: true });
