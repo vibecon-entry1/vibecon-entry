@@ -12,12 +12,14 @@ export function animDone(anim, t) {
 async function fetchRetry(url, tries = 3) {
   let err;
   for (let i = 0; i < tries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, { signal: ctrl.signal });
       if (r.ok) return r;
       err = new Error(`${r.status} ${url}`);
-    } catch (e) { err = e; }
-    await new Promise(res => setTimeout(res, 300 * (i + 1)));
+    } catch (e) { err = e; } finally { clearTimeout(timer); }
+    if (i < tries - 1) await new Promise(res => setTimeout(res, 300 * (i + 1)));
   }
   throw err;
 }
