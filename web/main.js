@@ -56,16 +56,19 @@ async function boot() {
   const loop = createLoop({
     update(dt, frame) {
       window.__blast.frame = frame;
+      // Tape entries are frame-quantized STATE CHANGES (not pulses): an entry's
+      // actions hold until the next entry. The exhaustion clear runs after the
+      // sim step so the final entry is observed for one frame before release.
       if (tape) {
         while (tapeI < tape.length && tape[tapeI].f <= frame) {
           input.setVirtual(tape[tapeI].a ?? null); tapeI++;
         }
-        if (tapeI >= tape.length) { tape = null; input.setVirtual(null); }
       }
       input.beginFrame();
       if (input.pressed('debug')) go(sceneName === 'viewer' ? 'play' : 'viewer');
       scene.update(dt);
       input.endFrame();
+      if (tape && tapeI >= tape.length) { tape = null; input.setVirtual(null); }
     },
     render() {
       ctx.imageSmoothingEnabled = false;
@@ -80,4 +83,7 @@ async function boot() {
   window.__blast.ready = true;
 }
 
-boot();
+boot().catch(e => {
+  document.getElementById('err').style.display = 'block';
+  document.getElementById('err').textContent = 'wow. game no boot. very refresh.\n' + e;
+});
