@@ -23,7 +23,7 @@ export function createLoop({ update, render, hz = 60 }) {
     raf = requestAnimationFrame(tick);
   }
   return {
-    start() { running = true; last = 0; raf = requestAnimationFrame(tick); },
+    start() { if (running) return; running = true; last = 0; raf = requestAnimationFrame(tick); },
     stop() { running = false; cancelAnimationFrame(raf); },
     get frame() { return frame; },
   };
