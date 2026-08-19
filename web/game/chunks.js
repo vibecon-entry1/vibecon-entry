@@ -11,7 +11,10 @@ export function parseChunk(rows) {
     [...row].forEach((ch, tx) => {
       if (ch === '#') solid[ty * wTiles + tx] = 1;
       const feet = { x: tx * TILE + TILE / 2, y: (ty + 1) * TILE };
-      if (ch === 'P') spawn = feet;
+      if (ch === 'P') {
+        if (spawn) throw new Error('chunk has multiple P');
+        spawn = feet;
+      }
       if (ch === 'C') checkpoints.push(feet);
     });
   });
@@ -28,8 +31,9 @@ export function parseChunk(rows) {
   };
 }
 
-// Graybox: runway → hop gap (3) → runway → boost gap (8) → slide corridor
-// (2-tile clearance) → checkpoint → chain gap (12) → step climb → end pad.
+// Graybox: runway → hop gap (3) → runway → boost gap (11) → slide corridor
+// (2-tile clearance) → checkpoint → staircase chain: gaps 10/2/4/10 over
+// three 2-wide stepping stones rising to the end pad.
 export const GB1 = parseChunk([
   '....................................................................................................',
   '....................................................................................................',

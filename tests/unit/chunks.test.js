@@ -23,3 +23,15 @@ test('spawn and checkpoints are feet positions on tile centers', () => {
   assert.deepEqual(L.spawn, { x: 2 * TILE + TILE / 2, y: 2 * TILE });
   assert.deepEqual(L.checkpoints, [{ x: 6 * TILE + TILE / 2, y: 2 * TILE }]);
 });
+
+test('ragged rows throw', () => {
+  assert.throws(() => parseChunk(['....', '..P', '####']), /width/);
+});
+
+test('missing P throws', () => {
+  assert.throws(() => parseChunk(['....', '####']), /no P/);
+});
+
+test('duplicate P throws', () => {
+  assert.throws(() => parseChunk(['P..P', '####']), /multiple P/);
+});
