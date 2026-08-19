@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { moveAndCollide, P } from '../../web/game/physics.js';
+import { moveAndCollide, bodyFits, P } from '../../web/game/physics.js';
 import { parseChunk } from '../../web/game/chunks.js';
 
 const L = parseChunk([
@@ -58,4 +58,28 @@ test('ceiling bonk rests flush at exact position', () => {
   assert.equal(r.hitCeil, true);
   assert.equal(b.y, 44);                       // head flush with level top: y = 0 + h
   assert.equal(b.vy, 0);
+});
+
+test('bodyFits: open space fits, embedded in floor does not', () => {
+  assert.equal(bodyFits(L, 24, 48, 20, 44), true);
+  assert.equal(bodyFits(L, 24, 60, 20, 44), false);   // feet below floor top
+});
+
+test('walking off a ledge transitions onGround false mid-run', () => {
+  const b = body(40, 48, 150, 0);
+  const grounded = [];
+  for (let i = 0; i < 40; i++) {
+    b.vy = Math.min(b.vy + P.GRAV * DT, P.MAX_FALL);
+    grounded.push(moveAndCollide(b, L, DT).onGround);
+  }
+  assert.equal(grounded[0], true);
+  assert.equal(grounded.at(-1), false);
+  assert.ok(b.x > 64);                                // actually reached the gap
+});
+
+test('hitWall and hitCeil report on the colliding step', () => {
+  const w = body(12, 48, -500, 0);
+  assert.equal(moveAndCollide(w, L, DT).hitWall, true);
+  const c = body(24, 40, 0, -400);
+  assert.equal(moveAndCollide(c, L, DT).hitCeil, true);
 });

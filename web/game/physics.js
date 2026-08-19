@@ -2,10 +2,11 @@
 // Body: x = center, y = FEET. Max speeds keep displacement < TILE per step.
 import { TILE } from './chunks.js';
 
+// Read P fields inline at point of use — destructuring into locals breaks live console tuning.
 export const P = {
   GRAV: 900, MAX_FALL: 560,
   RUN: 150, RUN_ACCEL: 1400, FRICTION: 1600,
-  HOP_VY: -290, BOOST_VY: -320, BURST_VX: 130,
+  HOP_VY: -290, BOOST_VY: -320, BURST_VX: 130, BURST_MAX: 420,
   COYOTE: 0.09, AIR_CHARGES: 3, FIRE_CD: 0.12,
   SLIDE_MIN: 0.25, SLIDE_SPEED: 200, SLIDE_DECAY: 260,
 };
@@ -49,4 +50,15 @@ export function moveAndCollide(b, level, dt) {
   }
   b.y = ny;
   return out;
+}
+
+// Would a w×h body with feet at (x, feetY) overlap any solid tile?
+// Used for stand-up checks: growing h must never embed the body in a ceiling.
+export function bodyFits(level, x, feetY, w, h) {
+  const t = v => Math.floor(v / TILE);
+  const left = t(x - w / 2 + EPS), right = t(x + w / 2 - EPS);
+  for (let ty = t(feetY - h + EPS); ty <= t(feetY - EPS); ty++)
+    for (let tx = left; tx <= right; tx++)
+      if (level.solidAt(tx, ty)) return false;
+  return true;
 }
