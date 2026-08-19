@@ -30,3 +30,18 @@ test('boot failure shows doge error screen (throwing localStorage)', async ({ pa
   await expect(page.locator('#err')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#err')).toContainText('very refresh');
 });
+
+test('viewer renders every anim without errors', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true);
+  await page.keyboard.press('F1');                        // → viewer
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(150);
+    const name = (await page.evaluate(() => window.__blast.state())).viewerAnim;
+    await page.screenshot({ path: `tests/artifacts/anim-${String(i).padStart(2, '0')}-${name}.png` });
+    await page.keyboard.press('ArrowRight');
+  }
+  expect(errors).toEqual([]);
+});
