@@ -131,20 +131,23 @@ test('airborne momentum above RUN persists while holding direction', () => {
   assert.ok(Math.abs(pl.body.vx) > P.RUN + 20);                // still above RUN under AIR_DRAG
 });
 
-test('landing pinned under a ceiling keeps pose matching the hitbox', () => {
-  const TUN = parseChunk([
+test('pose always matches a shrunken hitbox (no stand pose in a slide box)', () => {
+  const LOW = parseChunk([
     '..............',
+    '......########',   // ceiling y16..32: clears a 24-slide at feet 64, blocks a 44-stand
     '..............',
-    '......########',
     '..P...........',
-    '######........',
-    '......########',
+    '#####.........',   // step floor tx0..4; support lost at x >= 90
+    '..............',
   ]);
-  const pl = makePlayer(TUN.spawn); drive(pl, TUN, 150, () => ({}));
-  drive(pl, TUN, 6, () => ({ right: true }));
-  drive(pl, TUN, 40, () => ({ right: true, down: true }));     // slide off the step into the low passage
-  assert.ok(pl.body.h < 44);
-  assert.ok(pl.state === 'slide' || pl.state === 'duck');
+  const pl = makePlayer(LOW.spawn); drive(pl, LOW, 150, () => ({}));
+  drive(pl, LOW, 6, () => ({ right: true }));
+  let shrunk = 0;
+  for (let i = 0; i < 30; i++) {
+    drive(pl, LOW, 1, () => ({ right: true, down: true }));
+    if (pl.body.h < 44) { shrunk++; assert.ok(pl.state === 'slide' || pl.state === 'duck'); }
+  }
+  assert.ok(shrunk > 0);
 });
 
 test('muzzle origin recorded; cleared by pit respawn', () => {

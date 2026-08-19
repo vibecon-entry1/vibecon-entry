@@ -60,7 +60,9 @@ export function makePlayer(spawnFeet) {
       pl.slideT += dt;
       b.vx = Math.max(0, Math.abs(b.vx) - P.SLIDE_DECAY * dt) * Math.sign(b.vx || pl.facing);
       if (!grounded) {
-        setState('air');                              // fell off mid-slide; height restored below
+        if (bodyFits(level, b.x, b.y, b.w, STAND_H))
+          setState('air');                            // fell off mid-slide; height restored below
+        // else: pinned airborne — hold the slide pose so stateT stays continuous
       } else if ((pl.slideT > P.SLIDE_MIN && (!act.down || dir === 0)) ||
                  Math.abs(b.vx) < 8) {
         if (tryStand(level)) setState('idle');        // pinned under ceiling → keep sliding
