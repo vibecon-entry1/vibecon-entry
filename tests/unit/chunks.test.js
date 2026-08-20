@@ -72,7 +72,7 @@ test('stitchChunks demands exact signTexts count', () => {
 
 test('GAUNTLET stitches clean with expected population', () => {
   assert.equal(GAUNTLET.hTiles, 34);
-  assert.equal(GAUNTLET.wTiles, 7 * 48);
+  assert.equal(GAUNTLET.wTiles, 10 * 48);
   assert.equal(GAUNTLET.signs.length, 5);
   assert.ok(GAUNTLET.signs.every(s => s.text.length > 0));
   const byType = {};
@@ -80,11 +80,28 @@ test('GAUNTLET stitches clean with expected population', () => {
   assert.equal(byType.hopper, 4);
   assert.equal(byType.redhopper, 2);
   assert.equal(byType.saucer, 4);
-  assert.equal(byType.coin, 35);
+  assert.equal(byType.coin, 50);
   assert.ok(byType.coin >= 15);
-  assert.equal(GAUNTLET.checkpoints.length, 3);
-  // checkpoints open chunks 3, 5 and 7
-  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)), [98, 194, 290]);
+  assert.equal(GAUNTLET.checkpoints.length, 4);
+  // checkpoints open chunks 3, 5, 7 and 9
+  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)), [98, 194, 290, 386]);
+});
+
+test('carve opens a solid tile', () => {
+  const L = parseChunk(['..P.', '####']);
+  assert.equal(L.solidAt(3, 1), true);
+  L.carve(3, 1);
+  assert.equal(L.solidAt(3, 1), false);
+});
+
+test('GAUNTLET has boss arena, victory stretch, ship pad', () => {
+  assert.equal(GAUNTLET.wTiles, 10 * 48);
+  // gate: solid column pair at the arena's right edge, sky-height 3 rows above floor
+  assert.ok(GAUNTLET.gate.length >= 6);
+  for (const [tx, ty] of GAUNTLET.gate) assert.equal(GAUNTLET.solidAt(tx, ty), true);
+  assert.ok(GAUNTLET.bossTrigger > 7 * 48 * 16 && GAUNTLET.bossTrigger < 8 * 48 * 16);
+  assert.ok(GAUNTLET.shipPad.x > 9 * 48 * 16);
+  assert.equal(GAUNTLET.checkpoints.length, 4);   // + one at C9 start
 });
 
 test('GAUNTLET geometry holds the authoring invariants', () => {

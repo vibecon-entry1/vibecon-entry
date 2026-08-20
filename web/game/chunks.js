@@ -1,6 +1,7 @@
 // ASCII chunks → level. Legend: '#' solid · '.' empty · 'P' player spawn ·
 // 'C' checkpoint · 'h' hopper · 'H' red hopper · 'u' saucer · '$' coin ·
-// 'S' sign. Spawn/checkpoint y = feet = top of the tile they stand on.
+// 'S' sign · 'G' gate tile (solid, recorded) · 'T' ship pad marker (not
+// solid, recorded). Spawn/checkpoint y = feet = top of the tile they stand on.
 export const TILE = 16;
 
 const ENT = { h: 'hopper', H: 'redhopper', u: 'saucer', $: 'coin' };
@@ -9,10 +10,11 @@ export function parseChunk(rows) {
   const hTiles = rows.length, wTiles = rows[0].length;
   const solid = new Uint8Array(wTiles * hTiles);
   let spawn = null; const checkpoints = []; const entities = []; const signs = [];
+  const gate = []; let shipPad = null;
   rows.forEach((row, ty) => {
     if (row.length !== wTiles) throw new Error(`row ${ty} width ${row.length} != ${wTiles}`);
     [...row].forEach((ch, tx) => {
-      if (ch === '#') solid[ty * wTiles + tx] = 1;
+      if (ch === '#' || ch === 'G') solid[ty * wTiles + tx] = 1;
       const feet = { x: tx * TILE + TILE / 2, y: (ty + 1) * TILE };
       if (ch === 'P') {
         if (spawn) throw new Error('chunk has multiple P');
@@ -21,17 +23,26 @@ export function parseChunk(rows) {
       if (ch === 'C') checkpoints.push(feet);
       if (ENT[ch]) entities.push({ type: ENT[ch], x: feet.x, y: feet.y });
       if (ch === 'S') signs.push({ x: feet.x, y: feet.y, text: '' });
+      if (ch === 'G') gate.push([tx, ty]);
+      if (ch === 'T') {
+        if (shipPad) throw new Error('chunk has multiple T');
+        shipPad = feet;
+      }
     });
   });
   if (!spawn) throw new Error('chunk has no P');
   return {
-    wTiles, hTiles, spawn, checkpoints, entities, signs,
+    wTiles, hTiles, spawn, checkpoints, entities, signs, gate, shipPad,
     w: wTiles * TILE, h: hTiles * TILE,
     solidAt(tx, ty) {
       if (tx < 0 || tx >= wTiles) return true;     // side walls
       if (ty < 0) return true;                     // ceiling above level
       if (ty >= hTiles) return false;              // open bottom = pits kill
       return solid[ty * wTiles + tx] === 1;
+    },
+    carve(tx, ty) {
+      if (tx < 0 || tx >= wTiles || ty < 0 || ty >= hTiles) return;
+      solid[ty * wTiles + tx] = 0;
     },
   };
 }
@@ -102,10 +113,12 @@ export const GB1 = parseChunk([
 // Standing surfaces keep >= 3 empty rows overhead (44px body + solid ceiling);
 // the ONE deliberate exception is C5's slide corridor, a 2-row (32px) opening
 // that only the 24px slide box fits through.
+export const SKY_PAD = 12;
+export const FLOOR_PAD = 5;
 function ch(rows) {
   const w = rows[0].length;
   const sky = '.'.repeat(w);
-  return [...Array(12).fill(sky), ...rows, ...Array(5).fill(rows.at(-1))];
+  return [...Array(SKY_PAD).fill(sky), ...rows, ...Array(FLOOR_PAD).fill(rows.at(-1))];
 }
 const R = '.'.repeat(48);
 
@@ -214,4 +227,42 @@ const SIGN_TEXTS = [
   'rude saucers drop bolts. keep moving or blast.',
 ];
 
-export const GAUNTLET = stitchChunks([C1, C2, C3, C4, C5, C6, C7], SIGN_TEXTS);
+// C8 — boss arena. Flat 48-wide floor, open sky (the MEGA SAUCER hovers and
+// dives above it). A 2-col gate wall of 'G' at the right edge (cols 46-47),
+// solid across the 3 rows directly above the floor: blocks both walking and
+// hopping past until the boss dies and Plan-3's scene code carves it open.
+// No enemies/coins/signs — the fight itself is the content.
+const C8 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// C9 — victory stretch. Flat floor, checkpoint right at the mouth (post-boss
+// respawns land here, not back at C7), 15 coins in a floor-hugging line for
+// the cooldown lap to the ship. No enemies, no signs.
+const C9 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '...$..$..$..$..$..$..$..$..$..$..$..$..$..$..$..',
+  R,
+  '..C.............................................',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// C10 — ship pad. Flat floor, 'T' marks the pad center (~col 24). No enemies.
+const C10 = ch([
+  R, R, R, R, R, R, R, R, R, R, R, R, R,
+  '........................T.......................',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+export const GAUNTLET = stitchChunks([C1, C2, C3, C4, C5, C6, C7, C8, C9, C10], SIGN_TEXTS);
+GAUNTLET.bossTrigger = (7 * 48 + 8) * TILE;

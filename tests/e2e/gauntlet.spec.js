@@ -5,7 +5,7 @@ test('world is populated: enemies, coins render without errors', async ({ page }
   const errors = await boot(page);
   const st = await page.evaluate(() => window.__blast.state());
   expect(st.enemies).toBe(10);
-  expect(st.coins).toBe(35);
+  expect(st.coins).toBe(50);
   expect(st.hp).toBe(3);
   await page.screenshot({ path: 'tests/artifacts/gauntlet-spawn.png' });
   expect(errors).toEqual([]);
