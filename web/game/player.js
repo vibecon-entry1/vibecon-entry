@@ -1,9 +1,10 @@
 // The verb. States: spawn/idle/walk/slide/duck/air. Fire is context-sensitive,
 // resolved in this order:
-//   pinned under a ceiling → backward bolt + forward burst (capped at BURST_MAX)
-//   grounded+down          → hop (from a slide: slide-hop, keeps slide speed)
+//   established slide + direction → backward bolt + forward burst (the CHORD:
+//        down + direction + fire, stays seated, capped at BURST_MAX; a slide
+//        counts as established after 0.12s, or immediately while pinned)
+//   grounded+down          → hop (from a fresh slide: slide-hop, keeps slide speed)
 //   airborne+down          → boost (costs air charge)
-//   sliding (down released) → backward bolt + forward burst
 //   otherwise              → forward bolt (free, no physics effect)
 // Height growth (standing up) always goes through bodyFits — never embed in a
 // ceiling; that includes the checkpoint respawn.
@@ -148,13 +149,16 @@ export function makePlayer(spawnFeet) {
       }
     }
 
-    // fire — context-sensitive. Ground-shots beat slide-fire so down+fire always
-    // hops (slide-hop carries slide speed); burst = fire while sliding with down
-    // released, or any fire while pinned under a ceiling (burst is the only shot
-    // that makes sense there).
+    // fire — context-sensitive. The burst is a CHORD: down + a direction + fire
+    // on an ESTABLISHED slide (>= 0.12s in, or pinned under a ceiling where the
+    // slide can't end anyway). It stays seated — no state or pose change — so
+    // you can chain taps down a corridor while never letting go of down.
+    // A FRESH slide (< 0.12s) still hops on down+fire: that's the running
+    // pit-saver, and it has to beat the burst or no gap is clearable at speed.
     if (act.fire && pl.fireCd === 0) {
-      const pinned = pl.state === 'slide' && !bodyFits(level, b.x, b.y, b.w, STAND_H);
-      if (pinned) {
+      const establishedSlide = pl.state === 'slide' &&
+        (pl.slideT >= 0.12 || !bodyFits(level, b.x, b.y, b.w, STAND_H));
+      if (establishedSlide && dir !== 0) {
         fire(bullets, -pl.facing, 0, b.x - pl.facing * 14, b.y - 12);
         b.vx = pl.facing * Math.min(Math.abs(b.vx) + P.BURST_VX, P.BURST_MAX);
       } else if (act.down && grounded) {
@@ -167,9 +171,6 @@ export function makePlayer(spawnFeet) {
           fire(bullets, 0, 1, b.x, b.y - 6);
           b.vy = P.BOOST_VY;
         }
-      } else if (pl.state === 'slide') {
-        fire(bullets, -pl.facing, 0, b.x - pl.facing * 14, b.y - 12);
-        b.vx = pl.facing * Math.min(Math.abs(b.vx) + P.BURST_VX, P.BURST_MAX);
       } else {
         fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 22);
       }

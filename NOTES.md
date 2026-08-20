@@ -110,4 +110,8 @@ asserting zero mp3 requests before a gesture.
 - Chunk authoring: ≥3 empty rows above any standing surface (44px player + OOB ceiling)
 - Audio: M = mute (persisted); music streams — a boot fetches only manifest.json
 - Gameplay: 3 hearts; kills refill boost pips; signs teach the verbs; R = full restart
+- Burst chord: DOWN + direction + X on a settled slide (0.12s in, or instantly while
+  pinned under a ceiling) = backward bolt + forward burst, and you STAY seated — hold
+  the chord and mash X to chain up to BURST_MAX. Tapping X in the first 0.12s of a
+  slide still hops instead (the running pit-saver).
 Plan 3 delivers: full arc (M4) — title/intro, MEGA SAUCER boss + gate, ship extraction, win screen with best-score persistence, pause. M4 gate: user plays start → win before Plan 4 (WOW ZONE, audio, share card).

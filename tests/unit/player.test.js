@@ -57,40 +57,89 @@ test('air charges: 3 boosts then dry, refill on landing', () => {
   assert.equal(pl.airCharges, P.AIR_CHARGES);
 });
 
-// Fire precedence: a ground-shot (down held) beats slide-fire, so the burst is
-// what you get with down RELEASED mid-slide — or with down held while pinned.
-test('slide-fire with down released bursts forward and shoots backward', () => {
+// The burst is a CHORD: down + direction + fire on an ESTABLISHED slide (0.12s
+// in). Down is never released — you stay seated and can chain taps. A FRESH
+// slide (< 0.12s) still hops on down+fire; that test is below.
+test('established slide + chord bursts forward and shoots backward, stays seated', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
   drive(pl, FLAT, 1, () => ({ right: true, down: true }));       // enter the slide
   assert.equal(pl.state, 'slide');
   assert.equal(pl.body.h, 24);
-  // inside the SLIDE_MIN window the slide survives the release, so fire bursts
-  const fired = drive(pl, FLAT, 1, () => ({ right: true, fire: true }));
-  assert.equal(pl.state, 'slide');                 // did not hop out
+  drive(pl, FLAT, 8, () => ({ right: true, down: true }));       // settle past 0.12s
+  assert.ok(pl.slideT >= 0.12);
+  const before = pl.body.vx;
+  // down STILL HELD on the fire frame — the chord, not a release
+  const fired = drive(pl, FLAT, 1, () => ({ right: true, down: true, fire: true }));
+  assert.equal(pl.state, 'slide');                 // did not hop out, did not stand
+  assert.equal(pl.body.h, 24);                     // still seated
   assert.equal(fired.at(-1)[2], -1);               // bolt went backward
-  assert.ok(pl.body.vx > P.SLIDE_SPEED + 100);     // burst added speed (200 → ~326)
+  assert.ok(pl.body.vx > before + 100);            // burst added speed
+  assert.ok(pl.body.vy >= 0);                      // never left the floor
   assert.equal(pl.airCharges, P.AIR_CHARGES);      // grounded burst is free
 });
 
-test('two bursts inside the slide window cap at BURST_MAX', () => {
+test('chained chord bursts cap at BURST_MAX', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
   drive(pl, FLAT, 1, () => ({ right: true, down: true }));       // slide, vx = SLIDE_SPEED
-  drive(pl, FLAT, 1, () => ({ right: true, fire: true }));       // burst 1
-  drive(pl, FLAT, 7, () => ({ right: true }));                   // wait out FIRE_CD
-  const before = pl.body.vx;
-  drive(pl, FLAT, 1, () => ({ right: true, fire: true }));       // burst 2
-  assert.equal(pl.state, 'slide');
-  assert.ok(before + P.BURST_VX > P.BURST_MAX);                  // uncapped sum overshoots
-  assert.equal(pl.body.vx, P.BURST_MAX);                         // clamped exactly
+  drive(pl, FLAT, 8, () => ({ right: true, down: true }));       // settle past 0.12s
+  // the chord never breaks: down+right held throughout, X tapped past FIRE_CD
+  const peaks = [];
+  for (let k = 0; k < 4; k++) {
+    const before = pl.body.vx;
+    drive(pl, FLAT, 1, () => ({ right: true, down: true, fire: true }));
+    peaks.push({ before, after: pl.body.vx });
+    assert.equal(pl.state, 'slide');                              // seated the whole way
+    assert.equal(pl.body.h, 24);
+    drive(pl, FLAT, 7, () => ({ right: true, down: true }));      // wait out FIRE_CD
+  }
+  assert.ok(peaks[0].after > peaks[0].before);                    // each tap chains
+  assert.ok(peaks[1].after > peaks[1].before);
+  const last = peaks.at(-1);
+  assert.ok(last.before + P.BURST_VX > P.BURST_MAX);              // uncapped sum overshoots
+  assert.equal(last.after, P.BURST_MAX);                          // clamped exactly
+  assert.ok(peaks.every(p => p.after <= P.BURST_MAX));            // never over the cap
 });
 
-test('slide-hop: down+fire on a running slide hops out carrying slide speed', () => {
+test('seated with no direction (duck) still hops: the chord needs a direction', () => {
+  const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
+  drive(pl, FLAT, 20, () => ({ down: true }));                   // duck, dir 0
+  assert.equal(pl.state, 'duck');
+  const fired = drive(pl, FLAT, 1, () => ({ down: true, fire: true }));
+  assert.deepEqual(fired.at(-1).slice(2), [0, 1]);               // ground shot
+  assert.ok(pl.body.vy <= P.HOP_VY + P.GRAV * DT + 1);           // hopped
+});
+
+test('a long held chord never stands you up, even past SLIDE_MIN', () => {
+  const LONG = parseChunk([
+    '.'.repeat(80), '.'.repeat(80), '.'.repeat(80), '.'.repeat(80),
+    '..P' + '.'.repeat(77),
+    '#'.repeat(80),
+  ]);
+  const pl = makePlayer(LONG.spawn); drive(pl, LONG, 150, () => ({}));
+  drive(pl, LONG, 30, () => ({ right: true }));
+  drive(pl, LONG, 1, () => ({ right: true, down: true }));
+  let bursts = 0, peak = 0;
+  for (let i = 1; i <= 60; i++) {                                 // a full second of chord
+    const fired = drive(pl, LONG, 1, () => ({ right: true, down: true, fire: i % 8 === 0 }));
+    if (fired.length && fired.at(-1)[2] === -1) bursts++;
+    assert.equal(pl.state, 'slide');                              // seated the whole second
+    assert.equal(pl.body.h, 24);
+    peak = Math.max(peak, pl.body.vx);
+  }
+  assert.ok(pl.slideT > P.SLIDE_MIN);                             // way past the stand-up window
+  assert.ok(bursts >= 5);                                         // chained, not one-shot
+  assert.equal(peak, P.BURST_MAX);                                // topped out, never over
+});
+
+test('slide-hop: down+fire inside the fresh-slide window hops out carrying slide speed', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
-  // the human gesture: direction never released across the down+fire tap
+  // the running pit-saver: down+fire on the SAME frame the slide starts, so
+  // slideT is still 0 — inside the 0.12s window the hop beats the chord
   const fired = drive(pl, FLAT, 1, () => ({ right: true, down: true, fire: true }));
+  assert.ok(pl.slideT < 0.12);
   assert.equal(pl.state, 'air');                                 // hopped, did not slide-burst
   assert.deepEqual(fired.at(-1).slice(2), [0, 1]);               // shot straight down
   assert.ok(pl.body.vy <= P.HOP_VY + P.GRAV * DT + 1);           // full hop velocity
@@ -101,7 +150,7 @@ test('slide-hop: down+fire on a running slide hops out carrying slide speed', ()
   assert.equal(pl.body.h, 44);                                   // stand box restored in open air
 });
 
-test('pinned under a ceiling: fire with down held bursts, never hops', () => {
+test('pinned slide is established immediately: chord bursts well inside 0.12s', () => {
   const TUNNEL = parseChunk([
     '..............................',
     '..............................',
@@ -111,16 +160,28 @@ test('pinned under a ceiling: fire with down held bursts, never hops', () => {
     '##############################',
   ]);
   const pl = makePlayer(TUNNEL.spawn); drive(pl, TUNNEL, 150, () => ({}));
-  drive(pl, TUNNEL, 30, () => ({ right: true }));
-  drive(pl, TUNNEL, 20, () => ({ right: true, down: true }));    // slide in under the ceiling
-  assert.equal(pl.state, 'slide');
+  drive(pl, TUNNEL, 32, () => ({ right: true }));               // run to the tunnel mouth
+  drive(pl, TUNNEL, 2, () => ({ right: true, down: true }));    // slide under the ceiling
+  // The slide is 0.017s old — far inside the fresh window that normally hops.
+  // Being pinned makes it established anyway; a corridor has to burst on the
+  // frame the ceiling arrives or it isn't passable at all.
+  assert.ok(pl.slideT < 0.12);
   assert.ok(!bodyFits(TUNNEL, pl.body.x, pl.body.y, pl.body.w, 44));   // genuinely pinned
   const before = pl.body.vx;
   const fired = drive(pl, TUNNEL, 1, () => ({ right: true, down: true, fire: true }));
+  assert.equal(pl.state, 'slide');
   assert.equal(fired.at(-1)[2], -1);                             // backward bolt = burst
   assert.ok(pl.body.vx > before + 100);                          // burst added speed
   assert.ok(pl.body.vy >= 0);                                    // never left the floor
-  assert.equal(pl.state, 'slide');
+  assert.equal(pl.body.h, 24);                                   // still seated
+
+  // and it keeps bursting deeper in, down held the whole way
+  for (let k = 0; k < 3; k++) {
+    drive(pl, TUNNEL, 7, () => ({ right: true, down: true }));
+    drive(pl, TUNNEL, 1, () => ({ right: true, down: true, fire: true }));
+    assert.equal(pl.state, 'slide');
+  }
+  assert.equal(pl.body.vx, P.BURST_MAX);
 });
 
 test('slide off a ledge goes airborne and restores height when clear', () => {
@@ -229,9 +290,9 @@ test('airborne momentum above RUN persists while holding direction', () => {
   ]);
   const pl = makePlayer(L2.spawn); drive(pl, L2, 150, () => ({}));
   drive(pl, L2, 8, () => ({ right: true }));
-  drive(pl, L2, 1, () => ({ right: true, down: true }));         // slide
-  drive(pl, L2, 1, () => ({ right: true, fire: true }));         // burst (down released)
-  drive(pl, L2, 14, () => ({ right: true }));                    // ride it off the edge
+  drive(pl, L2, 9, () => ({ right: true, down: true }));         // slide, settle past 0.12s
+  drive(pl, L2, 1, () => ({ right: true, down: true, fire: true }));   // chord burst
+  drive(pl, L2, 14, () => ({ right: true }));                    // stand up, ride it off the edge
   assert.equal(pl.state, 'air');
   assert.ok(Math.abs(pl.body.vx) > P.RUN + 50);                // launched fast, not clamped
   drive(pl, L2, 6, () => ({ right: true }));

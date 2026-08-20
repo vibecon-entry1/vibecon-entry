@@ -551,6 +551,7 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
 
     state: () => ({
       x: player.body.x, y: player.body.y, vx: player.body.vx, vy: player.body.vy,
+      h: player.body.h,                       // pose/hitbox height: 44 stand, 32 duck, 24 slide
       pstate: player.state, charges: player.airCharges, deaths: player.deaths,
       hp: player.hp, iframes: player.iframes,
       paused, bullets: playerBolts.count(),

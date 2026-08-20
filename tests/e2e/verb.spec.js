@@ -36,17 +36,17 @@ test('grounded down-shot hop is free; air boosts spend and landing refills', asy
 
 test('slide-fire burst accelerates past run speed', async ({ page }) => {
   const errors = await boot(page);
-  // down is RELEASED on the fire frames: with down held a ground-shot hops out
-  // of the slide instead (see the slide-hop test below). The slide survives the
-  // release inside the SLIDE_MIN window, so both shots land as bursts.
+  // The CHORD: down + right + X, and down is NEVER released. X is tapped ~20
+  // frames into the slide, well past the 0.12s (8-frame) fresh window that
+  // would otherwise hop. Two taps chain toward BURST_MAX; the pose stays seated.
   const tape = [
     { f: 0, a: { right: true } },
     { f: 25, a: { right: true, down: true } },                        // slide
-    { f: 29, a: { right: true, fire: true } },                        // burst 1
-    { f: 31, a: { right: true } },
-    { f: 38, a: { right: true, fire: true } },                        // burst 2 → BURST_MAX
-    { f: 40, a: { right: true } },
-    { f: 46, a: null },
+    { f: 45, a: { right: true, down: true, fire: true } },            // burst 1 (20f in)
+    { f: 47, a: { right: true, down: true } },
+    { f: 54, a: { right: true, down: true, fire: true } },            // burst 2 → BURST_MAX
+    { f: 56, a: { right: true, down: true } },
+    { f: 64, a: null },
   ];
   await page.evaluate(t => {
     const base = window.__blast.frame;
@@ -55,6 +55,8 @@ test('slide-fire burst accelerates past run speed', async ({ page }) => {
   // latch the burst peak while it is live; SLIDE_SPEED alone can never reach it
   await page.waitForFunction(() => Math.abs(window.__blast.state().vx) > 300,
                              null, { timeout: 10000 });
+  const peak = await page.evaluate(() => window.__blast.state());
+  expect(peak.pstate).toBe('slide');               // burst stays seated, down still held
   await page.screenshot({ path: 'tests/artifacts/verb-burst.png' });
   await page.waitForFunction(() => window.__blast.tapeDone(), null, { timeout: 15000 });
   const st = await page.evaluate(() => window.__blast.state());
@@ -63,11 +65,11 @@ test('slide-fire burst accelerates past run speed', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('slide-hop: down+fire with direction held hops instead of bursting', async ({ page }) => {
+test('slide-hop: down+fire in the fresh-slide window hops instead of bursting', async ({ page }) => {
   const errors = await boot(page);
-  // The human gesture that used to be fatal: hold right THROUGH a down+fire tap.
-  // Movement resolves before fire, so the frame reads as a slide — the ground
-  // shot must still win and hop, or no gap is clearable at speed.
+  // The running pit-saver: hold right THROUGH a down+fire tap. down and fire
+  // land on the SAME frame, so the slide is 0s old — inside the 0.12s fresh
+  // window the ground shot still wins and hops, or no gap is clearable at speed.
   const x0 = (await page.evaluate(() => window.__blast.state())).x;
   await runTape(page, [
     { f: 0, a: { right: true } },
