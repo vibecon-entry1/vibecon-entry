@@ -98,6 +98,25 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
   let chunkIndex = 0, maxChunk = 0;
   let dedT = 0;                  // seconds spent dead — the run-end fuse
   const DED_OUT = 1.2;           // corpse anim is 1.5s; cut before it finishes
+  // --- afk fail-safe ---------------------------------------------------------
+  // A run left alone forever is a run that never ends: the score keeps its slot,
+  // the music keeps streaming, and a shared machine keeps a game open on it. So
+  // the scene keeps its own idle clock, and walking away eventually ends the run
+  // the same way a saucer would.
+  //
+  // Two rules that are deliberately harsher than they look:
+  //   - PAUSE IS NOT A SHIELD. The clock is ticked before the pause bail, so
+  //     Escape hides the world but does not stop the fuse. Pausing to go and do
+  //     something else is exactly the case this exists for.
+  //   - ANY input resets it. Not 'meaningful' input, not movement — every key
+  //     the game reads, held or tapped, on any frame. The clock is asking "is
+  //     anybody there", and a held key answers that question.
+  // The extraction cutscene is the one stretch that does NOT tick: it drives
+  // itself to the win screen on a 2.5s fuse and takes no input by design.
+  const AFK_WARN = 120;          // seconds of nothing before the countdown shows
+  const AFK_OUT = 300;           // ...and before the run is taken away
+  let idleT = 0;                 // seconds since the last input of any kind
+  let outT = -1;                 // -1 = not fired; >= 0 = seconds since it fired
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
   // through a mid-fight real death, so the arena can never re-arm a second saucer.
@@ -187,6 +206,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
   if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('test') &&
       typeof window !== 'undefined' && window.__blast) {
     window.__blast.cheat = {
+      // The afk clock's real thresholds are 2 and 5 MINUTES, which no e2e can sit
+      // through. This winds it forward directly so a spec can assert the
+      // countdown and the death itself in a couple of seconds.
+      idle(seconds) { idleT = seconds; },
       warp(x) {
         player.body.x = x;
         player.checkpoint = { x, y: player.body.y };
@@ -270,6 +293,36 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
     };
   }
 
+  // One tick of the idle clock. Reads the resolved action set rather than
+  // hooking the keydown handler: that way a gamepad stick and the e2e's virtual
+  // tape count as presence too, and a key HELD across many frames keeps the
+  // clock at zero instead of only resetting it on the press edge.
+  function idleTick(dt) {
+    const act = input.actions();
+    for (const k in act) if (act[k]) { idleT = 0; return; }
+    idleT += dt;
+    if (idleT >= AFK_OUT && outT < 0) afkOut();
+  }
+
+  // The fuse lands. Hearts do not enter into it — this is not damage, it is the
+  // run being taken away, so hp goes to zero in one step whatever it held.
+  //
+  // The death jingle, the shake and the popup are raised HERE rather than left
+  // to the hp-edge watcher in update(): that watcher sits below the pause bail,
+  // and this can fire while the game is paused. prevState/prevHp are moved to
+  // the post-death values in the same breath so the watcher cannot sound a
+  // second 'ded' on the next unpaused frame.
+  function afkOut() {
+    outT = 0;
+    player.hp = 0;
+    player.iframes = 0;
+    player.setState('ded');
+    prevHp = 0; prevState = 'ded';
+    popups.spawn(player.body.x, player.body.y - 20, 'rekt');
+    sfx?.play('ded');
+    cam.shake(8, 0.3);
+  }
+
   function drawLayer(ctx, name, sx, sy) {
     const a = atlas.anims[name];
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);
@@ -277,6 +330,18 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
 
   return {
     update(dt) {
+      // The idle clock runs FIRST, above every bail below it — pause, hitstop
+      // and the retry check included. See the AFK_* block up top for why.
+      if (takeoff < 0) idleTick(dt);
+      if (outT >= 0) {
+        outT += dt;
+        // Same beat the wow run-end uses: cut while the corpse is still on its
+        // last frame. In wow that is the normal run-end screen (the best score
+        // banks in main.js exactly as it would after any other death); in the
+        // gauntlet there is no end screen to go to, so the whole board starts
+        // over from nothing — score, deaths and carved gate alike.
+        if (outT >= DED_OUT) { go(wow ? 'wowend' : 'play', wow ? wowBreakdown() : { mode, seed }); return; }
+      }
       // retry wins over everything, takeoff included: a deliberate choice —
       // R during the extraction cutscene restarts the run rather than making
       // the player sit out 2.5s of ship they've already earned.
@@ -660,6 +725,26 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
         ctx.fillStyle = '#8fa';
         drawText(ctx, 'Esc resume  ·  R restart', VW / 2, 190, { align: 'center', scale: 2 });
       }
+
+      // (13) the afk countdown, drawn LAST — after the pause veil, on purpose.
+      // The veil is 55% black over the whole frame, so anything drawn under it
+      // would be the one warning in the game you can hide by pressing Escape.
+      if (idleT >= AFK_WARN && outT < 0) {
+        const left = Math.max(0, AFK_OUT - idleT);
+        const mm = Math.floor(left / 60), ss = Math.floor(left % 60);
+        // Under half a minute the readout goes to the damage red and breathes,
+        // ~1.4 Hz. The pulse is alpha rather than scale: a growing string on a
+        // centred baseline shimmers against the pixel grid, and the point is to
+        // catch a returning eye, not to redraw the layout every frame.
+        const hot = left < 30;
+        if (hot) ctx.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(idleT * 4.4));
+        const col = hot ? '#e2413f' : '#eec548';
+        drawTextShadow(ctx, 'very afk.', VW / 2, 6, { align: 'center', scale: 2 },
+                       col, '#2a1c33');
+        drawTextShadow(ctx, `${mm}:${String(ss).padStart(2, '0')}`, VW / 2, 24,
+                       { align: 'center', scale: 3 }, col, '#2a1c33');
+        ctx.globalAlpha = 1;
+      }
     },
 
     state: () => ({
@@ -677,6 +762,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
       gateOpen: gateIsOpen(),
       timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
       mode, seed, chunkIndex, maxChunk,
+      idleT, countdownOn: idleT >= AFK_WARN && outT < 0,
     }),
   };
 }
