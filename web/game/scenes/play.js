@@ -132,6 +132,17 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // world reads as a stall rather than as atmosphere.
   let ambT = 0;
   let deco = null;                // lazily built once, see decoOrb()
+  // --- tile render cache -----------------------------------------------------
+  // The visible tile window only changes when the camera crosses a 16px tile
+  // boundary, but the per-tile draw loop used to run all ~400 drawImage calls
+  // every frame — the single largest block in the phone profile. The window
+  // lives in a cache canvas and the whole pass is ONE blit; on a boundary
+  // crossing the overlap is copied across (ping-pong pair — a canvas cannot
+  // safely self-copy with overlap) and only the newly exposed cells are drawn,
+  // so no frame ever pays for the full window twice. Sized for the worst-case
+  // window (+1 tile each axis for the partial edges).
+  let tileCanvas = null, tileScratch = null, tileWin = null;
+  let tileEpoch = 0;              // bumped by the one thing that edits tiles: the gate carve
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
   // through a mid-fight real death, so the arena can never re-arm a second saucer.
@@ -186,6 +197,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     bossKilled = true;                                  // ...but it still counts in the tally,
                                                          // permanently — refundKills never touches it
     for (const [tx, ty] of level.gate) level.carve(tx, ty);
+    tileEpoch++;                                        // carved tiles: cached window is stale
     // Popup at the gate, not at the corpse: it points at what just changed.
     // gate.at(-1) — the BOTTOM tile of the wall (parseChunk records row-major,
     // so gate[0] is the top of a 14-row wall, ~200px above the fight and off
@@ -695,19 +707,42 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
 
       ctx.save(); cam.apply(ctx);
 
-      // (2) tiles, culled to the visible window. Frame 0 = sunlit surface (no
-      // solid directly above), frame 1 = fill. Edge frames 2/3 stay unused.
+      // (2) tiles, culled to the visible window and CACHED (see tileCanvas up
+      // top). Frame 0 = sunlit surface (no solid directly above), frame 1 =
+      // fill. Edge frames 2/3 stay unused.
       const tx0 = Math.max(0, Math.floor(cam.x / TILE));
       const tx1 = Math.min(level.wTiles - 1, Math.floor((cam.x + VW) / TILE));
       const ty0 = Math.max(0, Math.floor(cam.y / TILE));
       const ty1 = Math.min(level.hTiles - 1, Math.floor((cam.y + VH) / TILE));
-      for (let ty = ty0; ty <= ty1; ty++)
-        for (let tx = tx0; tx <= tx1; tx++) {
-          if (!level.solidAt(tx, ty)) continue;
-          const f = level.solidAt(tx, ty - 1) ? 1 : 0;
-          atlas.drawCentered(ctx, 'tiles', atlas.anims.tiles.frames[f],
-                             tx * TILE + 8, ty * TILE + 8);
+      const w = tileWin;
+      if ((!w || w.tx0 !== tx0 || w.ty0 !== ty0 || w.tx1 !== tx1 || w.ty1 !== ty1 ||
+           w.epoch !== tileEpoch) && typeof document !== 'undefined') {
+        if (!tileCanvas) {
+          const cw = (Math.ceil(VW / TILE) + 1) * TILE, ch = (Math.ceil(VH / TILE) + 1) * TILE;
+          tileCanvas = document.createElement('canvas');
+          tileScratch = document.createElement('canvas');
+          tileCanvas.width = tileScratch.width = cw;
+          tileCanvas.height = tileScratch.height = ch;
         }
+        const g = tileScratch.getContext('2d');
+        g.clearRect(0, 0, tileScratch.width, tileScratch.height);
+        // Same-epoch window shift: copy the overlap, draw only exposed cells.
+        // An epoch change (gate carve) invalidates the pixels, so it redraws
+        // the full window — once, on the frame the gate opens.
+        const shift = w && w.epoch === tileEpoch;
+        if (shift) g.drawImage(tileCanvas, (w.tx0 - tx0) * TILE, (w.ty0 - ty0) * TILE);
+        for (let ty = ty0; ty <= ty1; ty++)
+          for (let tx = tx0; tx <= tx1; tx++) {
+            if (shift && tx >= w.tx0 && tx <= w.tx1 && ty >= w.ty0 && ty <= w.ty1) continue;
+            if (!level.solidAt(tx, ty)) continue;
+            const f = level.solidAt(tx, ty - 1) ? 1 : 0;
+            atlas.drawCentered(g, 'tiles', atlas.anims.tiles.frames[f],
+                               (tx - tx0) * TILE + 8, (ty - ty0) * TILE + 8);
+          }
+        [tileCanvas, tileScratch] = [tileScratch, tileCanvas];
+        tileWin = { tx0, ty0, tx1, ty1, epoch: tileEpoch };
+      }
+      if (tileCanvas) ctx.drawImage(tileCanvas, tx0 * TILE, ty0 * TILE);
 
       // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
       // the same flat tile (chunks.js), which reads as a dead purple slab
@@ -715,7 +750,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // bands over the tile texture (world coords, drawn OVER the tiles we
       // just placed) fake depth without new art. floorLineWorldY is the same
       // horizon restLine anchors to, just left in world space (no camY0
-      // subtraction) since we're inside cam.apply here.
+      // subtraction) since we're inside cam.apply here. Kept OUT of the tile
+      // cache: the incremental shift only redraws exposed cells, and band
+      // strips do not decompose along cell edges.
       const floorLineWorldY = level.h - 8 * TILE;
       const bandX0 = cam.x, bandX1 = cam.x + VW;
       const bandStops = [floorLineWorldY + 2 * TILE, floorLineWorldY + 5 * TILE,
@@ -756,9 +793,15 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         atlas.drawCentered(ctx, 'coin', animFrame(atlas.anims.coin, c.t), c.x, c.y);
       });
 
-      // (6) enemies
-      enemies.forEach(e => atlas.drawFeet(ctx, e.anim,
-        animFrame(atlas.anims[e.anim], e.t), e.x, e.y, e.vx < 0));
+      // (6) enemies — draw only the camera window (+80 for the widest cell).
+      // The roster is 40+ and the sleeping off-screen majority was a solid
+      // block of wasted drawImage calls in the phone profile. Sim untouched:
+      // enemies.update keeps its own 1400px sleep gate.
+      const ex0 = cam.x - 80, ex1 = cam.x + VW + 80;
+      enemies.forEach(e => {
+        if (e.x < ex0 || e.x > ex1) return;
+        atlas.drawFeet(ctx, e.anim, animFrame(atlas.anims[e.anim], e.t), e.x, e.y, e.vx < 0);
+      });
 
       // (6b) MEGA SAUCER — the 64px enemyfly_red cell blown up 3x to arena scale,
       // plus a floating hp bar. Both hang off boss.x/boss.y (the CENTER anchor).
