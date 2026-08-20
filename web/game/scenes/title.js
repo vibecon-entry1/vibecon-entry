@@ -7,7 +7,41 @@
 // it would couple the title to asset loading order for a field of dots. These
 // stars are generated once from a fixed seed, so the sky is stable across
 // reloads and screenshots are diffable.
+import { getSticker, BRAND } from '../../engine/sticker.js';
+
 const VW = 640, VH = 360;
+
+// RocketRide, parked in the bottom-right corner. Sized and placed so the whole
+// bob range clears the centred legend block (which ends around x=470) and the
+// spark trail still has ~20px of sky below it to fall through.
+const RR = { x: 522, y: 228, size: 112, bob: 4 };
+
+// Thruster sparks: four 2px embers that fall out from under the rocket and
+// respawn at the top of their own little track. Phases are FIXED, not random,
+// for the same reason the starfield is seeded — the title screen has to be
+// diffable between screenshots.
+const SPARKS = [
+  { dx: 34, phase: 0.00, speed: 0.85, len: 34, c: '#eec548' },
+  { dx: 46, phase: 0.37, speed: 1.05, len: 30, c: '#aee6ff' },
+  { dx: 56, phase: 0.62, speed: 0.72, len: 38, c: '#eec548' },
+  { dx: 42, phase: 0.85, speed: 1.25, len: 26, c: '#ffe100' },
+];
+
+// The stickers are fly-THROUGH animations: the doge rockets in from off-frame
+// and out again, so for a good part of every loop the 512px source is almost
+// entirely transparent. A hard-edged rounded rect behind that reads as an empty
+// UI box waiting for content — verified on screen, it looked broken. A radial
+// falloff gives the art the same contrast against the starfield while having no
+// edge to look empty: when the frame is bare, there is simply a slightly darker
+// patch of sky.
+function softPlate(ctx, cx, cy, r) {
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, 'rgba(11,11,18,0.72)');
+  g.addColorStop(0.62, 'rgba(11,11,18,0.55)');
+  g.addColorStop(1, 'rgba(11,11,18,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+}
 
 const INTRO = [
   'aliens very rude.',
@@ -30,6 +64,29 @@ export function makeTitle({ input, go, save, jukebox }) {
   // listener starts it — so the music comes up on the same press that walks the
   // first intro card, not a scene later.
   jukebox?.playPool('title');
+
+  // Cached: bouncing off the title and back (R from the win screen) must not
+  // open a second decoder for the same 512px cartoon.
+  const rocket = getSticker(BRAND.rocketride);
+
+  // The corner mascot. Vignette first (so the cartoon's dark linework doesn't
+  // dissolve into the starfield), then the art, then the embers on top.
+  function drawRocket(ctx, t) {
+    const bob = Math.round(Math.sin(t * 1.1) * RR.bob);
+    softPlate(ctx, RR.x + RR.size / 2, RR.y + RR.size / 2 + bob, RR.size * 0.66);
+    rocket.draw(ctx, RR.x, RR.y + bob, RR.size);
+
+    // Embers. Each rides a 0..1 sawtooth down its own `len`-pixel track and
+    // fades out over the last third, so respawn is a fade-in, not a pop.
+    for (const s of SPARKS) {
+      const u = (t * s.speed + s.phase) % 1;
+      const y = RR.y + bob + RR.size - 8 + u * s.len;
+      ctx.globalAlpha = u < 0.15 ? u / 0.15 : (u > 0.7 ? (1 - u) / 0.3 : 1);
+      ctx.fillStyle = s.c;
+      ctx.fillRect(RR.x + s.dx, Math.round(y), 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
   let phase = 'title';
@@ -96,6 +153,8 @@ export function makeTitle({ input, go, save, jukebox }) {
 
         ctx.font = '8px monospace'; ctx.fillStyle = '#6f6a86';
         LEGEND.forEach((l, i) => ctx.fillText(l, VW / 2, 320 + i * 13));
+
+        drawRocket(ctx, t);
       } else {
         // intro card: one line, doge-paced, with a quiet advance hint.
         ctx.font = 'bold 20px monospace';

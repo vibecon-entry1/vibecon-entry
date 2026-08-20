@@ -203,6 +203,10 @@ export function makeJukebox({
 
   return {
     playPool, stopMusic, playOneShot, setDuck, toggleMute, unlock,
+    // Cheap per-frame read for the on-screen sound button. current() builds a
+    // twelve-field diagnostic object and pokes at the live element every call;
+    // the shell layer needs exactly one boolean, sixty times a second.
+    isMuted: () => muted,
     current: () => ({
       pool: cur?.pool ?? null,
       index: cur?.idx ?? -1,

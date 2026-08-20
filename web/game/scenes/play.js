@@ -527,7 +527,10 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       ctx.font = '10px monospace';
       ctx.textAlign = 'right';
       ctx.fillStyle = '#eec548';
-      ctx.fillText(`wow ${score.value()}`, 630, 18);
+      // 608, not 630: the shell layer's sound button occupies x 615..637 at the
+      // top-right corner (see main.js), and at 630 the score ran straight under
+      // the speaker glyph. Caught in the branding pass's visual check.
+      ctx.fillText(`wow ${score.value()}`, 608, 18);
       ctx.textAlign = 'left';
 
       // (12) pause veil, over the HUD and everything else.

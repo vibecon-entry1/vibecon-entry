@@ -12,7 +12,7 @@ const PORT = Number(process.argv[2] ?? 8123);
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.json': 'application/json', '.png': 'image/png', '.css': 'text/css',
-  '.ico': 'image/x-icon', '.mp3': 'audio/mpeg',
+  '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webm': 'video/webm',
 };
 
 http.createServer(async (req, res) => {
