@@ -1,0 +1,29 @@
+{
+ "pools": {
+  "title": [
+   "title-1.mp3",
+   "title-2.mp3",
+   "title-3.mp3",
+   "title-4.mp3"
+  ],
+  "run": [
+   "run-1.mp3",
+   "run-2.mp3",
+   "run-3.mp3",
+   "run-4.mp3"
+  ],
+  "wow": [
+   "wow-1.mp3",
+   "wow-2.mp3"
+  ],
+  "fanfare": [
+   "fanfare-1.mp3",
+   "fanfare-2.mp3"
+  ]
+ },
+ "rules": {
+  "startIndex": "random per session, persisted as lastFirst[pool]; new session must differ from previous first",
+  "advance": "cycle through pool in order from the random start; fanfare = one-shot random",
+  "streaming": "HTMLAudioElement progressive playback only (preload='none' until selected) \u2014 never decode/fetch whole files upfront"
+ }
+}

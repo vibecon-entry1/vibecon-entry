@@ -34,7 +34,8 @@ const AIR_FRAME = 6;
 
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
-export function makePlay({ atlas, input, save, go }) {
+export function makePlay({ atlas, input, save, go, jukebox }) {
+  jukebox?.playPool('run');      // no-op if we're already on the run pool (R-restart)
   const level = buildGauntlet();   // fresh per scene: R-restart re-seals any carved gate
   const player = makePlayer(level.spawn);
   const enemies = makeEnemies(level.entities, level);
@@ -229,7 +230,10 @@ export function makePlay({ atlas, input, save, go }) {
       // R during the extraction cutscene restarts the run rather than making
       // the player sit out 2.5s of ship they've already earned.
       if (input.pressed('retry')) { go('play'); return; }
-      if (input.pressed('pause')) paused = !paused;
+      // Mute is checked BEFORE the pause bail: silencing the game while it's
+      // paused is exactly when you want to reach for it.
+      if (input.pressed('mute')) jukebox?.toggleMute();
+      if (input.pressed('pause')) { paused = !paused; jukebox?.setDuck(paused); }
       if (paused) return;                                // freeze EVERYTHING, clock included
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
       timeS += dt;
@@ -317,7 +321,10 @@ export function makePlay({ atlas, input, save, go }) {
       prevHp = player.hp; prevState = player.state;
       // Extraction: stand on the pad with the gate carved open and the ship goes.
       if (takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
-          Math.abs(player.body.x - level.shipPad.x) < 24) takeoff = 0;
+          Math.abs(player.body.x - level.shipPad.x) < 24) {
+        takeoff = 0;
+        jukebox?.stopMusic();          // quiet ride: the extraction plays dry
+      }
     },
 
     render(ctx) {

@@ -3,6 +3,7 @@ import { createLoop } from './engine/loop.js';
 import { createInput } from './engine/input.js';
 import { loadAtlas } from './engine/assets.js';
 import { makeSave } from './engine/save.js';
+import { makeJukebox } from './engine/audio.js';
 import { makeViewer } from './game/scenes/viewer.js';
 import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
@@ -29,9 +30,24 @@ async function boot() {
   // AND selects the test entry scene at the bottom. Same flag the play scene's
   // cheats hang off — F1 scene-swapping is a dev affordance, not something a
   // player should be able to trip from the title screen.
-  const testMode = new URLSearchParams(location.search).has('test');
+  const params = new URLSearchParams(location.search);
+  const testMode = params.has('test');
   const input = createInput();
   const save = makeSave(localStorage);
+  // One jukebox for the whole page: scenes come and go, the music doesn't.
+  // Silent under ?test — the e2e suite drives play with synthetic key presses,
+  // and every one of those is a TRUSTED gesture, so a live jukebox would have
+  // 17 specs each streaming a 3MB run track. The real audio path is covered by
+  // tests/e2e/audio.spec.js, which boots the plain '/' front door.
+  // '?test&music' opts a test-mode boot back INTO real audio: that's how the
+  // takeoff/fanfare handoff gets smoke-tested through the cheats, which only
+  // exist under ?test. Nothing in the automated suite passes it.
+  const jukebox = makeJukebox({ save, enabled: !testMode || params.has('music') });
+  // Autoplay policy: nothing can start before a real user gesture, so the first
+  // one (whatever it is) releases whatever the title scene already asked for.
+  const unlock = () => jukebox.unlock();
+  addEventListener('keydown', unlock, { once: true });
+  addEventListener('pointerdown', unlock, { once: true });
   let atlas;
   try {
     atlas = await loadAtlas('assets/');
@@ -47,14 +63,17 @@ async function boot() {
     scene = scenes[name](...args); sceneName = name;
   }
   scenes.viewer = () => makeViewer({ atlas, input });
-  scenes.play = () => makePlay({ atlas, input, save, go });
-  scenes.title = () => makeTitle({ input, go, save });
+  scenes.play = () => makePlay({ atlas, input, save, go, jukebox });
+  scenes.title = () => makeTitle({ input, go, save, jukebox });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
   scenes.win = (breakdown) => {
     const prevBest = save.data.best.gauntlet;
     if (breakdown.score > prevBest) save.patch({ best: { gauntlet: breakdown.score } });
+    // Fanfare lives here rather than in win.js for the same reason the best
+    // score does: the win scene stays a pure layout of numbers it was handed.
+    jukebox.playOneShot('fanfare');
     return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go });
   };
 
@@ -65,6 +84,7 @@ async function boot() {
     state: () => ({ scene: sceneName, anims: Object.keys(atlas.anims).length,
                     ...(scene.state?.() ?? {}) }),
     playTape(t) { tape = t; tapeI = 0; },
+    jukebox: { current: jukebox.current },
     tapeDone: () => tape === null,
   };
   // -------------------------------------------------------------------------

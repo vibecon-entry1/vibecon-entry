@@ -73,11 +73,41 @@ Air pose: `air` holds duck frame 6 (the most tucked of the eight) instead of
 looping `run`. A/B'd in-game — the run loop mid-air is the same silhouette as
 running on the ground, so you can't tell you left it; the tuck can't be mistaken.
 
+## Music (Wave 2b)
+Streaming only. `web/engine/audio.js` is a pooled jukebox over plain
+`HTMLAudioElement`s: `web/assets/audio/manifest.json` (650 bytes) is the ONLY
+thing a boot fetches, and a track's element isn't constructed — let alone
+loaded — until that track is selected (`preload='none'`, src assigned at
+selection). 27MB of mp3 on disk, one streamed file at a time, served over
+Range/206 by `tools/serve.mjs`.
+
+Pools: title[4], run[4], wow[2] (wired, unused until the endless mode exists),
+fanfare[2] (one-shot). Per pool the session's FIRST track is random and never
+the one the last session opened with — `save.data.audio.lastFirst[pool]`, banked
+before a note plays — then it cycles in order on 'ended', wrapping.
+
+Autoplay: `playPool()` before the first user gesture records intent only;
+main.js's one-shot keydown/pointerdown listener calls `unlock()`, which starts
+whatever the title scene already asked for. Every rejected `play()` is swallowed
+and the whole module warns at most once, ever — the e2e suite asserts an empty
+console and "blocked" is the normal path on a cold load.
+
+Scene wiring: title → `playPool('title')`, play → `playPool('run')`, pause →
+`setDuck()` (0.35 vs 1.0), takeoff → `stopMusic()` (the extraction rides quiet),
+win → `playOneShot('fanfare')`. M toggles a HARD element mute, persisted.
+
+`?test` builds a SILENT jukebox: the tape-driven specs fire hundreds of trusted
+key gestures and would otherwise stream a run track per spec. `?test&music` opts
+back in (that's how the takeoff→fanfare handoff is smoke-tested), and
+`tests/e2e/audio.spec.js` covers the real path through the plain '/' front door,
+asserting zero mp3 requests before a gesture.
+
 ## Dev quickstart
 - `npm run assets`  rebuild atlas from ../assets source pack
 - `npm run serve`   → http://localhost:8123 (F1 = anim viewer, R = restart)
 - `npm test`        unit + e2e (screenshots in tests/artifacts/)
 - Live tuning: open devtools console, edit `__blast.P` (e.g. `__blast.P.HOP_VY = -320`)
 - Chunk authoring: ≥3 empty rows above any standing surface (44px player + OOB ceiling)
+- Audio: M = mute (persisted); music streams — a boot fetches only manifest.json
 - Gameplay: 3 hearts; kills refill boost pips; signs teach the verbs; R = full restart
 Plan 3 delivers: full arc (M4) — title/intro, MEGA SAUCER boss + gate, ship extraction, win screen with best-score persistence, pause. M4 gate: user plays start → win before Plan 4 (WOW ZONE, audio, share card).

@@ -7,9 +7,9 @@ const KEYMAP = {
   ArrowRight: 'right', KeyD: 'right',
   ArrowDown: 'down', KeyS: 'down',
   KeyX: 'fire', KeyZ: 'fire', Space: 'fire',
-  Escape: 'pause', KeyR: 'retry', F1: 'debug',
+  Escape: 'pause', KeyR: 'retry', KeyM: 'mute', F1: 'debug',
 };
-const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'debug'];
+const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug'];
 
 export function createInput(target = window) {
   const held = Object.fromEntries(ACTIONS.map(a => [a, false]));

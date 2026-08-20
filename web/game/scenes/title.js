@@ -19,12 +19,18 @@ const LEGEND = [
   // Spelled DOWN rather than an arrow glyph: canvas monospace has no ↓ and the
   // fallback face renders it as a stray comma-height mark.
   'arrows/WASD move  ·  X fire  ·  DOWN+X hop  ·  DOWN+move slide',
-  'Esc pause  ·  R restart',
+  'Esc pause  ·  R restart  ·  M mute',
 ];
 
 // `save` is read-only here: the title only ever DISPLAYS the banked best.
 // main.js's win-scene factory is still the one and only writer.
-export function makeTitle({ input, go, save }) {
+export function makeTitle({ input, go, save, jukebox }) {
+  // The title pool starts the moment this scene exists. Before the player's
+  // first keypress the jukebox just records the intent and main.js's unlock
+  // listener starts it — so the music comes up on the same press that walks the
+  // first intro card, not a scene later.
+  jukebox?.playPool('title');
+
   // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
   let phase = 'title';
   let t = 0;
@@ -42,6 +48,7 @@ export function makeTitle({ input, go, save }) {
   return {
     update(dt) {
       t += dt;
+      if (input.pressed('mute')) jukebox?.toggleMute();
       if (!input.pressed('fire')) return;
       intro++;
       if (intro >= INTRO.length) { go('play'); return; }
