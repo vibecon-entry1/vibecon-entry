@@ -82,3 +82,29 @@ test('pressed edge: true first frame only, held persists', () => {
   assert.equal(input.pressed('fire'), false);
   assert.equal(input.held('fire'), true);
 });
+
+test('a press and release inside ONE frame is still seen exactly once', () => {
+  // The fixed loop reads devices once per frame. A 10ms tap can begin and end
+  // between two of those reads, and `held` is false again by the time anyone
+  // looks — which is how a keystroke goes missing with nothing to blame.
+  const w = fakeWindow();
+  const input = createInput(w);
+  w.fire('keydown', 'KeyX');
+  w.fire('keyup', 'KeyX');
+  assert.equal(input.held('fire'), false);      // nothing is down any more...
+  assert.equal(input.touched('fire'), true);    // ...but the frame saw it
+  assert.equal(input.pressed('fire'), true);
+  input.endFrame();
+  assert.equal(input.touched('fire'), false);   // and it does not linger
+  assert.equal(input.pressed('fire'), false);
+});
+
+test('touched does not fire twice for one held key across frames', () => {
+  const w = fakeWindow();
+  const input = createInput(w);
+  w.fire('keydown', 'KeyX');
+  assert.equal(input.pressed('fire'), true);
+  input.endFrame();
+  assert.equal(input.touched('fire'), true);    // still down
+  assert.equal(input.pressed('fire'), false);   // but no second edge
+});

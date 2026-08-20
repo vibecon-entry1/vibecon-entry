@@ -72,6 +72,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // spamming kills in one frame can't stack a multi-second stall — the strongest
   // hit that frame wins and everything still ticks down at the normal rate.
   let hitstop = 0;
+  // A fire input the stall ate, kept alive until the sim can actually act on
+  // it. See the hitstop bail in update() for why one frame is not enough.
+  let stallFire = 0;
+  const STALL_FIRE_T = 0.2;
   // --- run stats + extraction ------------------------------------------------
   let timeS = 0;                 // run clock, seconds (paused during takeoff)
   // killCredited: roster kills banked since the LAST respawn — refundKills()
@@ -230,6 +234,11 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         if (!boss || !boss.on) return;
         while (boss.on) if (boss.hurt()) bossDeath();
       },
+      // Freeze the world exactly the way a kill does, for as long as the caller
+      // wants. The real thing lasts 3 frames, which is too short to place a
+      // keystroke inside from outside the page — this makes the window wide
+      // enough for an e2e to tap a key squarely in the middle of it.
+      stall(seconds) { hitstop = Math.max(hitstop, seconds); },
       // Drops the body straight through the level floor, which is what a pit
       // does. Used by the wow e2e to exercise the REAL pit path (level.endless
       // in player.js) rather than poking hp from outside it.
@@ -311,7 +320,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // clock at zero instead of only resetting it on the press edge.
   function idleTick(dt) {
     const act = input.actions();
-    for (const k in act) if (act[k]) { idleT = 0; return; }
+    // touched(), not the held value: a key tapped and released between two
+    // frames is still somebody being there.
+    for (const k in act) if (act[k] || input.touched(k)) { idleT = 0; return; }
     idleT += dt;
     if (idleT >= AFK_OUT && outT < 0) afkOut();
   }
@@ -424,11 +435,44 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       if (input.pressed('pause')) { paused = !paused; jukebox?.setDuck(paused); }
       if (paused) return;                                // freeze EVERYTHING, clock included
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
-      if (hitstop > 0) { hitstop -= dt; return; }        // brief world stall — render still runs
+      // Brief world stall — render still runs. The player's hands do NOT stall
+      // with it, and player.update reads `fire` as a HELD state, so every frame
+      // this bail skips is a frame that never sees the key. Traced on the real
+      // keyboard path (X tapped ~30ms, 130ms apart, down a slide chain over
+      // hoppers): six taps, five bolts. The missing one is the burst the player
+      // swears they pressed.
+      //
+      // TWO ways a stall eats a tap, and the fix has to survive both:
+      //   1. the tap starts AND ends inside the freeze — no live frame ever
+      //      sees `fire` true at all;
+      //   2. the tap outlives the freeze, but fireCd DIDN'T tick while frozen
+      //      (player.update is what decays it), so the barrel is still hot on
+      //      the first live frame and the shot is dropped there instead.
+      // So the stall doesn't latch for one frame, it latches for a SHORT FUSE
+      // (>= the 0.12s cooldown it just froze) and the fuse is cleared the moment
+      // a bolt actually leaves. Pause is the one bail that still eats input,
+      // deliberately.
+      if (hitstop > 0) {
+        hitstop -= dt;
+        // pressed(), not held: only a press EDGE that the freeze is about to
+        // eat gets latched. A key still down from the shot that CAUSED the
+        // stall has no edge here, so the kill you just made can't hand you a
+        // free extra bolt on the way out of its own hitstop.
+        if (input.pressed('fire')) stallFire = STALL_FIRE_T;
+        return;
+      }
       timeS += dt;
       const wasAirborne = player.coyote === 0;
       gunDownT = Math.max(0, gunDownT - dt);
-      player.update(dt, input.actions(), level, playerBolts);
+      // Make-good for anything the stall ate. The override is spread ON TOP of
+      // the live set, so a key that is genuinely still down is unaffected, and
+      // nothing here can set the fuse — only a frozen frame does — so an
+      // ordinary tap on a hot barrel behaves exactly as it always has.
+      stallFire = Math.max(0, stallFire - dt);
+      const acts = stallFire > 0 ? { ...input.actions(), fire: true } : input.actions();
+      const shotsBefore = playerBolts.fired();
+      player.update(dt, acts, level, playerBolts);
+      if (playerBolts.fired() !== shotsBefore) stallFire = 0;   // the tap landed
       // Every respawn revives the roster and refunds every point a kill has
       // earned since the last one — soft (pit heart-loss) AND real death
       // alike. Tracked off the DEATHS COUNTER edge, not the 'ded' state edge:
@@ -851,7 +895,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       h: player.body.h,                       // pose/hitbox height: 44 stand, 32 duck, 24 slide
       pstate: player.state, charges: player.airCharges, deaths: player.deaths,
       hp: player.hp, iframes: player.iframes,
-      paused, bullets: playerBolts.count(),
+      paused, hitstop, bullets: playerBolts.count(), shots: playerBolts.fired(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),
       bossOn: !!(boss && boss.on), bossHp: boss ? boss.hp : -1, bossSpawned,
       // bossPhase is observability-only (headless fight probes assert that a

@@ -9,11 +9,11 @@ const MAX = 32, SPEED = 380, LIFE = 0.6;
 export function makeBullets() {
   const pool = Array.from({ length: MAX }, () => ({ on: false, x: 0, y: 0, dx: 0, dy: 0, t: 0 }));
   const pops = [];                               // {x, y, t} blast_pop anims
-  let cursor = 0;
+  let cursor = 0, fired = 0;
 
   return {
     spawn(x, y, dx, dy, bonus = 0) {   // bonus: shooter momentum inherited along (dx,dy)
-      const b = pool[cursor]; cursor = (cursor + 1) % MAX;
+      const b = pool[cursor]; cursor = (cursor + 1) % MAX; fired++;
       Object.assign(b, { on: true, x, y, dx, dy, t: 0, spd: SPEED + bonus });
     },
     update(dt, level) {
@@ -39,6 +39,9 @@ export function makeBullets() {
       pops.push({ x: b.x, y: b.y, t: 0 });
     },
     count() { return pool.filter(b => b.on).length; },
+    // Lifetime spawn tally — observability only (tests assert shots actually left
+    // the barrel; live bolts expire too fast to count reliably from outside).
+    fired() { return fired; },
     pops() { return pops; },
     render(ctx, atlas) {
       for (const b of pool) {

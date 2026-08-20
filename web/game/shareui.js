@@ -44,7 +44,24 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
       // origin has none). The URL goes on screen instead — a player can read
       // it off and type it, which is worse but is not nothing.
       status = 'fail';
+      manualPrompt();
     }
+  }
+
+  // ...and the URL also goes into a native prompt(), which is the one text box
+  // that exists on every browser and platform without a clipboard API: its
+  // contents are pre-selected, so the OS's own copy works on it. Only ever
+  // reached from the catch above, i.e. only when the real write is gone.
+  //
+  // Deferred by one frame ON PURPOSE. prompt() blocks the page dead, so calling
+  // it inline would freeze the display on the frame BEFORE the fallback URL was
+  // drawn — dismiss the box and the screen would still say "press S". The
+  // loop's own rAF is already queued ahead of this one, so its render lands
+  // first and the dialog opens over a screen that already shows the URL.
+  function manualPrompt() {
+    if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+    const ask = () => { try { window.prompt('very manual. copy this:', url); } catch { /* ignore */ } };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(ask); else ask();
   }
 
   return {

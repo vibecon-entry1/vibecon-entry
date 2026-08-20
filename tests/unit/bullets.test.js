@@ -50,3 +50,15 @@ test('spawn bonus inherits shooter momentum (bolt outruns a fast shooter)', () =
   assert.ok(Math.abs(xs[0] - (80 + 380 / 60)) < 0.01);
   assert.ok(Math.abs(xs[1] - (80 + 800 / 60)) < 0.01);
 });
+
+test('fired() counts every spawn, live or long gone', () => {
+  const b = makeBullets();
+  assert.equal(b.fired(), 0);
+  b.spawn(0, 0, 1, 0);
+  b.spawn(0, 0, 1, 0);
+  assert.equal(b.fired(), 2);
+  const level = { solidAt: () => false };
+  b.update(1, level);                    // both outlive LIFE and go away
+  assert.equal(b.count(), 0);
+  assert.equal(b.fired(), 2);            // the tally is not a live count
+});

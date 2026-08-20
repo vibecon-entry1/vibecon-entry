@@ -118,3 +118,81 @@ test('full gauntlet tape makes real progress', async ({ page }) => {
   expect(st.score).toBeGreaterThan(0);            // coins along the way actually scored
   expect(errors).toEqual([]);
 });
+
+// --- the HUMAN path -------------------------------------------------------
+// Everything above drives the sim through the input tape, which is a virtual
+// action source: it sets whole action SETS on chosen frames and holds them
+// until the next entry. That can never reproduce the one thing a real player
+// does — press a key for a handful of milliseconds that the fixed-step loop
+// may or may not be looking at. The three tests below use real keyboard
+// events at real cadence instead, and they are the only place that bug class
+// can be caught.
+
+/** Hold a key for `ms` of wall clock, the way a thumb does. */
+async function tap(page, key, ms = 60) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(ms);
+  await page.keyboard.up(key);
+}
+
+/** Run right, then sit into a slide and let it establish past the 0.12s gate. */
+async function slideIn(page) {
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(600);
+  await page.keyboard.down('ArrowDown');
+  await page.waitForTimeout(250);
+}
+
+test('real keyboard: the slide chord still bursts at human cadence', async ({ page }) => {
+  const errors = await boot(page);
+  await slideIn(page);
+  const before = await page.evaluate(() => window.__blast.state());
+  expect(before.pstate).toBe('slide');
+  // No trailing gap after the last tap: SLIDE_DECAY starts eating the burst the
+  // very next frame, so the peak has to be read while it is still standing.
+  for (let i = 0; i < 3; i++) { if (i) await page.waitForTimeout(150); await tap(page, 'KeyX', 60); }
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.keyboard.up('ArrowDown'); await page.keyboard.up('ArrowRight');
+  expect(st.pstate).toBe('slide');                 // the chord stays seated
+  expect(st.shots - before.shots).toBe(3);         // every tap left the barrel
+  expect(Math.abs(st.vx)).toBeGreaterThan(P.BURST_MAX - 60);   // climbed to the cap
+  expect(errors).toEqual([]);
+});
+
+test('real keyboard: a tap that lands inside a world stall is not eaten', async ({ page }) => {
+  const errors = await boot(page);
+  await slideIn(page);
+  // The stall a mid-chain kill causes is 0.05s — three frames, too narrow to
+  // place a keystroke inside from out here. cheat.stall() opens the SAME window
+  // (it sets the same hitstop) wide enough to tap squarely into the middle of
+  // it, which is the only way to make this deterministic rather than a race.
+  const before = await page.evaluate(() => window.__blast.state());
+  await page.evaluate(() => window.__blast.cheat.stall(0.3));
+  await page.waitForTimeout(60);
+  expect((await page.evaluate(() => window.__blast.state())).hitstop).toBeGreaterThan(0);
+  await tap(page, 'KeyX', 40);                     // pressed AND released while frozen
+  await page.waitForTimeout(500);
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.keyboard.up('ArrowDown'); await page.keyboard.up('ArrowRight');
+  expect(st.shots - before.shots).toBe(1);         // the bolt came out after the thaw
+  expect(st.vx).toBeGreaterThan(before.vx);        // ...and it was a BURST, decay and all
+  expect(errors).toEqual([]);
+});
+
+test('real keyboard: taps keep bursting through a kill mid-chain', async ({ page }) => {
+  const errors = await boot(page);
+  // Parked just past a hopper: the chord's bolt flies BACKWARD, so the thing
+  // that dies mid-chain is the one you just slid past. Its death stalls the
+  // world for 0.05s, right on top of the next tap.
+  await page.evaluate(() => window.__blast.cheat.warp(2000));
+  await slideIn(page);
+  const before = await page.evaluate(() => window.__blast.state());
+  for (let i = 0; i < 4; i++) { await tap(page, 'KeyX', 40); await page.waitForTimeout(200); }
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.keyboard.up('ArrowDown'); await page.keyboard.up('ArrowRight');
+  await page.screenshot({ path: 'tests/artifacts/verb-burst-human.png' });
+  expect(st.score).toBeGreaterThanOrEqual(100);    // something really did die mid-chain
+  expect(st.shots - before.shots).toBe(4);         // and no tap was swallowed by the stall
+  expect(Math.abs(st.vx)).toBeGreaterThan(P.RUN);
+  expect(errors).toEqual([]);
+});

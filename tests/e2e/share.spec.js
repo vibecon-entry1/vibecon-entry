@@ -111,6 +111,12 @@ test('no clipboard: the URL goes on screen instead', async ({ page, context }) =
       value: { writeText: () => Promise.reject(new Error('denied')) },
       configurable: true,
     });
+    // The last-ditch copy path is a native prompt(), which is the only
+    // pre-selected text box every browser has without a clipboard API. Stubbed
+    // rather than dialog-handled: the real one BLOCKS the page, and what this
+    // asserts is the argument, not the dialog.
+    window.__prompts = [];
+    window.prompt = (...a) => { window.__prompts.push(a); return null; };
   });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
@@ -121,6 +127,12 @@ test('no clipboard: the URL goes on screen instead', async ({ page, context }) =
                              { timeout: 15000 });
 
   expect(await pressShare(page)).toBe('fail');
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.waitForFunction(() => window.__prompts.length > 0, null, { timeout: 5000 });
+  const calls = await page.evaluate(() => window.__prompts);
+  expect(calls).toHaveLength(1);                     // once per press, not per frame
+  expect(calls[0][0]).toBe('very manual. copy this:');
+  expect(calls[0][1]).toBe(st.shareUrl);             // the SAME url the screen shows
   await page.screenshot({ path: 'tests/artifacts/share-fallback.png' });
   expect(errors).toEqual([]);
 });
