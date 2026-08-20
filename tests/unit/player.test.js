@@ -262,3 +262,37 @@ test('duck-hop under a low ceiling holds the duck pose airborne', () => {
   assert.ok(sawShrunkAirborne);
   assert.ok(pl.stateT > 0.1);   // pose held continuously, not re-entered every frame
 });
+
+test('hurt: hp drops, knockback away from source, iframes block repeats', () => {
+  const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
+  pl.hurt(pl.body.x + 30);                          // hit from the right
+  assert.equal(pl.hp, 2);
+  assert.equal(pl.state, 'hit');
+  assert.ok(pl.body.vx < 0 && pl.body.vy < 0);      // knocked left+up
+  pl.hurt(pl.body.x + 30);
+  assert.equal(pl.hp, 2);                            // iframes swallowed it
+  drive(pl, FLAT, 40, () => ({}));
+  assert.ok(pl.state === 'idle' || pl.state === 'walk' || pl.state === 'air');
+});
+
+test('hp 0 → ded → beam respawn at checkpoint with full hp', () => {
+  const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
+  pl.hurt(pl.body.x + 30);
+  drive(pl, FLAT, 80, () => ({}));                   // iframes expire (1.2s = 72f)
+  pl.hurt(pl.body.x + 30);
+  drive(pl, FLAT, 80, () => ({}));
+  pl.hurt(pl.body.x + 30);
+  assert.equal(pl.state, 'ded');
+  const before = pl.deaths;
+  drive(pl, FLAT, 120, () => ({ right: true, fire: true }));   // input ignored while ded
+  assert.equal(pl.state, 'spawn');                   // 1.5s corpse then beam
+  assert.equal(pl.hp, 3);
+  assert.equal(pl.deaths, before + 1);
+});
+
+test('hurt is a no-op during spawn beam', () => {
+  const pl = makePlayer(FLAT.spawn);
+  pl.hurt(0);
+  assert.equal(pl.hp, 3);
+  assert.equal(pl.state, 'spawn');
+});

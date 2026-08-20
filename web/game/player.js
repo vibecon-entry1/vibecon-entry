@@ -17,7 +17,8 @@ export function makePlayer(spawnFeet) {
     state: 'spawn', stateT: 0, facing: 1,
     airCharges: P.AIR_CHARGES, coyote: 0, fireCd: 0, slideT: 0,
     checkpoint: { ...spawnFeet }, deaths: 0, muzzle: null,
-    update, setState,
+    hp: 3, iframes: 0,
+    update, setState, hurt,
   };
 
   function setState(s) { if (pl.state !== s) { pl.state = s; pl.stateT = 0; } }
@@ -38,6 +39,31 @@ export function makePlayer(spawnFeet) {
 
   const clampMag = (v, m) => Math.max(-m, Math.min(m, v));
 
+  // Beam back in at the checkpoint. Shared by pit death and hp-0 death; the
+  // caller owns the deaths++ so a corpse that also slides into a pit can't
+  // double-count. Height is bodyFits-guarded — never embed in a ceiling.
+  function respawn(level) {
+    const cp = pl.checkpoint, b = pl.body;
+    Object.assign(b, { x: cp.x, y: cp.y, vx: 0, vy: 0,
+                       h: bodyFits(level, cp.x, cp.y, W, STAND_H) ? STAND_H : SLIDE_H });
+    pl.airCharges = P.AIR_CHARGES;
+    pl.muzzle = null;
+    pl.hp = 3;
+    pl.iframes = 0;
+    setState('spawn');
+  }
+
+  // Damage from the world (enemy contact, bolts). fromX drives the knockback
+  // direction. Invulnerable during iframes, and while already dead or beaming in.
+  function hurt(fromX) {
+    if (pl.iframes > 0 || pl.state === 'ded' || pl.state === 'spawn') return;
+    pl.hp--;
+    pl.iframes = 1.2;
+    pl.body.vx = (Math.sign(pl.body.x - fromX) || 1) * 180;
+    pl.body.vy = -160;
+    setState(pl.hp <= 0 ? 'ded' : 'hit');
+  }
+
   function update(dt, act, level, bullets) {
     pl.stateT += dt; pl.fireCd = Math.max(0, pl.fireCd - dt);
     if (pl.muzzle && (pl.muzzle.t += dt) > 0.1) pl.muzzle = null;
@@ -46,6 +72,30 @@ export function makePlayer(spawnFeet) {
     if (pl.state === 'spawn') {                       // beam-in: locked until done
       if (pl.stateT > 39 / 20) setState('idle');      // spawn anim = 39f @ 20fps
       return;
+    }
+
+    pl.iframes = Math.max(0, pl.iframes - dt);
+
+    // ded/hit run BEFORE the honest ground probe below, so neither can fall into
+    // input processing: both are physics-only poses the player cannot steer.
+    if (pl.state === 'ded') {                         // corpse: 18f @ 12fps, then beam
+      b.vy = Math.min(b.vy + P.GRAV * dt, P.MAX_FALL);
+      moveAndCollide(b, level, dt);
+      // no pit check here on purpose: a corpse sliding into a pit just falls
+      // until the timer runs out, so it can only be counted (and respawned) once.
+      if (pl.stateT > 18 / 12) { pl.deaths++; respawn(level); }
+      return;
+    }
+    if (pl.state === 'hit') {                         // stagger: brief, physics-only
+      if (pl.stateT > 0.35) {
+        setState(!bodyFits(level, b.x, b.y + 1, b.w, 1) ? 'idle' : 'air');
+        // fall through: this frame gets normal handling (and its own physics step)
+      } else {
+        b.vy = Math.min(b.vy + P.GRAV * dt, P.MAX_FALL);
+        const r = moveAndCollide(b, level, dt);
+        if (r.onGround) pl.coyote = P.COYOTE;
+        return;
+      }
     }
 
     // honest ground truth for THIS frame (coyote alone is one frame stale)
@@ -138,12 +188,7 @@ export function makePlayer(spawnFeet) {
     // pit death → respawn beam at checkpoint
     if (b.y > level.h + 64) {
       pl.deaths++;
-      const cp = pl.checkpoint;
-      Object.assign(b, { x: cp.x, y: cp.y, vx: 0, vy: 0,
-                         h: bodyFits(level, cp.x, cp.y, W, STAND_H) ? STAND_H : SLIDE_H });
-      pl.airCharges = P.AIR_CHARGES;
-      pl.muzzle = null;
-      setState('spawn');
+      respawn(level);
     }
     // checkpoint capture
     for (const c of level.checkpoints)
