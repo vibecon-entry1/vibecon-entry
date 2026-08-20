@@ -7,3 +7,4 @@ tests/artifacts/
 package-lock.json
 __pycache__/
 assets-gen/
+docs/superpowers/
