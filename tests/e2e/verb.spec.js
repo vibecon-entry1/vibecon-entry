@@ -84,7 +84,7 @@ test('slide-hop: down+fire with direction held hops instead of bursting', async 
   const errors = await boot(page);
   // The human gesture that used to be fatal: hold right THROUGH a down+fire tap.
   // Movement resolves before fire, so the frame reads as a slide — the ground
-  // shot must still win and hop, or the first gap is unclearable at speed.
+  // shot must still win and hop, or no gap is clearable at speed.
   const x0 = (await page.evaluate(() => window.__blast.state())).x;
   await runTape(page, [
     { f: 0, a: { right: true } },
@@ -94,8 +94,8 @@ test('slide-hop: down+fire with direction held hops instead of bursting', async 
   ]);
   const st = await page.evaluate(() => window.__blast.state());
   await page.screenshot({ path: 'tests/artifacts/verb-slide-hop.png' });
-  expect(x0).toBeLessThan(260);                   // the gap really was ahead of us
-  expect(st.x).toBeGreaterThan(260);              // cleared gap 1 without releasing right
+  expect(x0).toBeLessThan(260);                   // we really did start back here
+  expect(st.x).toBeGreaterThan(260);              // hopped and kept running, right never released
   expect(st.deaths).toBe(0);
   expect(st.charges).toBe(3);                     // the hop was free
   expect(errors).toEqual([]);
@@ -103,32 +103,33 @@ test('slide-hop: down+fire with direction held hops instead of bursting', async 
 
 test('full gauntlet tape makes real progress', async ({ page }) => {
   const errors = await boot(page);
-  // Scripted run: cross the hop gap and the boost gap at minimum. Calibrated
-  // against the real GB1 physics (see calibration notes below); keep the
-  // assertions.
+  // Scripted run over the REAL level (GAUNTLET): sprint C1's 48-tile runway,
+  // then clear both of C2's hop pits (3-wide at tx66, 4-wide at tx84) with free
+  // grounded ground-shots. Landing past the second pit puts us in C3.
   //
   // Shape note: the grounded hops below fire on a frame with `right` OFF, then
   // re-press right one frame later. That is no longer *required* — the ground
-  // shot now beats slide-fire, so holding right through the tap gives a
-  // slide-hop (covered by the slide-hop test above) — but a standing hop and a
-  // slide-hop carry different speed, and these frame numbers are calibrated
-  // against the standing one. Airborne down+fire rides on top of `right`.
-
+  // shot beats slide-fire, so holding right through the tap gives a slide-hop
+  // (covered by the slide-hop test above) — but a standing hop and a slide-hop
+  // carry different speed, and these frame numbers are calibrated against the
+  // standing one.
+  //
   // Frame numbers assume P as of this commit (HOP_VY -290, BOOST_VY -320, RUN 150,
-  // RUN_ACCEL 1400, GRAV 900, FIRE_CD 0.12). Retune by iterating against the live
-  // sim after any feel-gate change — arithmetic won't get you there.
+  // RUN_ACCEL 1400, GRAV 900, FIRE_CD 0.12) and GAUNTLET's C1/C2 geometry. Each
+  // hop frame sits mid-window of a ~19-frame band that clears its pit; retune by
+  // iterating against the live sim after any feel-gate or chunk change —
+  // arithmetic won't get you there.
   const tape = [];
   const at = (f, a) => tape.push({ f, a });
   at(0, { right: true });
-  at(56, { down: true, fire: true }); at(57, { right: true });                        // free grounded hop over the small gap (~96px arc clears the 48px gap)
-  at(176, { down: true, fire: true }); at(177, { right: true });                      // free grounded hop off the boost-gap ledge
-  at(209, { right: true, down: true, fire: true }); at(210, { right: true });         // boost 1, timed near the hop's natural apex-to-fall point
-  at(230, { right: true, down: true, fire: true }); at(231, { right: true });         // boost 2, well past boost 1's fire cooldown
-  at(400, null);
+  at(390, { down: true, fire: true }); at(391, { right: true });   // hop C2 pit 1 (48px)
+  at(515, { down: true, fire: true }); at(516, { right: true });   // hop C2 pit 2 (64px)
+  at(635, null);
   await runTape(page, tape, 30000);
   const st = await page.evaluate(() => window.__blast.state());
   await page.screenshot({ path: 'tests/artifacts/verb-gauntlet-progress.png' });
-  expect(st.x).toBeGreaterThan(672);              // landed beyond the boost gap
+  expect(st.x).toBeGreaterThan(48 * 16);          // past C1's runway, into C2
   expect(st.deaths).toBe(0);                      // without dying
+  expect(st.score).toBeGreaterThan(0);            // coins along the way actually scored
   expect(errors).toEqual([]);
 });
