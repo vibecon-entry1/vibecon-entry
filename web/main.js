@@ -22,6 +22,23 @@ function fit() {
 }
 addEventListener('resize', fit); fit();
 
+// Placeholder results scene: proves the play → win handoff carries the
+// breakdown. Task 4 swaps in the real thing.
+function makeWinStub(breakdown) {
+  return {
+    update() {},
+    render(ctx) {
+      ctx.fillStyle = '#eec548';
+      ctx.font = '24px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('much win. very Task 4.', VW / 2, 140);
+      ctx.font = '10px monospace'; ctx.fillStyle = '#8fa';
+      ctx.fillText(JSON.stringify(breakdown), VW / 2, 180);
+      ctx.textAlign = 'left';
+    },
+    state: () => ({ breakdown }),
+  };
+}
+
 async function boot() {
   const input = createInput();
   const save = makeSave(localStorage);
@@ -41,6 +58,8 @@ async function boot() {
   }
   scenes.viewer = () => makeViewer({ atlas, input });
   scenes.play = () => makePlay({ atlas, input, save, go });
+  // STUB — Task 4 replaces this with the real results screen.
+  scenes.win = (breakdown) => makeWinStub(breakdown);
 
   // --- test hook -----------------------------------------------------------
   let tape = null, tapeI = 0;

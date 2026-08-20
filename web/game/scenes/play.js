@@ -44,6 +44,13 @@ export function makePlay({ atlas, input, save, go }) {
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
   let won = false;
+  // --- run stats + extraction ------------------------------------------------
+  let timeS = 0;                 // run clock, seconds (paused during takeoff)
+  let killCount = 0;             // roster kills + the boss
+  let takeoff = -1;              // -1 = not started; >= 0 = seconds elapsed
+  let liftY = 0;                 // how far the ship (and rider) has risen, px
+  let thrustT = 0.25;            // thrust-FX metronome (pre-armed: puff on frame 1)
+  let thrustSide = 1;            // alternating nozzle
   let prevHp = P.HP_MAX; let prevState = 'spawn';
   // WOW+ escalation: one popup per flight that grows instead of spamming a new
   // popup per event. Counts the WOW+ events banked during the CURRENT flight
@@ -69,6 +76,7 @@ export function makePlay({ atlas, input, save, go }) {
   function bossDeath() {
     cam.shake(10, 0.4);
     score.add('boss');                                  // flat +500, not a roster kill
+    killCount++;                                        // ...but it still counts in the tally
     for (const [tx, ty] of level.gate) level.carve(tx, ty);
     // Popup at the gate, not at the corpse: it points at what just changed.
     popups.spawn(level.gate[0][0] * TILE + 8, level.gate[0][1] * TILE - 12, 'gate very open.');
@@ -103,12 +111,56 @@ export function makePlay({ atlas, input, save, go }) {
         if (!boss || !boss.on) return;
         while (boss.on) if (boss.hurt()) bossDeath();
       },
+      warpPad() {
+        player.body.x = level.shipPad.x - 40;
+        player.body.y = level.shipPad.y;
+        player.body.vx = 0; player.body.vy = 0;
+        player.checkpoint = { x: player.body.x, y: player.body.y };
+      },
     };
   }
 
   // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
   // transparent margins, so we go through drawCentered with the cell centre —
   // that re-applies the frame's ox/oy and lands the art where it was authored.
+  const gateIsOpen = () => level.gate.every(([tx, ty]) => !level.solidAt(tx, ty));
+
+  // Ship extraction cutscene. The world is FROZEN for its duration — no player
+  // update, no enemies, no bolts — so the only things that move are the ship,
+  // its rider, the thrust puffs and the camera.
+  function updateTakeoff(dt) {
+    takeoff += dt;
+    liftY += 120 * dt;
+    thrustT += dt;
+    while (thrustT >= 0.25) {
+      thrustT -= 0.25;
+      fx.push({ x: level.shipPad.x + thrustSide * 40, y: level.shipPad.y - liftY + 20, t: 0 });
+      thrustSide = -thrustSide;
+    }
+    for (let i = fx.length - 1; i >= 0; i--) {
+      fx[i].t += dt;
+      if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
+    }
+    popups.update(dt);
+    cam.follow(level.shipPad.x, level.shipPad.y - liftY, 0, dt, level);
+    if (takeoff >= 2.5) go('win', breakdown());
+  }
+
+  // The run's final tally. timeBonus is added to the score exactly ONCE, here —
+  // score.value() never learns about it, so calling breakdown() twice is safe.
+  function breakdown() {
+    const t = Math.floor(timeS);
+    const timeBonus = Math.max(0, 3000 - t * 10);
+    return {
+      kills: killCount,
+      coins: 50 - coins.remaining(),
+      deaths: player.deaths,
+      timeS: t,
+      timeBonus,
+      score: score.value() + timeBonus,
+    };
+  }
+
   function drawLayer(ctx, name, sx, sy) {
     const a = atlas.anims[name];
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);
@@ -117,6 +169,8 @@ export function makePlay({ atlas, input, save, go }) {
   return {
     update(dt) {
       if (input.pressed('retry')) { go('play'); return; }
+      if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
+      timeS += dt;                                       // Task 4: pause gates this
       const wasAirborne = player.coyote === 0;
       player.update(dt, input.actions(), level, playerBolts);
       // contact gate: hurt() owns damage authority via iframes; the dummy body
@@ -160,6 +214,7 @@ export function makePlay({ atlas, input, save, go }) {
         enemies.kill(e, dead => {
           const airborne = player.coyote === 0;
           score.onKill(airborne);
+          killCount++;
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
           cam.shake(5, 0.2);
@@ -195,6 +250,9 @@ export function makePlay({ atlas, input, save, go }) {
       }
       prevHp = player.hp; prevState = player.state;
       if (player.coyote > 0 && player.body.x > level.w - 48) won = true;   // grounded on the end pad
+      // Extraction: stand on the pad with the gate carved open and the ship goes.
+      if (takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
+          Math.abs(player.body.x - level.shipPad.x) < 24) takeoff = 0;
     },
 
     render(ctx) {
@@ -290,10 +348,21 @@ export function makePlay({ atlas, input, save, go }) {
         atlas.drawCentered(ctx, 'explode', animFrame(atlas.anims.explode, f.t), f.x, f.y);
       }
 
-      // (7) player — blink through iframes, but a corpse always stays visible
+      // (6d) the ship. Always drawn on its pad — before the gate opens it is
+      // simply hundreds of tiles off to the right, so no gating is needed.
+      atlas.drawFeet(ctx, 'ship', takeoff >= 0 ? animFrame(atlas.anims.ship, takeoff)
+                                               : atlas.anims.ship.frames[0],
+                     level.shipPad.x, level.shipPad.y - liftY);
+
+      // (7) player — blink through iframes, but a corpse always stays visible.
+      // NO separate rider during takeoff: the 'ship' art already carries a dog
+      // in the canopy, so drawing the player on top of it (tried at
+      // shipPad.y - liftY - 8, per the original spec) rendered a second doge
+      // floating through the fuselage. Once the ship lifts, the pilot in the
+      // canopy IS the player.
       const flicker = player.iframes > 0 && player.state !== 'ded' &&
                       Math.floor(player.iframes * 12) % 2;
-      if (!flicker) {
+      if (!flicker && takeoff < 0) {
         const anim = ANIM_FOR[player.state];
         atlas.drawFeet(ctx, anim, animFrame(atlas.anims[anim], player.stateT),
                        player.body.x, player.body.y, player.facing < 0);
@@ -345,7 +414,8 @@ export function makePlay({ atlas, input, save, go }) {
       won, bullets: playerBolts.count(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),
       bossOn: !!(boss && boss.on), bossHp: boss ? boss.hp : -1, bossSpawned,
-      gateOpen: level.gate.every(([tx, ty]) => !level.solidAt(tx, ty)),
+      gateOpen: gateIsOpen(),
+      timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
     }),
   };
 }
