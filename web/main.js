@@ -11,6 +11,8 @@ import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
 import { makeWowEnd } from './game/scenes/wowend.js';
+import { drawTextShadow } from './engine/font.js';
+import { P } from './game/physics.js';
 
 export const VW = 640, VH = 360;
 
@@ -141,6 +143,35 @@ function drawSoundButton(ctx, muted) {
   }
 }
 
+// --- shell extras -----------------------------------------------------------
+// An alternate dressing for the whole page, toggled by a key sequence and owned
+// here rather than by any scene: it outlives a restart, it colours the FINAL
+// blit (which no scene can reach), and it retunes one global physics constant.
+//
+// The three pieces of state below are the whole of it. `xGrav` is the only one
+// that must survive precisely: it holds the untouched P.GRAV so the restore is
+// an exact assignment rather than a divide that would drift the value every
+// round trip.
+const SEQ9 = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft',
+              'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
+let xMode = false;
+let xPhase = 0;                               // seconds, drives the blit filter
+let xGrav = 0;                                // stashed P.GRAV while xMode is on
+let xBanner = -1;                             // -1 = off; else seconds since ON
+
+const BANNER_T = 2.4, BANNER_FADE = 0.6;
+
+function drawBanner(ctx) {
+  if (xBanner < 0 || xBanner > BANNER_T) return;
+  ctx.globalAlpha = xBanner > BANNER_T - BANNER_FADE
+    ? (BANNER_T - xBanner) / BANNER_FADE : 1;
+  ctx.fillStyle = 'rgba(11,11,18,.85)';
+  ctx.fillRect(0, 88, VW, 32);
+  drawTextShadow(ctx, 'MUCH DISCO. VERY MARS.', VW / 2, 96,
+                 { align: 'center', scale: 3 }, '#eec548', '#2a1c33');
+  ctx.globalAlpha = 1;
+}
+
 /** Client coords -> virtual 640x360 coords, or null if the canvas has no box. */
 function toVirtual(clientX, clientY) {
   const r = screen.getBoundingClientRect();
@@ -225,12 +256,53 @@ async function boot() {
   let scene, sceneName = '';
   const scenes = {};
   function go(name, ...args) {
+    // Leaving the world drops the alternate dressing, which is what keeps the
+    // retuned gravity from ever reaching a run that isn't wearing it: the only
+    // way back into play is through one of these three screens, and every one
+    // of them restores P.GRAV on the way past. A retry or a respawn is NOT a
+    // scene change in this sense — same world, same dressing.
+    if (name === 'title' || name === 'win' || name === 'wowend') setX(false);
     scene = scenes[name](...args); sceneName = name;
   }
+
+  let xPool = null;                 // pool to hand back on the way out
+  function setX(on) {
+    if (on === xMode) return;
+    xMode = on;
+    if (on) {
+      xGrav = P.GRAV;
+      P.GRAV = Math.round(xGrav * 0.6);
+      xPhase = 0; xBanner = 0;
+      const j = jukebox.current();
+      xPool = j.pool ?? j.pending ?? null;
+      jukebox.playPool('x');
+    } else {
+      P.GRAV = xGrav;               // exact value back, never a recomputation
+      xBanner = -1;
+      if (xPool) jukebox.playPool(xPool);
+      xPool = null;
+    }
+  }
+
+  // Raw key codes, not input.js actions: half of these are not bound to
+  // anything the game reads, and the point is the ORDER they arrive in rather
+  // than what any of them means. A wrong key resets to zero — except when the
+  // wrong key is itself the opener, which starts a fresh attempt on the spot.
+  let seqI = 0;
+  addEventListener('keydown', e => {
+    if (e.code === SEQ9[seqI]) {
+      if (++seqI < SEQ9.length) return;
+      seqI = 0;
+      if (sceneName === 'play') setX(!xMode);
+    } else {
+      seqI = e.code === SEQ9[0] ? 1 : 0;
+    }
+  });
   scenes.viewer = () => makeViewer({ atlas, input });
   // opts carries the WOW ZONE entry ({ mode: 'wow', seed }); gauntlet passes
   // nothing and makePlay's defaults handle it.
   scenes.play = (opts = {}) => makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
+                                          xOn: () => xMode,
                                           ...opts, seed: opts.seed ?? wowSeed() });
   // toggleDisplay is handed to the title scene rather than read from a global:
   // the title is the only place the setting is offered, and this keeps main.js
@@ -296,6 +368,8 @@ async function boot() {
   const loop = createLoop({
     update(dt, frame) {
       window.__blast.frame = frame;
+      if (xMode) xPhase += dt;
+      if (xBanner >= 0 && xBanner <= BANNER_T) xBanner += dt;
       // Tape entries are frame-quantized STATE CHANGES (not pulses): an entry's
       // actions hold until the next entry. The exhaustion clear runs after the
       // sim step so the final entry is observed for one frame before release.
@@ -314,7 +388,39 @@ async function boot() {
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, VW, VH);
       scene.render(ctx);
+      // A wash over the finished WORLD, before any shell chrome goes on top of
+      // it: two full-frame passes on the 640x360 buffer, which is the cheapest
+      // surface in the pipeline and the only one every scene shares.
+      //
+      // The colour crawls between a cool rose and a warm ember on an 8s sine,
+      // and 'overlay' keeps it a tint rather than a coat of paint — blacks stay
+      // black, highlights stay bright, and the midtones (the rock, the dirt,
+      // the sky bands) are what actually move. The swing is deliberately narrow
+      // and both ends of it are warm: this is the light changing over the same
+      // red planet, not a rainbow.
+      //
+      // The second pass is the same phase read as brightness: a flat grey ADDED
+      // at the ember end and MULTIPLIED in at the rose end, which is a +/-8%
+      // breath either side of the untouched frame.
+      if (xMode) {
+        const sw = Math.sin(xPhase * Math.PI / 4);       // one full swing every 8s
+        const u = (sw + 1) / 2;
+        const mix = (a, b) => Math.round(a + (b - a) * u);
+        ctx.save();
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = `rgb(${mix(158, 255)},${mix(40, 140)},${mix(108, 42)})`;
+        ctx.fillRect(0, 0, VW, VH);
+        const bv = Math.round(Math.abs(sw) * 20);
+        ctx.globalCompositeOperation = sw >= 0 ? 'lighter' : 'multiply';
+        ctx.globalAlpha = 1;
+        const lv = sw >= 0 ? bv : 255 - bv;
+        ctx.fillStyle = `rgb(${lv},${lv},${lv})`;
+        ctx.fillRect(0, 0, VW, VH);
+        ctx.restore();
+      }
       drawSoundButton(ctx, jukebox.isMuted());     // shell: above every scene
+      drawBanner(ctx);
       sctx.drawImage(off, 0, 0, screen.width, screen.height);
       // Overlay pass: device-resolution draws (brand stickers) go straight onto
       // the FINAL screen canvas here, AFTER the integer/fractional blit, so

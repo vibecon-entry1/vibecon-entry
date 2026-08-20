@@ -8,6 +8,7 @@ import random
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / 'assets-gen'
+EXTRA = ROOT / 'assets-extra'
 
 # Palette anchors (from web/assets/palette.json — art choices, not derived)
 ROCK, ROCK_DK, ROCK_LT = '#532e6d', '#3a2049', '#7a4b96'   # purple mars rock
@@ -16,6 +17,14 @@ GOLD, GOLD_DK = '#eec548', '#b8912e'                        # coin
 RED, WHITE, ICE, NAVY = '#ff3a3a', '#ffffff', '#aee6ff', '#1e2f51'
 
 def sheet(w, h): return Image.new('RGBA', (w, h), (0, 0, 0, 0))
+
+def under(im, name, x, y):
+    """Composite assets-extra/<name> BEHIND everything already on `im`, with its
+    top-left at (x, y). Anything that falls outside the strip is cropped, which
+    is how a figure ends up half-buried rather than standing on the band."""
+    layer = sheet(im.width, im.height)
+    layer.paste(Image.open(EXTRA / name).convert('RGBA'), (x, y))
+    return Image.alpha_composite(layer, im)
 
 def px(d, x, y, c): d.point((x, y), fill=c)
 
@@ -60,6 +69,10 @@ def parallax():
             step = rng.randrange(10, w - 20)
             d.rectangle([xpos + step, top + 6, xpos + step + w // 4, top + 22], fill='#243a63')
         xpos += w + rng.randrange(10, 60)
+    # Fixed coordinates, read off the seeded layout above: the wide butte that
+    # spans x 409-499 has a flat top at y=25, so a 28px figure parked at y=7
+    # clears it by its head and shoulders and keeps the rest behind the rock.
+    mesas = under(mesas, 'deco1.png', 452, 7)
     mesas.save(OUT / 'par_mesas.png')
 
     rocks = sheet(640, 80); d = ImageDraw.Draw(rocks)
@@ -69,6 +82,12 @@ def parallax():
         peak = xpos + rng.randrange(w // 3, 2 * w // 3 + 1)
         d.polygon([(xpos, 80), (peak, 80 - hgt), (xpos + w, 80)], fill=ROCK_DK)
         xpos += w + rng.randrange(5, 40)
+    # Same idea one band nearer: x 317-352 is a clear gap between two rock
+    # triangles. The y is set by where this band actually lands on screen — it
+    # is drawn with its bottom 10px BELOW the horizon, so the ground slab eats
+    # that much of it. Parking a 28px figure at y=56 puts its lower ten rows in
+    # the buried strip and leaves the top half standing in the gap.
+    rocks = under(rocks, 'deco2.png', 321, 56)
     rocks.save(OUT / 'par_rocks.png')
 
 def coin():

@@ -8,7 +8,9 @@
 //   1. streaming        — preload='none', src assigned at selection time.
 //   2. no repeat-first  — the first track of a session is random per pool, and
 //                         never the same one the previous session opened with
-//                         (persisted as save.data.audio.lastFirst[pool]).
+//                         (persisted as save.data.audio.lastFirst[pool]). Pools
+//                         named in the manifest's `ordered` list opt out: they
+//                         open on entry 0 every time.
 //   3. cycle            — after that random start, advance in order on 'ended',
 //                         wrapping. No reshuffle mid-session.
 //
@@ -148,8 +150,15 @@ export function makeJukebox({
     stopMusic();
     const list = poolOf(name);
     if (!list) return;
-    const idx = pickFirst(list.length, save?.data?.audio?.lastFirst?.[name], rnd);
-    rememberFirst(name, idx);                        // rule 2, banked before a note plays
+    // Rule 2 has an opt-out. A pool whose name appears in the manifest's
+    // `ordered` list is authored as a SEQUENCE rather than a shuffle: it always
+    // opens on its first entry and cycles from there. Such a pool also skips
+    // the lastFirst bookkeeping entirely — there is no "first track of the
+    // session" to remember when it is the same one every time, and writing it
+    // would be persisting a constant.
+    const fixed = !!manifest?.ordered?.includes?.(name);
+    const idx = fixed ? 0 : pickFirst(list.length, save?.data?.audio?.lastFirst?.[name], rnd);
+    if (!fixed) rememberFirst(name, idx);            // rule 2, banked before a note plays
     start(name, idx, 0);
   }
 

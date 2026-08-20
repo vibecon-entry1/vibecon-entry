@@ -44,7 +44,7 @@ const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling ne
 // the verb, the enemies, the scoring, the camera, the parallax — is the same
 // game, which is the whole point of an endless mode built out of the campaign's
 // own chunks. `mode` is the only branch key; `seed` is meaningless in gauntlet.
-export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
+export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn,
                            mode = 'gauntlet', seed = 0 }) {
   const wow = mode === 'wow';
   jukebox?.playPool(wow ? 'wow' : 'run');   // no-op if we're already on that pool (R-restart)
@@ -117,6 +117,12 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
   const AFK_OUT = 300;           // ...and before the run is taken away
   let idleT = 0;                 // seconds since the last input of any kind
   let outT = -1;                 // -1 = not fired; >= 0 = seconds since it fired
+  // Free-running scene clock for the decorative bands below. Deliberately its
+  // own accumulator rather than timeS: that one is the RUN clock and stops for
+  // the pause and the extraction, and ambient motion that freezes with the
+  // world reads as a stall rather than as atmosphere.
+  let ambT = 0;
+  let deco = null;                // lazily built once, see decoOrb()
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
   // through a mid-fight real death, so the arena can never re-arm a second saucer.
@@ -323,6 +329,64 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
     cam.shake(8, 0.3);
   }
 
+  // A 26px two-tone slate disc with a handful of white glints, dithered on a
+  // checker so it reads as a sphere at this size without any shading maths.
+  // Built ONCE into its own canvas: as loose fillRects it is ~530 draw calls a
+  // frame for a thing that never changes.
+  function decoOrb() {
+    if (deco || typeof document === 'undefined') return deco;
+    const R = 13, c = document.createElement('canvas');
+    c.width = c.height = R * 2;
+    const g = c.getContext('2d');
+    for (let y = -R; y < R; y++) {
+      for (let x = -R; x < R; x++) {
+        if (x * x + y * y > R * R) continue;
+        g.fillStyle = ((x + y) & 1) ? '#2c4370' : '#243a63';
+        g.fillRect(x + R, y + R, 1, 1);
+      }
+    }
+    for (const [gx, gy] of [[8, 5], [15, 4], [6, 9], [17, 11], [11, 16], [19, 8]]) {
+      g.fillStyle = '#ffffff'; g.fillRect(gx, gy, 1, 1);
+    }
+    deco = c;
+    return deco;
+  }
+
+  // The disc plus four thin beams that sweep around it. The beams are the one
+  // stroked path in the whole render — at 12% alpha on a 1px line the softness
+  // is the effect rather than a defect, and a rect-stepped ray at an arbitrary
+  // angle would stair-step visibly.
+  function drawDeco1(ctx, cx, cy) {
+    const c = decoOrb();
+    if (c) ctx.drawImage(c, Math.round(cx - 13), Math.round(cy - 13));
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = '#b2d9ff';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 4; k++) {
+      const a = ambT * 0.25 + k * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11);
+      ctx.lineTo(cx + Math.cos(a) * 52, cy + Math.sin(a) * 52);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Slow motes falling across the frame. Every mote's whole trajectory is a
+  // function of its index and the clock — no array, no spawn bookkeeping, and
+  // the same 24 specks every session.
+  const DECO_COL = ['#982c2c', '#eec548', '#ffa900'];
+  function drawDeco2(ctx) {
+    for (let i = 0; i < 24; i++) {
+      const sp = 16 + (i % 5) * 5;
+      const y = wrap(i * 71 + ambT * sp, VH + 16) - 8;
+      const x = wrap(i * 173 + Math.sin(ambT * 0.5 + i * 1.7) * 14, VW);
+      ctx.fillStyle = DECO_COL[i % 3];
+      ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
+    }
+  }
+
   function drawLayer(ctx, name, sx, sy) {
     const a = atlas.anims[name];
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);
@@ -330,6 +394,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
 
   return {
     update(dt) {
+      ambT += dt;
       // The idle clock runs FIRST, above every bail below it — pause, hitstop
       // and the retry check included. See the AFK_* block up top for why.
       if (takeoff < 0) idleTick(dt);
@@ -513,6 +578,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
       drawLayer(ctx, 'par_stars', sox, drift(0.05));      // sky: pinned to the top
       drawLayer(ctx, 'par_stars', sox + VW, drift(0.05));
+      // Hangs in the same far sky as the stars, on the same slow factors, so it
+      // sits behind every band that follows and drifts with them.
+      if (xOn?.()) { drawDeco1(ctx, sox + 96, 52 + drift(0.05));
+                     drawDeco1(ctx, sox + VW + 96, 52 + drift(0.05)); }
       band('par_mesas', 0.30, 0.12, 4);
       // far-ground haze under the near band: with the camera riding high the
       // real floor drops away faster than the parallax does, and without this
@@ -689,6 +758,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
       popups.render(ctx);
 
       ctx.restore();
+
+      if (xOn?.()) drawDeco2(ctx);
 
       // (11) HUD
       for (let i = 0; i < P.HP_MAX; i++)
