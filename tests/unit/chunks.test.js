@@ -53,7 +53,7 @@ test('entity and sign legends parse to feet positions', () => {
 test('stitchChunks concatenates horizontally and offsets entities/signs', () => {
   const A = ['....', 'P.h.', '####'];
   const B = ['....', '.$.C', '####'];
-  const L = stitchChunks([A, B], ['first sign']);
+  const L = stitchChunks([A, B]);
   assert.equal(L.wTiles, 8);
   assert.equal(L.hTiles, 3);
   assert.equal(L.solidAt(7, 2), true);
@@ -63,4 +63,9 @@ test('stitchChunks concatenates horizontally and offsets entities/signs', () => 
 
 test('stitchChunks rejects mismatched heights', () => {
   assert.throws(() => stitchChunks([['..', 'P.', '##'], ['..', '##']]), /height/);
+});
+
+test('stitchChunks demands exact signTexts count', () => {
+  assert.throws(() => stitchChunks([['..', 'PS', '##']]), /signTexts/);
+  assert.throws(() => stitchChunks([['..', 'PS', '##']], ['a', 'b']), /signTexts/);
 });

@@ -44,7 +44,9 @@ export function stitchChunks(chunks, signTexts = []) {
     if (c.length !== h) throw new Error(`chunk height ${c.length} != ${h}`);
   const rows = Array.from({ length: h }, (_, r) => chunks.map(c => c[r]).join(''));
   const L = parseChunk(rows);
-  L.signs.forEach((s, i) => { s.text = signTexts[i] ?? ''; });
+  if (signTexts.length !== L.signs.length)
+    throw new Error(`signTexts ${signTexts.length} != signs ${L.signs.length}`);
+  L.signs.forEach((s, i) => { s.text = signTexts[i]; });
   return L;
 }
 
