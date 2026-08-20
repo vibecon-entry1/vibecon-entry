@@ -172,7 +172,11 @@ export function makePlayer(spawnFeet) {
           b.vy = P.BOOST_VY;
         }
       } else {
-        fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 30);
+        // forward bolts inherit the shooter's momentum so they always outrun the runner
+        const inherit = Math.sign(b.vx) === pl.facing ? Math.abs(b.vx) : 0;
+        bullets.spawn(b.x + pl.facing * 26, b.y - 30, pl.facing, 0, inherit);
+        pl.muzzle = { t: 0, dx: pl.facing, dy: 0, x: b.x + pl.facing * 26, y: b.y - 30 };
+        pl.fireCd = P.FIRE_CD;
       }
     }
 

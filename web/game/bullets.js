@@ -12,15 +12,15 @@ export function makeBullets() {
   let cursor = 0;
 
   return {
-    spawn(x, y, dx, dy) {
+    spawn(x, y, dx, dy, bonus = 0) {   // bonus: shooter momentum inherited along (dx,dy)
       const b = pool[cursor]; cursor = (cursor + 1) % MAX;
-      Object.assign(b, { on: true, x, y, dx, dy, t: 0 });
+      Object.assign(b, { on: true, x, y, dx, dy, t: 0, spd: SPEED + bonus });
     },
     update(dt, level) {
       for (const b of pool) {
         if (!b.on) continue;
         b.t += dt;
-        b.x += b.dx * SPEED * dt; b.y += b.dy * SPEED * dt;
+        b.x += b.dx * b.spd * dt; b.y += b.dy * b.spd * dt;
         const solid = level.solidAt(Math.floor(b.x / TILE), Math.floor(b.y / TILE));
         if (solid || b.t > LIFE) {
           if (solid) pops.push({ x: b.x, y: b.y, t: 0 });

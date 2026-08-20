@@ -39,3 +39,14 @@ test('kill() deactivates with a pop; external b.on writes are not the API', () =
   B.kill(victim);                                  // idempotent
   assert.equal(B.pops().length, 1);
 });
+
+test('spawn bonus inherits shooter momentum (bolt outruns a fast shooter)', () => {
+  const B = makeBullets();
+  B.spawn(80, 8, 1, 0);            // baseline 380
+  B.spawn(80, 8, 1, 0, 420);       // burst-speed shooter → 800
+  const xs = [];
+  B.update(1 / 60, L);
+  B.forEachHittable(b => xs.push(b.x));
+  assert.ok(Math.abs(xs[0] - (80 + 380 / 60)) < 0.01);
+  assert.ok(Math.abs(xs[1] - (80 + 800 / 60)) < 0.01);
+});
