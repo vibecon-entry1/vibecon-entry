@@ -9,10 +9,11 @@ import { makePlayer } from '../player.js';
 import { makeBullets } from '../bullets.js';
 import { makeEnemies } from '../enemies.js';
 import { makeCoins } from '../coins.js';
+import { makeBoss } from '../boss.js';
 import { makeScore } from '../score.js';
 import { makePopups } from '../popups.js';
 import { makeCamera } from '../../engine/camera.js';
-import { animFrame } from '../../engine/assets.js';
+import { animFrame, animDone } from '../../engine/assets.js';
 import { P } from '../physics.js';
 
 const VW = 640, VH = 360;
@@ -48,7 +49,62 @@ export function makePlay({ atlas, input, save, go }) {
   // popup per event. Counts the WOW+ events banked during the CURRENT flight
   // (reset the frame we land), capped at three '+'.
   let flightWows = 0;
+  // --- boss state ------------------------------------------------------------
+  // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
+  // through a mid-fight real death, so the arena can never re-arm a second saucer.
+  let boss = null, bossSpawned = false, bossAnimT = 0;
+  const fx = [];                          // explode puffs: { x, y, t } — t < 0 = staggered wait
+  // Floor top at the trigger column, scanned out of the level rather than
+  // hardcoded: the arena's authored row count is a chunks.js detail, and the
+  // FLOOR_PAD repeat rows below it make an arithmetic guess easy to get wrong.
+  const bossFloorY = (() => {
+    const tx = Math.floor(level.bossTrigger / TILE);
+    for (let ty = 0; ty < level.hTiles; ty++) if (level.solidAt(tx, ty)) return ty * TILE;
+    return level.h;
+  })();
   if (typeof window !== 'undefined' && window.__blast) window.__blast.P = P;  // live tuning hook
+
+  // Everything that happens the moment the boss's last hp point lands. Shared
+  // by the bolt-kill path and the ?test cheat so the two can never drift.
+  function bossDeath() {
+    cam.shake(10, 0.4);
+    score.add('boss');                                  // flat +500, not a roster kill
+    for (const [tx, ty] of level.gate) level.carve(tx, ty);
+    // Popup at the gate, not at the corpse: it points at what just changed.
+    popups.spawn(level.gate[0][0] * TILE + 8, level.gate[0][1] * TILE - 12, 'gate very open.');
+    for (const [dx, dy, stagger] of [[0, 0, 0], [-50, 30, 0.15], [40, -20, 0.3]])
+      fx.push({ x: boss.x + dx, y: boss.y + dy, t: -stagger });
+  }
+
+  // RE-ENTRY SAFETY / checkpoint trace. bossSpawned latches true at the trigger
+  // and is never cleared, so neither the boss's death nor the player's can arm a
+  // second saucer inside one scene (R-restart rebuilds the whole scene, which is
+  // the only intended reset). The one scary case is a real death DURING the
+  // fight: respawn() teleports to player.checkpoint, and C9's checkpoint sits at
+  // tx386 — BEYOND the gate at tx382/383 — so respawning there would drop the
+  // player past a sealed gate with the boss still alive behind them.
+  // It cannot happen: player.js only captures a checkpoint on TOUCH
+  // (|dx| < 12 && |dy| < 24 against the marker), and the gate wall is solid
+  // across the three rows above the floor until bossDeath() carves it. The
+  // player physically cannot reach tx386 before the boss dies, so the live
+  // checkpoint throughout the fight is #3 at tx290 (C7) — a mid-fight death
+  // walks you back to C7 and into the arena again, with the same boss.
+  // (checkpoint columns: 98, 194, 290, 386.)
+
+  // --- test-only cheats. Gated on ?test so a normal player never sees them.
+  if (typeof location !== 'undefined' && location.search.includes('test') &&
+      typeof window !== 'undefined' && window.__blast) {
+    window.__blast.cheat = {
+      warp(x) {
+        player.body.x = x;
+        player.checkpoint = { x, y: player.body.y };
+      },
+      killBoss() {
+        if (!boss || !boss.on) return;
+        while (boss.on) if (boss.hurt()) bossDeath();
+      },
+    };
+  }
 
   // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
   // transparent margins, so we go through drawCentered with the cell centre —
@@ -70,7 +126,33 @@ export function makePlay({ atlas, input, save, go }) {
       playerBolts.update(dt, level);
       enemyBolts.update(dt, level);
 
+      // Boss trigger: crossing 8 tiles into C8 arms the fight, once and forever.
+      if (!bossSpawned && player.body.x > level.bossTrigger) {
+        bossSpawned = true;
+        boss = makeBoss(level.bossTrigger + 320, bossFloorY);
+        // Offset left/low of the boss center on purpose: at the trigger the camera
+        // is still 300px short of the arena's right side, and a popup parked at
+        // boss.x ran off the screen edge into the score HUD.
+        popups.spawn(boss.x - 130, boss.y - 70, 'MEGA SAUCER. very rude.');
+      }
+      if (boss && boss.on) {
+        // The scene owns the ANIM clock: boss.t is time-in-PHASE and resets on
+        // every phase change, so driving the 2f loop off it would stutter.
+        bossAnimT += dt;
+        boss.update(dt, player.iframes > 0 ? { x: player.body.x, y: -9999, w: 0 } : player.body,
+                    enemyBolts, fromX => player.hurt(fromX));
+      }
+      for (let i = fx.length - 1; i >= 0; i--) {
+        fx[i].t += dt;
+        if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
+      }
+
       playerBolts.forEachHittable(b => {
+        if (boss && boss.on && boss.hitTest(b)) {
+          playerBolts.kill(b);
+          if (boss.hurt()) bossDeath();
+          return;
+        }
         const e = enemies.hitTest(b);
         if (!e) return;
         playerBolts.kill(b);
@@ -185,6 +267,29 @@ export function makePlay({ atlas, input, save, go }) {
       enemies.forEach(e => atlas.drawFeet(ctx, e.anim,
         animFrame(atlas.anims[e.anim], e.t), e.x, e.y, e.vx < 0));
 
+      // (6b) MEGA SAUCER — the 64px enemyfly_red cell blown up 3x to arena scale,
+      // plus a floating hp bar. Both hang off boss.x/boss.y (the CENTER anchor).
+      if (boss && boss.on) {
+        ctx.save();
+        ctx.translate(boss.x, boss.y);
+        ctx.scale(3, 3);
+        atlas.drawCentered(ctx, 'enemyfly_red',
+                           animFrame(atlas.anims.enemyfly_red, bossAnimT), 0, 0);
+        ctx.restore();
+        // 80px above center, not the spec's 110: the 3x cell is 192px tall but the
+        // art inside it only reaches ~62px above center, and at 110 the bar floated
+        // in dead space AND clipped the top of the viewport against the HUD.
+        const bw = 48, bx = Math.round(boss.x - bw / 2), by = Math.round(boss.y - 80);
+        ctx.fillStyle = '#1b1420'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
+        ctx.fillStyle = '#e2413f'; ctx.fillRect(bx, by, Math.round(bw * (boss.hp / 12)), 4);
+      }
+
+      // (6c) death FX: explode puffs. Negative t = still waiting out its stagger.
+      for (const f of fx) {
+        if (f.t < 0) continue;
+        atlas.drawCentered(ctx, 'explode', animFrame(atlas.anims.explode, f.t), f.x, f.y);
+      }
+
       // (7) player — blink through iframes, but a corpse always stays visible
       const flicker = player.iframes > 0 && player.state !== 'ded' &&
                       Math.floor(player.iframes * 12) % 2;
@@ -239,6 +344,8 @@ export function makePlay({ atlas, input, save, go }) {
       hp: player.hp, iframes: player.iframes,
       won, bullets: playerBolts.count(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),
+      bossOn: !!(boss && boss.on), bossHp: boss ? boss.hp : -1, bossSpawned,
+      gateOpen: level.gate.every(([tx, ty]) => !level.solidAt(tx, ty)),
     }),
   };
 }

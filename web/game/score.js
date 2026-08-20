@@ -1,5 +1,5 @@
 // Pure score state. Doge-voice event strings surface through takeEvents().
-const POINTS = { coin: 10, kill: 100, wow: 50 };
+const POINTS = { coin: 10, kill: 100, wow: 50, boss: 500 };
 
 export function makeScore() {
   let value = 0, flightKills = 0;
