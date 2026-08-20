@@ -6,6 +6,11 @@
 // Not every boot.spec.js test can use boot() as-is — see the per-test notes
 // there. Only tests that (a) want ready+idle and (b) want the combined
 // console+pageerror error list should adopt it.
+//
+// CALIBRATION GOTCHA: an offline node harness starts at its own frame 0 in the
+// spawn pose, but boot() waits ~117 frames past spawn into idle before tapes
+// start. Event-relative timings (hits, kills) drift by that much between the
+// two — calibrate final tapes against the REAL page, not the harness alone.
 
 export async function boot(page) {
   const errors = [];

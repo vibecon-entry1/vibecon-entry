@@ -11,7 +11,7 @@ test('world is populated: enemies, coins render without errors', async ({ page }
   expect(errors).toEqual([]);
 });
 
-test('forward fire kills a hopper; score and refill wiring live', async ({ page }) => {
+test('forward fire kills a hopper; score wiring live', async ({ page }) => {
   const errors = await boot(page);
   // Shared opening: sprint C1, hop both C2 pits (same three hops as verb.spec's
   // "full gauntlet tape", plus a third to clear C2's second pit that test never
