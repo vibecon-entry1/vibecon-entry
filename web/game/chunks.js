@@ -264,5 +264,9 @@ const C10 = ch([
   '################################################',
 ]);
 
-export const GAUNTLET = stitchChunks([C1, C2, C3, C4, C5, C6, C7, C8, C9, C10], SIGN_TEXTS);
-GAUNTLET.bossTrigger = (7 * 48 + 8) * TILE;
+// Fresh level per scene: carve() mutates tiles, so each run must parse its own copy.
+export function buildGauntlet() {
+  const L = stitchChunks([C1, C2, C3, C4, C5, C6, C7, C8, C9, C10], SIGN_TEXTS);
+  L.bossTrigger = (7 * 48 + 8) * TILE;
+  return L;
+}

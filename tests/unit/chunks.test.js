@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChunk, stitchChunks, TILE, GAUNTLET } from '../../web/game/chunks.js';
+import { parseChunk, stitchChunks, TILE, buildGauntlet } from '../../web/game/chunks.js';
+
+const GAUNTLET = buildGauntlet();   // read-only in this file; one shared instance is fine
 
 const MINI = [
   '..........',
@@ -131,4 +133,13 @@ test('GAUNTLET geometry holds the authoring invariants', () => {
     assert.ok(L.solidAt(Math.floor(e.x / TILE), Math.floor(e.y / TILE)),
       `${e.type} at ${e.x},${e.y} is not floor-aligned`);
   }
+});
+
+test('buildGauntlet returns independent instances (carve does not leak)', () => {
+  const a = buildGauntlet();
+  const [tx, ty] = a.gate[0];
+  a.carve(tx, ty);
+  assert.equal(a.solidAt(tx, ty), false);
+  const b = buildGauntlet();
+  assert.equal(b.solidAt(tx, ty), true);
 });

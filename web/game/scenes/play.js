@@ -4,7 +4,7 @@
 // Render order is load-bearing and reads bottom-up:
 //   parallax (screen space, OUTSIDE the camera) → tiles → signs → checkpoints
 //   → coins → enemies → player → muzzle → bolts → popups → [restore] → HUD.
-import { GAUNTLET, TILE } from '../chunks.js';
+import { buildGauntlet, TILE } from '../chunks.js';
 import { makePlayer } from '../player.js';
 import { makeBullets } from '../bullets.js';
 import { makeEnemies } from '../enemies.js';
@@ -26,7 +26,7 @@ const ANIM_FOR = {                       // state → atlas anim
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
 export function makePlay({ atlas, input, save, go }) {
-  const level = GAUNTLET;
+  const level = buildGauntlet();   // fresh per scene: R-restart re-seals any carved gate
   const player = makePlayer(level.spawn);
   const enemies = makeEnemies(level.entities, level);
   const coins = makeCoins(level.entities);
