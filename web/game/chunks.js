@@ -1,11 +1,14 @@
 // ASCII chunks → level. Legend: '#' solid · '.' empty · 'P' player spawn ·
-// 'C' checkpoint. Spawn/checkpoint y = feet = top of the tile they stand on.
+// 'C' checkpoint · 'h' hopper · 'H' red hopper · 'u' saucer · '$' coin ·
+// 'S' sign. Spawn/checkpoint y = feet = top of the tile they stand on.
 export const TILE = 16;
+
+const ENT = { h: 'hopper', H: 'redhopper', u: 'saucer', $: 'coin' };
 
 export function parseChunk(rows) {
   const hTiles = rows.length, wTiles = rows[0].length;
   const solid = new Uint8Array(wTiles * hTiles);
-  let spawn = null; const checkpoints = [];
+  let spawn = null; const checkpoints = []; const entities = []; const signs = [];
   rows.forEach((row, ty) => {
     if (row.length !== wTiles) throw new Error(`row ${ty} width ${row.length} != ${wTiles}`);
     [...row].forEach((ch, tx) => {
@@ -16,11 +19,13 @@ export function parseChunk(rows) {
         spawn = feet;
       }
       if (ch === 'C') checkpoints.push(feet);
+      if (ENT[ch]) entities.push({ type: ENT[ch], x: feet.x, y: feet.y });
+      if (ch === 'S') signs.push({ x: feet.x, y: feet.y, text: '' });
     });
   });
   if (!spawn) throw new Error('chunk has no P');
   return {
-    wTiles, hTiles, spawn, checkpoints,
+    wTiles, hTiles, spawn, checkpoints, entities, signs,
     w: wTiles * TILE, h: hTiles * TILE,
     solidAt(tx, ty) {
       if (tx < 0 || tx >= wTiles) return true;     // side walls
@@ -29,6 +34,18 @@ export function parseChunk(rows) {
       return solid[ty * wTiles + tx] === 1;
     },
   };
+}
+
+// Stitch equal-height chunks side by side into one level. signTexts fill the
+// 'S' markers left-to-right across the whole stitched level.
+export function stitchChunks(chunks, signTexts = []) {
+  const h = chunks[0].length;
+  for (const c of chunks)
+    if (c.length !== h) throw new Error(`chunk height ${c.length} != ${h}`);
+  const rows = Array.from({ length: h }, (_, r) => chunks.map(c => c[r]).join(''));
+  const L = parseChunk(rows);
+  L.signs.forEach((s, i) => { s.text = signTexts[i] ?? ''; });
+  return L;
 }
 
 // Graybox: runway → hop gap (3) → runway → boost gap (11) → checkpoint (open

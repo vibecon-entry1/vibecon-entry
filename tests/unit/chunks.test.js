@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChunk, TILE } from '../../web/game/chunks.js';
+import { parseChunk, stitchChunks, TILE } from '../../web/game/chunks.js';
 
 const MINI = [
   '..........',
@@ -34,4 +34,33 @@ test('missing P throws', () => {
 
 test('duplicate P throws', () => {
   assert.throws(() => parseChunk(['P..P', '####']), /multiple P/);
+});
+
+test('entity and sign legends parse to feet positions', () => {
+  const L = parseChunk([
+    '..P.......',
+    '.h..u..$.S',
+    '##########',
+  ]);
+  assert.deepEqual(L.entities, [
+    { type: 'hopper', x: 1 * TILE + 8, y: 2 * TILE },
+    { type: 'saucer', x: 4 * TILE + 8, y: 2 * TILE },
+    { type: 'coin', x: 7 * TILE + 8, y: 2 * TILE },
+  ]);
+  assert.deepEqual(L.signs, [{ x: 9 * TILE + 8, y: 2 * TILE, text: '' }]);
+});
+
+test('stitchChunks concatenates horizontally and offsets entities/signs', () => {
+  const A = ['....', 'P.h.', '####'];
+  const B = ['....', '.$.C', '####'];
+  const L = stitchChunks([A, B], ['first sign']);
+  assert.equal(L.wTiles, 8);
+  assert.equal(L.hTiles, 3);
+  assert.equal(L.solidAt(7, 2), true);
+  assert.equal(L.entities.find(e => e.type === 'coin').x, 5 * TILE + 8);
+  assert.equal(L.checkpoints[0].x, 7 * TILE + 8);
+});
+
+test('stitchChunks rejects mismatched heights', () => {
+  assert.throws(() => stitchChunks([['..', 'P.', '##'], ['..', '##']]), /height/);
 });
