@@ -68,7 +68,7 @@ test('boss gate: trigger, kill, carve', async ({ page }) => {
 
   const st1 = await page.evaluate(() => window.__blast.state());
   expect(st1.bossOn).toBe(true);
-  expect(st1.bossHp).toBe(12);
+  expect(st1.bossHp).toBe(40);
   expect(st1.gateOpen).toBe(false);
 
   await page.evaluate(() => window.__blast.cheat.killBoss());

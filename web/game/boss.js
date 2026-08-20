@@ -12,7 +12,7 @@ const SWEEP_T = 5, SPREAD_T = 2;
 const SWEEP_AMP = 140, SWEEP_PERIOD = 4, BOB_AMP = 8, BOB_PERIOD = 3;
 const SPREAD_CD = 1.2;
 const SLAM_DOWN_SPEED = 300, SLAM_HOLD = 0.3, SLAM_UP_SPEED = 200;
-const HP_MAX = 12;
+const HP_MAX = 40;
 const HOME_OFFSET = 120;         // hover home is floorY - 120
 const SLAM_DROP = 40;            // slam bottoms out at floorY - 40
 
@@ -84,6 +84,7 @@ export function makeBoss(x, floorY) {
   return {
     get on() { return b.on; }, set on(v) { b.on = v; },
     get hp() { return b.hp; }, set hp(v) { b.hp = v; },
+    hpMax: HP_MAX,          // exposed so HUD bars scale off the boss, not a literal
     get x() { return b.x; }, get y() { return b.y; },
     get phase() { return b.phase; }, get t() { return b.t; },
 

@@ -22,7 +22,9 @@ const LEGEND = [
   'Esc pause  ·  R restart',
 ];
 
-export function makeTitle({ input, go }) {
+// `save` is read-only here: the title only ever DISPLAYS the banked best.
+// main.js's win-scene factory is still the one and only writer.
+export function makeTitle({ input, go, save }) {
   // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
   let phase = 'title';
   let t = 0;
@@ -76,6 +78,14 @@ export function makeTitle({ input, go }) {
         ctx.font = '12px monospace'; ctx.fillStyle = '#8fa';
         ctx.fillText('MUCH START — press X', VW / 2, 214);
         ctx.globalAlpha = 1;
+
+        // Banked best, under the start prompt. Hidden entirely on a fresh save:
+        // 'BEST WOW: 0' reads as a taunt, not a record.
+        const best = save?.data?.best?.gauntlet ?? 0;
+        if (best > 0) {
+          ctx.font = '10px monospace'; ctx.fillStyle = '#eec548';
+          ctx.fillText(`BEST WOW: ${best}`, VW / 2, 236);
+        }
 
         ctx.font = '8px monospace'; ctx.fillStyle = '#6f6a86';
         LEGEND.forEach((l, i) => ctx.fillText(l, VW / 2, 320 + i * 13));

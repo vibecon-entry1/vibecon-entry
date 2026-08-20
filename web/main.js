@@ -25,6 +25,11 @@ function fit() {
 addEventListener('resize', fit); fit();
 
 async function boot() {
+  // One boot-time read of the ?test flag: it arms the debug scene toggle below
+  // AND selects the test entry scene at the bottom. Same flag the play scene's
+  // cheats hang off — F1 scene-swapping is a dev affordance, not something a
+  // player should be able to trip from the title screen.
+  const testMode = new URLSearchParams(location.search).has('test');
   const input = createInput();
   const save = makeSave(localStorage);
   let atlas;
@@ -43,7 +48,7 @@ async function boot() {
   }
   scenes.viewer = () => makeViewer({ atlas, input });
   scenes.play = () => makePlay({ atlas, input, save, go });
-  scenes.title = () => makeTitle({ input, go });
+  scenes.title = () => makeTitle({ input, go, save });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
@@ -76,7 +81,7 @@ async function boot() {
         }
       }
       input.beginFrame();
-      if (input.pressed('debug')) go(sceneName === 'viewer' ? 'play' : 'viewer');
+      if (testMode && input.pressed('debug')) go(sceneName === 'viewer' ? 'play' : 'viewer');
       scene.update(dt);
       input.endFrame();
       if (tape && tapeI >= tape.length) { tape = null; input.setVirtual(null); }
@@ -92,7 +97,7 @@ async function boot() {
   // ?test boots straight into play: every e2e tape is calibrated from the first
   // gameplay frame, and making them all click through the title first would put
   // an unrelated three-keypress preamble in front of every calibrated tape.
-  go(new URLSearchParams(location.search).has('test') ? 'play' : 'title');
+  go(testMode ? 'play' : 'title');
   loop.start();
   window.__blast.ready = true;
 }

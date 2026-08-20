@@ -98,8 +98,22 @@ test('carve opens a solid tile', () => {
 
 test('GAUNTLET has boss arena, victory stretch, ship pad', () => {
   assert.equal(GAUNTLET.wTiles, 10 * 48);
-  // gate: solid column pair at the arena's right edge, sky-height 3 rows above floor
-  assert.ok(GAUNTLET.gate.length >= 6);
+  // gate: solid column pair at the arena's right edge, running the FULL height
+  // of C8's authored block (14 rows x 2 cols = 28 tiles). Three rows was
+  // hoppable — a hop + 3-boost chain lifts the feet ~217px, over a 48px wall.
+  assert.equal(GAUNTLET.gate.length, 28);
+  const gcols = [...new Set(GAUNTLET.gate.map(([tx]) => tx))].sort((a, b) => a - b);
+  assert.deepEqual(gcols, [382, 383]);
+  const grows = [...new Set(GAUNTLET.gate.map(([, ty]) => ty))].sort((a, b) => a - b);
+  assert.equal(grows[0], 12);                       // top = first authored row (12 sky rows above)
+  assert.equal(grows.at(-1), 25);                   // bottom = the row on the floor
+  assert.equal(grows.length, 14);
+  // gate is recorded row-major, so at(-1) is the BOTTOM tile — what play.js
+  // anchors the 'gate very open.' popup to.
+  assert.deepEqual(GAUNTLET.gate.at(-1), [383, 25]);
+  // the wall out-tops any boost chain: 26 - 12 = 14 rows = 224px of solid
+  // above the floor, vs a ~217px ceiling on hop + 3 boosts.
+  assert.ok((26 - grows[0]) * TILE > 217);
   for (const [tx, ty] of GAUNTLET.gate) assert.equal(GAUNTLET.solidAt(tx, ty), true);
   assert.ok(GAUNTLET.bossTrigger > 7 * 48 * 16 && GAUNTLET.bossTrigger < 8 * 48 * 16);
   assert.ok(GAUNTLET.shipPad.x > 9 * 48 * 16);

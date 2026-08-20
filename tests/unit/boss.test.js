@@ -13,7 +13,8 @@ const farPlayer = { x: -9999, y: 0, w: 0, h: 0 };
 test('spawn state: on, hp, position, phase', () => {
   const b = makeBoss(SPAWN_X, FLOOR_Y);
   assert.equal(b.on, true);
-  assert.equal(b.hp, 12);
+  assert.equal(b.hp, 40);
+  assert.equal(b.hpMax, 40);
   assert.equal(b.x, SPAWN_X);
   assert.equal(b.y, HOME_Y);
   assert.equal(b.phase, 'sweep');
@@ -118,12 +119,12 @@ test('slam reaches floorY-40 at its lowest point', () => {
   assert.ok(minDistToTarget < 1, `never reached floorY-40, closest was ${minDistToTarget}`);
 });
 
-test('hurt: hp decrements, on false only after 12th hit, true returned only on that hit', () => {
+test('hurt: hp decrements, on false only after 40th hit, true returned only on that hit', () => {
   const b = makeBoss(SPAWN_X, FLOOR_Y);
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 39; i++) {
     const dead = b.hurt();
     assert.equal(dead, false);
-    assert.equal(b.hp, 11 - i);
+    assert.equal(b.hp, 39 - i);
     assert.equal(b.on, true);
   }
   const dead = b.hurt();
@@ -142,7 +143,7 @@ test('hitTest: generous box |dx|<100 and |dy|<70', () => {
 
 test('update is a no-op once dead (dead boss does not move or fire)', () => {
   const b = makeBoss(SPAWN_X, FLOOR_Y);
-  for (let i = 0; i < 12; i++) b.hurt();
+  for (let i = 0; i < 40; i++) b.hurt();
   assert.equal(b.on, false);
   const x0 = b.x, y0 = b.y, phase0 = b.phase;
   const B = stubBullets();

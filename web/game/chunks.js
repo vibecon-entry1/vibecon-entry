@@ -229,11 +229,27 @@ const SIGN_TEXTS = [
 
 // C8 — boss arena. Flat 48-wide floor, open sky (the MEGA SAUCER hovers and
 // dives above it). A 2-col gate wall of 'G' at the right edge (cols 46-47),
-// solid across the 3 rows directly above the floor: blocks both walking and
-// hopping past until the boss dies and Plan-3's scene code carves it open.
+// solid across EVERY authored row above the floor (authored rows 0-13, 14 rows
+// = 224px): a 3-row wall was hoppable — a hop (46.7px) plus a 3-boost chain
+// (3 x 56.9px) lifts the feet ~217px off the floor, which cleared it and let a
+// player skip the climax into the sealed-pad dead end. At full authored height
+// the wall top sits 224px up, above the ~217px ceiling, so nothing gets over
+// it until the boss dies and Plan-3's scene code carves it open. ch()'s 12
+// padded sky rows above the authored block stay open on purpose: they are
+// camera headroom, unreachable by any boost chain.
 // No enemies/coins/signs — the fight itself is the content.
 const C8 = ch([
-  R, R, R, R, R, R, R, R, R, R, R,
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
+  '..............................................GG',
   '..............................................GG',
   '..............................................GG',
   '..............................................GG',

@@ -79,7 +79,14 @@ export function makePlay({ atlas, input, save, go }) {
     killCount++;                                        // ...but it still counts in the tally
     for (const [tx, ty] of level.gate) level.carve(tx, ty);
     // Popup at the gate, not at the corpse: it points at what just changed.
-    popups.spawn(level.gate[0][0] * TILE + 8, level.gate[0][1] * TILE - 12, 'gate very open.');
+    // gate.at(-1) — the BOTTOM tile of the wall (parseChunk records row-major,
+    // so gate[0] is the top of a 14-row wall, ~200px above the fight and off
+    // the top of the screen). The 140px left offset is the same trick the boss
+    // reveal popup uses: from the kill position the camera is still short of
+    // the arena's right edge, and text parked at the gate column runs off into
+    // the score HUD.
+    const [gx, gy] = level.gate.at(-1);
+    popups.spawn(gx * TILE + 8 - 140, gy * TILE - 12, 'gate very open.');
     for (const [dx, dy, stagger] of [[0, 0, 0], [-50, 30, 0.15], [40, -20, 0.3]])
       fx.push({ x: boss.x + dx, y: boss.y + dy, t: -stagger });
   }
@@ -93,7 +100,7 @@ export function makePlay({ atlas, input, save, go }) {
   // player past a sealed gate with the boss still alive behind them.
   // It cannot happen: player.js only captures a checkpoint on TOUCH
   // (|dx| < 12 && |dy| < 24 against the marker), and the gate wall is solid
-  // across the three rows above the floor until bossDeath() carves it. The
+  // across EVERY row above the floor until bossDeath() carves it. The
   // player physically cannot reach tx386 before the boss dies, so the live
   // checkpoint throughout the fight is #3 at tx290 (C7) — a mid-fight death
   // walks you back to C7 and into the arena again, with the same boss.
@@ -190,7 +197,7 @@ export function makePlay({ atlas, input, save, go }) {
       // Boss trigger: crossing 8 tiles into C8 arms the fight, once and forever.
       if (!bossSpawned && player.body.x > level.bossTrigger) {
         bossSpawned = true;
-        boss = makeBoss(level.bossTrigger + 320, bossFloorY);
+        boss = makeBoss(level.bossTrigger + 200, bossFloorY);
         // Offset left/low of the boss center on purpose: at the trigger the camera
         // is still 300px short of the arena's right side, and a popup parked at
         // boss.x ran off the screen edge into the score HUD.
@@ -362,7 +369,7 @@ export function makePlay({ atlas, input, save, go }) {
         // in dead space AND clipped the top of the viewport against the HUD.
         const bw = 48, bx = Math.round(boss.x - bw / 2), by = Math.round(boss.y - 80);
         ctx.fillStyle = '#1b1420'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
-        ctx.fillStyle = '#e2413f'; ctx.fillRect(bx, by, Math.round(bw * (boss.hp / 12)), 4);
+        ctx.fillStyle = '#e2413f'; ctx.fillRect(bx, by, Math.round(bw * (boss.hp / boss.hpMax)), 4);
       }
 
       // (6c) death FX: explode puffs. Negative t = still waiting out its stagger.
@@ -450,6 +457,9 @@ export function makePlay({ atlas, input, save, go }) {
       paused, bullets: playerBolts.count(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),
       bossOn: !!(boss && boss.on), bossHp: boss ? boss.hp : -1, bossSpawned,
+      // bossPhase is observability-only (headless fight probes assert that a
+      // player actually LIVES to see spread/slam now that hp is 40).
+      bossPhase: boss && boss.on ? boss.phase : null,
       gateOpen: gateIsOpen(),
       timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
     }),
