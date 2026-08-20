@@ -89,9 +89,15 @@ test('mute persists across a reload, and the pool re-rolls its first track', asy
                              null, { timeout: 5000 });
   const first = await page.evaluate(() => window.__blast?.jukebox.current().index);
 
-  await page.keyboard.press('KeyM', { delay: 30 });
+  // Hold-until-observed, not a single timed press: input.js resolves `pressed`
+  // as held && !prev, sampled once per animation frame, so a keydown+keyup that
+  // both fall between two frames is dropped entirely under load (see toggleMute
+  // below, whose pattern this mirrors).
+  await page.keyboard.down('KeyM');
   await page.waitForFunction(() => window.__blast?.jukebox.current().muted === true,
-                             null, { timeout: 5000 });
+                             null, { timeout: 10000 });
+  await page.keyboard.up('KeyM');
+  await page.waitForTimeout(50);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('suchblast_v1')).audio);
   expect(saved.muted).toBe(true);
   expect(saved.lastFirst.title).toBe(first);

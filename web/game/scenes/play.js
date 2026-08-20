@@ -57,6 +57,11 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
   let paused = false;
+  // Scene-level freeze: a brief world-stall on a big hit lands harder than any
+  // amount of shake alone. SET on trigger (Math.max), never accumulated, so
+  // spamming kills in one frame can't stack a multi-second stall — the strongest
+  // hit that frame wins and everything still ticks down at the normal rate.
+  let hitstop = 0;
   // --- run stats + extraction ------------------------------------------------
   let timeS = 0;                 // run clock, seconds (paused during takeoff)
   let killCount = 0;             // roster kills + the boss
@@ -124,6 +129,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
   // by the bolt-kill path and the ?test cheat so the two can never drift.
   function bossDeath() {
     cam.shake(10, 0.4);
+    hitstop = Math.max(hitstop, 0.09);
     sfx?.play('bossdown');                              // in HERE so the ?test cheat sounds too
     score.add('boss');                                  // flat +500, not a roster kill
     killCount++;                                        // ...but it still counts in the tally
@@ -242,6 +248,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       if (input.pressed('pause')) { paused = !paused; jukebox?.setDuck(paused); }
       if (paused) return;                                // freeze EVERYTHING, clock included
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
+      if (hitstop > 0) { hitstop -= dt; return; }        // brief world stall — render still runs
       timeS += dt;
       const wasAirborne = player.coyote === 0;
       gunDownT = Math.max(0, gunDownT - dt);
@@ -317,6 +324,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
           cam.shake(5, 0.2);
+          hitstop = Math.max(hitstop, 0.05);
         });
       });
 
@@ -345,7 +353,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       // so contact damage, enemy bolts and boss bolts all sound the same with
       // one call site. A hit that kills is silent here — the death jingle below
       // owns that frame.
-      if (player.hp < prevHp && player.state !== 'ded') { sfx?.play('hurt'); cam.shake(3, 0.15); }
+      if (player.hp < prevHp && player.state !== 'ded') {
+        sfx?.play('hurt'); cam.shake(3, 0.15); hitstop = Math.max(hitstop, 0.03);
+      }
       // real death: the board resets around you — every enemy back at its spawn,
       // and the run pays 100 wow for it (floored at 0). Coins stay collected.
       if (player.state === 'ded' && prevState !== 'ded') {

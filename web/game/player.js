@@ -172,9 +172,12 @@ export function makePlayer(spawnFeet) {
           b.vy = P.BOOST_VY;
         }
       } else {
-        // forward bolts inherit the shooter's momentum so they always outrun the runner
+        // forward bolts inherit the shooter's momentum so they always outrun the runner.
+        // Spawned further out than the muzzle (+36 vs +26): the muzzle stays pinned to
+        // the barrel, but the bolt's CENTER needs the extra clearance so its 43px streak
+        // doesn't drape back over the sprite's edge.
         const inherit = Math.sign(b.vx) === pl.facing ? Math.abs(b.vx) : 0;
-        bullets.spawn(b.x + pl.facing * 26, b.y - 30, pl.facing, 0, inherit);
+        bullets.spawn(b.x + pl.facing * 36, b.y - 30, pl.facing, 0, inherit);
         pl.muzzle = { t: 0, dx: pl.facing, dy: 0, x: b.x + pl.facing * 26, y: b.y - 30 };
         pl.fireCd = P.FIRE_CD;
       }
