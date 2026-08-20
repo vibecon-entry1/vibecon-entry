@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChunk, stitchChunks, TILE } from '../../web/game/chunks.js';
+import { parseChunk, stitchChunks, TILE, GAUNTLET } from '../../web/game/chunks.js';
 
 const MINI = [
   '..........',
@@ -68,4 +68,50 @@ test('stitchChunks rejects mismatched heights', () => {
 test('stitchChunks demands exact signTexts count', () => {
   assert.throws(() => stitchChunks([['..', 'PS', '##']]), /signTexts/);
   assert.throws(() => stitchChunks([['..', 'PS', '##']], ['a', 'b']), /signTexts/);
+});
+
+test('GAUNTLET stitches clean with expected population', () => {
+  assert.equal(GAUNTLET.hTiles, 34);
+  assert.equal(GAUNTLET.wTiles, 7 * 48);
+  assert.equal(GAUNTLET.signs.length, 5);
+  assert.ok(GAUNTLET.signs.every(s => s.text.length > 0));
+  const byType = {};
+  for (const e of GAUNTLET.entities) byType[e.type] = (byType[e.type] ?? 0) + 1;
+  assert.equal(byType.hopper, 4);
+  assert.equal(byType.redhopper, 2);
+  assert.equal(byType.saucer, 4);
+  assert.equal(byType.coin, 35);
+  assert.ok(byType.coin >= 15);
+  assert.equal(GAUNTLET.checkpoints.length, 3);
+  // checkpoints open chunks 3, 5 and 7
+  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)), [98, 194, 290]);
+});
+
+test('GAUNTLET geometry holds the authoring invariants', () => {
+  const L = GAUNTLET, FLOOR = 26;                  // floor surface row
+  // every pit runs to the level bottom
+  for (let tx = 0; tx < L.wTiles; tx++)
+    assert.equal(L.solidAt(tx, FLOOR), L.solidAt(tx, L.hTiles - 1),
+      `column ${tx}: pit must run to the level bottom`);
+  // >= 3 empty rows above every standing surface, except the C5 slide corridor
+  const CORR = { x0: 4 * 48 + 18, x1: 4 * 48 + 31 };
+  for (let ty = 0; ty < L.hTiles; ty++)
+    for (let tx = 0; tx < L.wTiles; tx++) {
+      if (!L.solidAt(tx, ty) || L.solidAt(tx, ty - 1)) continue;
+      const corridor = ty === FLOOR && tx >= CORR.x0 && tx <= CORR.x1;
+      const clear = !L.solidAt(tx, ty - 1) && !L.solidAt(tx, ty - 2) && !L.solidAt(tx, ty - 3);
+      assert.ok(corridor || clear, `surface ${tx},${ty} needs 3 empty rows overhead`);
+    }
+  // the corridor opening is exactly 32px: slab bottom row 23, floor top row 26
+  for (let tx = CORR.x0; tx <= CORR.x1; tx++) {
+    assert.ok(L.solidAt(tx, 23), `corridor slab missing at ${tx}`);
+    assert.ok(!L.solidAt(tx, 24) && !L.solidAt(tx, 25), `corridor must be open at ${tx}`);
+  }
+  assert.equal((FLOOR - 24) * TILE, 32);
+  // hoppers stand ON a floor; saucers are allowed to float
+  for (const e of GAUNTLET.entities) {
+    if (e.type === 'saucer' || e.type === 'coin') continue;
+    assert.ok(L.solidAt(Math.floor(e.x / TILE), Math.floor(e.y / TILE)),
+      `${e.type} at ${e.x},${e.y} is not floor-aligned`);
+  }
 });

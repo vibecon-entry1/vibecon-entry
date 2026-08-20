@@ -92,3 +92,126 @@ export const GB1 = parseChunk([
   '#############...###############...........######################....................................',
   '#############...###############...........######################....................................',
 ]);
+
+// ---- authored gauntlet ------------------------------------------------------
+// Authoring contract: every chunk below is 17 rows x 48 chars. ch() pads 12 sky
+// rows above and repeats the last row 5x below -> 34 rows (544px), matching the
+// Plan-1 camera fix. Authored row 13 is the ON-FLOOR band (feet y = 416); rows
+// 14-16 are the floor slab, and because row 16 is the one that repeats, any pit
+// gap must be cut through rows 14/15/16 so it runs to the level bottom.
+// Standing surfaces keep >= 3 empty rows overhead (44px body + solid ceiling);
+// the ONE deliberate exception is C5's slide corridor, a 2-row (32px) opening
+// that only the 24px slide box fits through.
+function ch(rows) {
+  const w = rows[0].length;
+  const sky = '.'.repeat(w);
+  return [...Array(12).fill(sky), ...rows, ...Array(5).fill(rows.at(-1))];
+}
+const R = '.'.repeat(48);
+
+// C1 — beam-in, walk, first pew. Threat-free, unbroken floor. Both starter
+// signs live here: fire, then the ground-shot hop.
+const C1 = ch([
+  R, R, R, R, R, R, R, R, R, R, R, R, R,
+  '...P....S...................S.........$.$.$.....',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// C2 — hop pits: 3-wide (48px), then 4-wide (64px). A flat-run hop covers
+// ~97px, so both are comfortable; the coins ride the hop arc.
+const C2 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '...................$.................$$.........',
+  '...............$.......$.........$........$.....',
+  R,
+  '##################...###############....########',
+  '##################...###############....########',
+  '##################...###############....########',
+]);
+
+// C3 — checkpoint, then two hoppers patrolling flat ground. The coin ledge
+// sits 4 tiles up (64px) — above hop height (47px), so it only pays out to a boost.
+const C3 = ch([
+  R, R, R, R, R, R, R, R, R,
+  '.......................$$$......................',
+  '......................#####.....................',
+  R, R,
+  '..C......$........h.............h.......$.......',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// C4 — air-charge canyon. 12-wide (192px) pit with a saucer hovering mid-span:
+// blast it on the way across and the kill refills charges. The 6-wide pit after
+// is the graduation exercise.
+const C4 = ch([
+  R, R, R, R, R, R, R, R,
+  '....................u...........................',
+  R,
+  '................$...$...$.......................',
+  '....................................$$..........',
+  R,
+  '.........S....................$.................',
+  '##############............########......########',
+  '##############............########......########',
+  '##############............########......########',
+]);
+
+// C5 — checkpoint, then the slide corridor: slab bottom at row 12, floor top at
+// row 14 = a 32px opening, exactly the 24px slide box and nothing taller. Coins
+// on the corridor floor bait the burst chain. First red hopper waits past the mouth.
+const C5 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '..................##############................',
+  R,
+  '..C.........S.......$..$..$..$..........H.......',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// C6 — saucer volleys over broken ground. Two 2-wide gaps keep you moving while
+// bolts rain; duck under them or blast the saucers.
+const C6 = ch([
+  R, R, R, R, R, R, R,
+  '................u...............u...............',
+  R, R,
+  '..........$.........$.........$.................',
+  R,
+  '......................$..............$..........',
+  '......S.....................................$...',
+  '######################..############..##########',
+  '######################..############..##########',
+  '######################..############..##########',
+]);
+
+// C7 — combo canyon. A red hopper patrols a ledge whose right edge is 2 tiles
+// from a pit: contact knockback (~4.1 tiles) throws you in. That is the intended
+// setpiece, not a bug. Saucer over the second pit, hoppers late, then a flat
+// runway (Plan 3 appends the boss + ship there).
+const C7 = ch([
+  R, R, R, R, R, R, R,
+  '..........................u.....................',
+  R,
+  '...................H............................',
+  '.................######.........................',
+  R,
+  '..............$............$....................',
+  '..C.....$........................$..h.....h.....',
+  '############.....#######......##################',
+  '############.....#######......##################',
+  '############.....#######......##################',
+]);
+
+const SIGN_TEXTS = [
+  'press X. very pew.',
+  'hold DOWN + X. shoot ground. trust me.',
+  'DOWN+X in air = boost. 3 pips. kills refill.',
+  'DOWN+move = slide. X while sliding = zoom.',
+  'rude saucers drop bolts. duck or blast.',
+];
+
+export const GAUNTLET = stitchChunks([C1, C2, C3, C4, C5, C6, C7], SIGN_TEXTS);
