@@ -66,4 +66,5 @@ black bg / cream + tan fur / navy / red-orange accents.
 - `npm test`        unit + e2e (screenshots in tests/artifacts/)
 - Live tuning: open devtools console, edit `__blast.P` (e.g. `__blast.P.HOP_VY = -320`)
 - Chunk authoring: ≥3 empty rows above any standing surface (44px player + OOB ceiling)
-Plan 1 delivers: graybox verb prototype (M1+M2). Feel gate: user plays before Plan 2.
+- Gameplay: 3 hearts; kills refill boost pips; signs teach the verbs; R = full restart
+Plan 2 delivers: combat gauntlet chunks 1-7 (M3) — enemies, hp, kill-refill, coins, score, Mars art. M3 gate: user plays before Plan 3 (boss/ship/screens).
