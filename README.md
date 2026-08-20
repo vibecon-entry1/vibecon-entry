@@ -31,7 +31,7 @@
 - shoot **forward** → very pew
 - shoot the **ground** → u fly (trust me bro)
 - shoot the ground **in the air** → boost. 3 pips. kills refill. such economy.
-- **slide + X** → zoom zoom
+- **slide, THEN X** → zoom zoom. slide first, tap X after a beat — X pressed *with* ↓ is the jump. such timing.
 - press **S** on any end screen → your run, on your clipboard, as a link that
   unfurls into its own score card. much brag.
 - there is **no jump button**. the gun is the jump button. this is the whole game.
@@ -59,7 +59,7 @@ beat it once and **WOW ZONE** unlocks: an endless mode that re-deals the same ha
 X / Z / ␣   blast (the only verb)
 ↓ + X       shoot ground = hop
 ↓+X in air  boost (watch the pips)
-↓ + move    slide · keep holding + X = zoom zoom
+↓ + move    slide · settle in, THEN tap X = zoom zoom (X too soon = hop)
 W           WOW ZONE (endless — unlocks when you beat the gauntlet)
 S           SHARE your run (end screens) — copies a link + a score card
 Esc         such pause.    R  very restart    M  mute    D  display mode

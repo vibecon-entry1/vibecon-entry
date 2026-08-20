@@ -592,7 +592,7 @@ const SIGN_TEXTS = [
   'press X. very pew.',
   'hold DOWN + X. shoot ground. trust me bro.',
   'DOWN+X in air = boost. 3 pips. kills refill.',
-  'DOWN+move = slide. keep holding + X = zoom zoom.',
+  'DOWN+move = slide. wait a beat, THEN X = zoom zoom.',
   'rude saucers drop bolts. keep moving or blast.',
   'much danger ahead. very brave.',
 ];
