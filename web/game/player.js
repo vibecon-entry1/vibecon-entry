@@ -1,8 +1,12 @@
-// The verb. States: spawn/idle/walk/slide/duck/air. Fire is context-sensitive:
-//   grounded+down  → hop      | airborne+down → boost (costs air charge)
-//   during slide   → backward bolt + forward burst (capped at BURST_MAX)
-//   otherwise      → forward bolt (free, no physics effect)
-// Height growth (standing up) always goes through bodyFits — never embed in a ceiling.
+// The verb. States: spawn/idle/walk/slide/duck/air. Fire is context-sensitive,
+// resolved in this order:
+//   pinned under a ceiling → backward bolt + forward burst (capped at BURST_MAX)
+//   grounded+down          → hop (from a slide: slide-hop, keeps slide speed)
+//   airborne+down          → boost (costs air charge)
+//   sliding (down released) → backward bolt + forward burst
+//   otherwise              → forward bolt (free, no physics effect)
+// Height growth (standing up) always goes through bodyFits — never embed in a
+// ceiling; that includes the checkpoint respawn.
 import { P, moveAndCollide, bodyFits } from './physics.js';
 
 const STAND_H = 44, SLIDE_H = 24, DUCK_H = 32, W = 20;
@@ -86,20 +90,28 @@ export function makePlayer(spawnFeet) {
       }
     }
 
-    // fire — context-sensitive
+    // fire — context-sensitive. Ground-shots beat slide-fire so down+fire always
+    // hops (slide-hop carries slide speed); burst = fire while sliding with down
+    // released, or any fire while pinned under a ceiling (burst is the only shot
+    // that makes sense there).
     if (act.fire && pl.fireCd === 0) {
-      if (pl.state === 'slide') {
+      const pinned = pl.state === 'slide' && !bodyFits(level, b.x, b.y, b.w, STAND_H);
+      if (pinned) {
         fire(bullets, -pl.facing, 0, b.x - pl.facing * 14, b.y - 12);
         b.vx = pl.facing * Math.min(Math.abs(b.vx) + P.BURST_VX, P.BURST_MAX);
       } else if (act.down && grounded) {
         fire(bullets, 0, 1, b.x, b.y - 6);
         b.vy = P.HOP_VY; pl.coyote = 0;
+        if (pl.state === 'slide') setState('air');    // slide-hop keeps slide speed
       } else if (act.down && !grounded) {
         if (pl.airCharges > 0) {
           pl.airCharges--;
           fire(bullets, 0, 1, b.x, b.y - 6);
           b.vy = P.BOOST_VY;
         }
+      } else if (pl.state === 'slide') {
+        fire(bullets, -pl.facing, 0, b.x - pl.facing * 14, b.y - 12);
+        b.vx = pl.facing * Math.min(Math.abs(b.vx) + P.BURST_VX, P.BURST_MAX);
       } else {
         fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 30);
       }
@@ -126,7 +138,9 @@ export function makePlayer(spawnFeet) {
     // pit death → respawn beam at checkpoint
     if (b.y > level.h + 64) {
       pl.deaths++;
-      Object.assign(b, { x: pl.checkpoint.x, y: pl.checkpoint.y, vx: 0, vy: 0, h: STAND_H });
+      const cp = pl.checkpoint;
+      Object.assign(b, { x: cp.x, y: cp.y, vx: 0, vy: 0,
+                         h: bodyFits(level, cp.x, cp.y, W, STAND_H) ? STAND_H : SLIDE_H });
       pl.airCharges = P.AIR_CHARGES;
       pl.muzzle = null;
       setState('spawn');

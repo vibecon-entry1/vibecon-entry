@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makePlayer } from '../../web/game/player.js';
 import { parseChunk } from '../../web/game/chunks.js';
-import { P } from '../../web/game/physics.js';
+import { P, bodyFits } from '../../web/game/physics.js';
 
 const FLAT = parseChunk([
   '............................',
@@ -57,21 +57,70 @@ test('air charges: 3 boosts then dry, refill on landing', () => {
   assert.equal(pl.airCharges, P.AIR_CHARGES);
 });
 
-test('slide under low ceiling; slide-fire bursts forward and shoots backward', () => {
+// Fire precedence: a ground-shot (down held) beats slide-fire, so the burst is
+// what you get with down RELEASED mid-slide — or with down held while pinned.
+test('slide-fire with down released bursts forward and shoots backward', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
-  const fired = drive(pl, FLAT, 8, i => ({ right: true, down: true, fire: i === 4 }));
+  drive(pl, FLAT, 1, () => ({ right: true, down: true }));       // enter the slide
   assert.equal(pl.state, 'slide');
   assert.equal(pl.body.h, 24);
+  // inside the SLIDE_MIN window the slide survives the release, so fire bursts
+  const fired = drive(pl, FLAT, 1, () => ({ right: true, fire: true }));
+  assert.equal(pl.state, 'slide');                 // did not hop out
   assert.equal(fired.at(-1)[2], -1);               // bolt went backward
-  assert.ok(pl.body.vx > P.SLIDE_SPEED);           // burst added speed
+  assert.ok(pl.body.vx > P.SLIDE_SPEED + 100);     // burst added speed (200 → ~326)
+  assert.equal(pl.airCharges, P.AIR_CHARGES);      // grounded burst is free
 });
 
-test('slide-fire speed is capped at BURST_MAX', () => {
+test('two bursts inside the slide window cap at BURST_MAX', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
-  drive(pl, FLAT, 90, i => ({ right: true, down: true, fire: i % 9 === 0 }));  // burst spam
-  assert.ok(Math.abs(pl.body.vx) <= P.BURST_MAX);
+  drive(pl, FLAT, 1, () => ({ right: true, down: true }));       // slide, vx = SLIDE_SPEED
+  drive(pl, FLAT, 1, () => ({ right: true, fire: true }));       // burst 1
+  drive(pl, FLAT, 7, () => ({ right: true }));                   // wait out FIRE_CD
+  const before = pl.body.vx;
+  drive(pl, FLAT, 1, () => ({ right: true, fire: true }));       // burst 2
+  assert.equal(pl.state, 'slide');
+  assert.ok(before + P.BURST_VX > P.BURST_MAX);                  // uncapped sum overshoots
+  assert.equal(pl.body.vx, P.BURST_MAX);                         // clamped exactly
+});
+
+test('slide-hop: down+fire on a running slide hops out carrying slide speed', () => {
+  const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
+  drive(pl, FLAT, 30, () => ({ right: true }));
+  // the human gesture: direction never released across the down+fire tap
+  const fired = drive(pl, FLAT, 1, () => ({ right: true, down: true, fire: true }));
+  assert.equal(pl.state, 'air');                                 // hopped, did not slide-burst
+  assert.deepEqual(fired.at(-1).slice(2), [0, 1]);               // shot straight down
+  assert.ok(pl.body.vy <= P.HOP_VY + P.GRAV * DT + 1);           // full hop velocity
+  assert.ok(pl.body.vx >= P.SLIDE_SPEED);                        // slide speed carried into the arc
+  assert.equal(pl.airCharges, P.AIR_CHARGES);                    // grounded hop is free
+  drive(pl, FLAT, 4, () => ({ right: true }));
+  assert.equal(pl.state, 'air');
+  assert.equal(pl.body.h, 44);                                   // stand box restored in open air
+});
+
+test('pinned under a ceiling: fire with down held bursts, never hops', () => {
+  const TUNNEL = parseChunk([
+    '..............................',
+    '..............................',
+    '........######################',   // 2-tile clearance from x=128 on
+    '..............................',
+    '..P...........................',
+    '##############################',
+  ]);
+  const pl = makePlayer(TUNNEL.spawn); drive(pl, TUNNEL, 150, () => ({}));
+  drive(pl, TUNNEL, 30, () => ({ right: true }));
+  drive(pl, TUNNEL, 20, () => ({ right: true, down: true }));    // slide in under the ceiling
+  assert.equal(pl.state, 'slide');
+  assert.ok(!bodyFits(TUNNEL, pl.body.x, pl.body.y, pl.body.w, 44));   // genuinely pinned
+  const before = pl.body.vx;
+  const fired = drive(pl, TUNNEL, 1, () => ({ right: true, down: true, fire: true }));
+  assert.equal(fired.at(-1)[2], -1);                             // backward bolt = burst
+  assert.ok(pl.body.vx > before + 100);                          // burst added speed
+  assert.ok(pl.body.vy >= 0);                                    // never left the floor
+  assert.equal(pl.state, 'slide');
 });
 
 test('slide off a ledge goes airborne and restores height when clear', () => {
@@ -99,6 +148,35 @@ test('pit fall respawns at checkpoint in spawn state', () => {
   assert.ok(pl.deaths >= 1);
 });
 
+test('respawn under a low ceiling never embeds, and the gun gets you out', () => {
+  const PIN = parseChunk([                        // stalactite over the checkpoint:
+    '..............................',             // a 44-stand does not fit at x=104,
+    '..............................',             // a 24-slide does
+    '......#.......................',
+    '..............................',
+    '..P...C.......................',
+    '############..................',             // pit past x=192
+  ]);
+  const pl = makePlayer(PIN.spawn); drive(pl, PIN, 150, () => ({}));
+  drive(pl, PIN, 14, () => ({ right: true }));
+  drive(pl, PIN, 16, () => ({ right: true, down: true }));       // slide under, taking the checkpoint
+  assert.deepEqual(pl.checkpoint, PIN.checkpoints[0]);
+  drive(pl, PIN, 40, () => ({ right: true }));                   // stand up, run off the ledge
+  while (pl.state !== 'spawn') drive(pl, PIN, 1, () => ({}));    // fall into the pit
+  assert.equal(pl.deaths, 1);
+  assert.equal(pl.body.x, PIN.checkpoints[0].x);
+  assert.equal(pl.body.h, 24);                                   // shrunk to fit, not force-stood
+  assert.ok(bodyFits(PIN, pl.body.x, pl.body.y, pl.body.w, pl.body.h));   // never embedded
+  // worst case: beam out with no input at all, so the pinned pose stalls at vx 0
+  while (pl.state === 'spawn') drive(pl, PIN, 1, () => ({}));
+  drive(pl, PIN, 2, () => ({}));
+  assert.equal(pl.body.vx, 0);
+  const x0 = pl.body.x;
+  drive(pl, PIN, 40, i => ({ right: true, fire: i % 8 === 0 }));  // pinned bursts = legs
+  assert.ok(pl.body.x - x0 > 60, `moved ${pl.body.x - x0}px`);
+  assert.equal(pl.body.h, 44);                                    // stood up once clear
+});
+
 test('duck applies friction, no infinite glide', () => {
   const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
   drive(pl, FLAT, 30, () => ({ right: true }));
@@ -124,7 +202,9 @@ test('airborne momentum above RUN persists while holding direction', () => {
   ]);
   const pl = makePlayer(L2.spawn); drive(pl, L2, 150, () => ({}));
   drive(pl, L2, 8, () => ({ right: true }));
-  drive(pl, L2, 16, i => ({ right: true, down: true, fire: i === 2 }));  // slide + burst off the edge
+  drive(pl, L2, 1, () => ({ right: true, down: true }));         // slide
+  drive(pl, L2, 1, () => ({ right: true, fire: true }));         // burst (down released)
+  drive(pl, L2, 14, () => ({ right: true }));                    // ride it off the edge
   assert.equal(pl.state, 'air');
   assert.ok(Math.abs(pl.body.vx) > P.RUN + 50);                // launched fast, not clamped
   drive(pl, L2, 6, () => ({ right: true }));

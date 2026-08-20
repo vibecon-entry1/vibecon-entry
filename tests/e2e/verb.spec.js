@@ -53,17 +53,51 @@ test('grounded down-shot hop is free; air boosts spend and landing refills', asy
 
 test('slide-fire burst accelerates past run speed', async ({ page }) => {
   const errors = await boot(page);
+  // down is RELEASED on the fire frames: with down held a ground-shot hops out
+  // of the slide instead (see the slide-hop test below). The slide survives the
+  // release inside the SLIDE_MIN window, so both shots land as bursts.
   const tape = [
     { f: 0, a: { right: true } },
     { f: 25, a: { right: true, down: true } },                        // slide
-    { f: 29, a: { right: true, down: true, fire: true } },            // burst
-    { f: 31, a: { right: true, down: true } },
-    { f: 36, a: null },
+    { f: 29, a: { right: true, fire: true } },                        // burst 1
+    { f: 31, a: { right: true } },
+    { f: 38, a: { right: true, fire: true } },                        // burst 2 → BURST_MAX
+    { f: 40, a: { right: true } },
+    { f: 46, a: null },
   ];
-  await runTape(page, tape);
+  await page.evaluate(t => {
+    const base = window.__blast.frame;
+    window.__blast.playTape(t.map(e => ({ f: base + e.f, a: e.a })));
+  }, tape);
+  // latch the burst peak while it is live; SLIDE_SPEED alone can never reach it
+  await page.waitForFunction(() => Math.abs(window.__blast.state().vx) > 300,
+                             null, { timeout: 10000 });
+  await page.screenshot({ path: 'tests/artifacts/verb-burst.png' });
+  await page.waitForFunction(() => window.__blast.tapeDone(), null, { timeout: 15000 });
   const st = await page.evaluate(() => window.__blast.state());
   expect(Math.abs(st.vx)).toBeGreaterThan(P.RUN);
-  await page.screenshot({ path: 'tests/artifacts/verb-burst.png' });
+  expect(st.deaths).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('slide-hop: down+fire with direction held hops instead of bursting', async ({ page }) => {
+  const errors = await boot(page);
+  // The human gesture that used to be fatal: hold right THROUGH a down+fire tap.
+  // Movement resolves before fire, so the frame reads as a slide — the ground
+  // shot must still win and hop, or the first gap is unclearable at speed.
+  const x0 = (await page.evaluate(() => window.__blast.state())).x;
+  await runTape(page, [
+    { f: 0, a: { right: true } },
+    { f: 55, a: { right: true, down: true, fire: true } },
+    { f: 58, a: { right: true } },
+    { f: 120, a: null },
+  ]);
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.screenshot({ path: 'tests/artifacts/verb-slide-hop.png' });
+  expect(x0).toBeLessThan(260);                   // the gap really was ahead of us
+  expect(st.x).toBeGreaterThan(260);              // cleared gap 1 without releasing right
+  expect(st.deaths).toBe(0);
+  expect(st.charges).toBe(3);                     // the hop was free
   expect(errors).toEqual([]);
 });
 
@@ -73,15 +107,12 @@ test('full gauntlet tape makes real progress', async ({ page }) => {
   // against the real GB1 physics (see calibration notes below); keep the
   // assertions.
   //
-  // Gotcha that drove this shape: holding {right, down, fire} together while
-  // GROUNDED does not hop — player.js resolves movement before fire each
-  // frame, and grounded + down + dir!=0 satisfies wantSlide, which flips the
-  // state to 'slide' *before* the fire branch runs; fire then reads the fresh
-  // 'slide' state and slide-bursts instead of hopping. So every grounded hop
-  // below fires on a frame with `right` OFF (dir=0 -> wantDuck, which does not
-  // block the grounded-hop fire branch), then re-presses right one frame
-  // later. Airborne down+fire is safe to hold alongside right (wantSlide
-  // requires grounded), so the boosts just add `down/fire` on top of `right`.
+  // Shape note: the grounded hops below fire on a frame with `right` OFF, then
+  // re-press right one frame later. That is no longer *required* — the ground
+  // shot now beats slide-fire, so holding right through the tap gives a
+  // slide-hop (covered by the slide-hop test above) — but a standing hop and a
+  // slide-hop carry different speed, and these frame numbers are calibrated
+  // against the standing one. Airborne down+fire rides on top of `right`.
 
   // Frame numbers assume P as of this commit (HOP_VY -290, BOOST_VY -320, RUN 150,
   // RUN_ACCEL 1400, GRAV 900, FIRE_CD 0.12). Retune by iterating against the live
