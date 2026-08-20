@@ -31,6 +31,10 @@
   "seed": 204,
   "file": "candidates/mesa_d.png"
  },
+ "mesa_e": {
+  "seed": 205,
+  "file": "candidates/mesa_e.png"
+ },
  "rock_a": {
   "seed": 301,
   "file": "candidates/rock_a.png"
@@ -46,6 +50,10 @@
  "rock_d": {
   "seed": 304,
   "file": "candidates/rock_d.png"
+ },
+ "rock_e": {
+  "seed": 305,
+  "file": "candidates/rock_e.png"
  },
  "tiles_a": {
   "seed": 401,
@@ -74,6 +82,10 @@
  "props_d": {
   "seed": 504,
   "file": "candidates/props_d.png"
+ },
+ "props_e": {
+  "seed": 505,
+  "file": "candidates/props_e.png"
  },
  "title_a": {
   "seed": 601,

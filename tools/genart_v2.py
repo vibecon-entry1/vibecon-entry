@@ -673,14 +673,93 @@ def title_d(seed):
         d.line([x, y, x + rng.randrange(2, 5), y], fill=SUBSOIL)
     return im
 
+
+# ===========================================================================
+# FINAL PASS — tie-break winners with the last review notes folded in
+# ===========================================================================
+
+def mesa_e(seed):
+    """mesa_b silhouettes with the rim dimmed one step (recede further)."""
+    rng = random.Random(seed)
+    im = sheet(VW, 120); d = ImageDraw.Draw(im)
+    x = -20
+    while x < VW + 40:                      # back row, shadow tone, no rim
+        w = rng.randrange(90, 180); top = rng.randrange(6, 30)
+        terraced_mesa(d, rng, x, w, top, 120, rim='#241d3c', base=MESA_SHADOW)
+        x += w + rng.randrange(6, 30)
+    x = -rng.randrange(0, 40)
+    while x < VW + 40:                      # front row, dimmer rim
+        w = rng.randrange(60, 130); top = rng.randrange(30, 70)
+        terraced_mesa(d, rng, x, w, top, 120, rim='#332852')
+        x += w + rng.randrange(24, 70)
+    return im
+
+def rock_e(seed):
+    """rock_d with highlights pushed down a value step and wider flat tops."""
+    rng = random.Random(seed)
+    im = sheet(VW, 80); d = ImageDraw.Draw(im)
+    hi, mid_c = '#4c3053', '#43294c'
+    x = -rng.randrange(0, 20)
+    while x < VW + 30:
+        w = rng.randrange(20, 56)
+        hgt = rng.randrange(14, 48)
+        H = 80; top = H - hgt
+        flat = rng.randrange(4, max(5, w // 3))
+        px0 = x + rng.randrange(w // 4, w // 2)
+        pts = [(x, H)]
+        cx_, cy = x, H
+        while cx_ < px0 and cy > top:
+            sw = rng.randrange(2, 6); sh = rng.randrange(2, 7)
+            cx_ = min(px0, cx_ + sw); cy = max(top, cy - sh)
+            pts += [(cx_, pts[-1][1]), (cx_, cy)]
+        pts += [(px0, top), (px0 + flat, top)]
+        cx_, cy = px0 + flat, top
+        while cx_ < x + w and cy < H:
+            sw = rng.randrange(2, 6); sh = rng.randrange(3, 8)
+            cx_ = min(x + w, cx_ + sw); cy = min(H, cy + sh)
+            pts += [(cx_, pts[-1][1]), (cx_, cy)]
+        pts += [(x + w, H)]
+        d.polygon(pts, fill=ROCK_BASE)
+        d.line([px0, top, px0 + flat - 1, top], fill=hi)
+        d.polygon([(px0, top + 1), (px0 - max(2, w // 6), H),
+                   (px0 - max(4, w // 3), H)], fill=mid_c)
+        d.polygon([(px0 + flat, top + 1), (x + w, H),
+                   (x + w - max(2, w // 5), H)], fill=ROCK_SH)
+        x += w + rng.randrange(12, 44)
+    d.rectangle([0, 78, VW - 1, 79], fill=ROCK_SH)
+    return im
+
+def props_e(seed):
+    """props_d with the top-edge light dimmed to kill false-platform reads."""
+    rng = random.Random(seed)
+    im = props_set(seed)
+    cell = im.crop((96, 0, 144, 64))
+    px = cell.load()
+    for y in range(64):
+        for x in range(48):
+            r, g, b, a = px[x, y]
+            if a:
+                px[x, y] = (min(255, r + 16), g, min(255, b + 20), a)
+    im.paste(cell, (96, 0))
+    d = ImageDraw.Draw(im)
+    for x0 in (0, 48, 96):
+        for x in range(x0, x0 + 48):
+            for y in range(64):
+                pxl = im.getpixel((x, y))
+                if pxl[3] > 0:
+                    if (x + y) % 2:
+                        d.point((x, y), fill='#332852')   # dim violet edge
+                    break
+    return im
+
 # ===========================================================================
 
 FAMILIES = {
     'sky':   {'a': (sky_a, 101), 'b': (sky_b, 102), 'c': (sky_c, 103), 'd': (sky_d, 104)},
-    'mesa':  {'a': (mesa_a, 201), 'b': (mesa_b, 202), 'c': (mesa_c, 203), 'd': (mesa_d, 204)},
-    'rock':  {'a': (rock_a, 301), 'b': (rock_b, 302), 'c': (rock_c, 303), 'd': (rock_d, 304)},
+    'mesa':  {'a': (mesa_a, 201), 'b': (mesa_b, 202), 'c': (mesa_c, 203), 'd': (mesa_d, 204), 'e': (mesa_e, 205)},
+    'rock':  {'a': (rock_a, 301), 'b': (rock_b, 302), 'c': (rock_c, 303), 'd': (rock_d, 304), 'e': (rock_e, 305)},
     'tiles': {'a': (tiles_a, 401), 'b': (tiles_b, 402), 'c': (tiles_c, 403), 'd': (tiles_d, 404)},
-    'props': {'a': (props_a, 501), 'b': (props_b, 502), 'd': (props_d, 504)},
+    'props': {'a': (props_a, 501), 'b': (props_b, 502), 'd': (props_d, 504), 'e': (props_e, 505)},
     'title': {'a': (title_a, 601), 'b': (title_b, 602), 'd': (title_d, 604)},
 }
 # Round-2 mocks are composed over the refined set so the whole refreshed scene
@@ -704,6 +783,8 @@ def main():
     base2 = {f: imgs[(f, ROUND2_BASE[f])] for f in ROUND2_BASE}
     for fam in ('sky', 'mesa', 'rock', 'tiles', 'props'):
         for cid in FAMILIES[fam]:
+            if cid == 'e':
+                continue                    # finals appear in final_scene.png
             layers = dict(base2 if cid == 'd' else base1)
             layers[fam] = imgs[(fam, cid)]
             comp = compose_scene(layers['sky'], layers['mesa'], layers['rock'],
@@ -711,6 +792,24 @@ def main():
             up2(comp).save(MOCKS / f'{fam}_{cid}.png')
     for cid in FAMILIES['title']:
         up2(imgs[('title', cid)].convert('RGBA')).save(MOCKS / f'title_{cid}.png')
+    # Round-3 isolation tie-breaks: identical base everywhere, ONLY the named
+    # family varies (round-2 comparisons crossed bases and confounded judges).
+    base3 = {'sky': imgs[('sky', 'd')], 'mesa': imgs[('mesa', 'b')],
+             'rock': imgs[('rock', 'd')], 'tiles': imgs[('tiles', 'd')],
+             'props': imgs[('props', 'b')]}
+    for fam, pair in (('mesa', ('b', 'd')), ('rock', ('a', 'd')), ('props', ('b', 'd'))):
+        for cid in pair:
+            layers = dict(base3); layers[fam] = imgs[(fam, cid)]
+            comp = compose_scene(layers['sky'], layers['mesa'], layers['rock'],
+                                 layers['tiles'], layers['props'], sprites)
+            up2(comp).save(MOCKS / f'{fam}_{cid}_iso.png')
+    # the winning set, composed once for sign-off
+    win = {'sky': imgs[('sky', 'd')], 'mesa': imgs[('mesa', 'e')],
+           'rock': imgs[('rock', 'e')], 'tiles': imgs[('tiles', 'd')],
+           'props': imgs[('props', 'e')]}
+    comp = compose_scene(win['sky'], win['mesa'], win['rock'],
+                         win['tiles'], win['props'], sprites)
+    up2(comp).save(MOCKS / 'final_scene.png')
     (OUT / 'MANIFEST.json').write_text(json.dumps(manifest, indent=1))
     print('candidates:', len(manifest), '| mocks written to', MOCKS)
 
