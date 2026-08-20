@@ -1,6 +1,7 @@
 <!-- NOTE: refresh every screenshot in media/ after the Plan-6 visual overhaul pass -->
 <p align="center">
-  <img src="web/assets/brand/circle-icon-100.png" width="80" alt="Dogelon Mars">
+  <img src="media/rocketride.gif" width="130" alt="Dogelon rides"><br>
+  <img src="web/assets/brand/circle-icon-100.png" width="56" alt="Dogelon Mars">
 </p>
 
 <h1 align="center">SUCH BLAST</h1>
@@ -11,6 +12,11 @@
   <img src="https://img.shields.io/badge/dependencies-0-eec548" alt="zero deps">
   <img src="https://img.shields.io/badge/tests-171%20passing-2c8" alt="tests">
   <img src="https://img.shields.io/badge/wow-100%25-a5c3ff" alt="wow">
+  <br>
+  <img src="https://img.shields.io/badge/level-1488%20tiles-532e6d" alt="level">
+  <img src="https://img.shields.io/badge/boss-MEGA%20SAUCER-982c2c" alt="boss">
+  <img src="https://img.shields.io/badge/license-MIT%20%2B%20doge%20carve--out-1e2f51" alt="license">
+  <img src="https://img.shields.io/badge/playable-1%E2%80%935%20min-ffa900" alt="playable">
 </p>
 
 <p align="center">🎮 <b>PLAY:</b> <i>very link soon — GitHub Pages incoming</i> 🎮</p>
