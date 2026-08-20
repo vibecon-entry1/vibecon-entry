@@ -48,15 +48,18 @@ def sheet(w, h, bg=(0, 0, 0, 0)):
     return Image.new('RGBA', (w, h), bg)
 
 BAYER2 = [[0, 2], [3, 1]]    # 2x2 ordered dither thresholds /4
+BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
 
 # ===========================================================================
 # FAMILY A — SKY (640x360, opaque)
 # ===========================================================================
 
-def sky_gradient(im, stops):
-    """Vertical banded gradient with 2x2 Bayer dither at transitions (R5).
-    stops: [(y_frac, color), ...] top→bottom."""
+def sky_gradient(im, stops, matrix=None):
+    """Vertical banded gradient with ordered-dither transitions (R5).
+    stops: [(y_frac, color), ...] top→bottom. matrix: BAYER2 (default) or BAYER4."""
     px = im.load()
+    m = matrix or BAYER2
+    n = len(m); denom = n * n
     cols = [(int(f * im.height), hx(c)) for f, c in stops]
     for y in range(im.height):
         # find surrounding stops
@@ -67,7 +70,7 @@ def sky_gradient(im, stops):
                 break
         # ordered dither between the two band colors instead of true-color blend
         for x in range(im.width):
-            th = (BAYER2[y % 2][x % 2] + 0.5) / 4
+            th = (m[y % n][x % n] + 0.5) / denom
             px[x, y] = (c1 if t > th else c0) + (255,)
     return im
 
@@ -510,16 +513,179 @@ def compose_scene(sky, mesas, rocks, tiles, props, sprites, with_pit=True):
 def up2(im):
     return im.resize((im.width * 2, im.height * 2), Image.NEAREST)
 
+
+# ===========================================================================
+# ROUND 2 — refined winners (vision-review notes applied)
+# ===========================================================================
+
+def sky_d(seed):
+    """sky_b refined: cooler darker nebula, sparser stars, cool-only palette,
+    4x4 Bayer transitions."""
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.28, SKY_TOP),
+                                      (0.50, SKY_MID), (0.63, SKY_GLOW)],
+                      matrix=BAYER4)
+    nebula(im, rng, 3, '#241a3c', '#181024')
+    d = ImageDraw.Draw(im)
+    H = int(VH * 0.82)
+    for _ in range(56):                       # dim pass, glow tone
+        d.point((rng.randrange(VW), rng.randrange(H)), fill=SKY_GLOW)
+    for _ in range(34):                       # mid pass, muted violet
+        d.point((rng.randrange(VW), int(rng.randrange(H) * 0.9)), fill='#4a3a68')
+    for _ in range(10):                       # bright pass: white/ice only
+        x, y = rng.randrange(VW), int(rng.randrange(H) * 0.8)
+        c = ICE if rng.random() < 0.3 else '#e8e4f0'
+        d.line([x - 1, y, x + 1, y], fill=c)
+        d.line([x, y - 1, x, y + 1], fill=c)
+    return im
+
+def mesa_d(seed):
+    """mesa_b refined: dimmer rims, micro-step breakup, 4px atmospheric strip
+    at the band base, back row pushed toward the sky."""
+    rng = random.Random(seed)
+    im = sheet(VW, 120); d = ImageDraw.Draw(im)
+    x = -20
+    while x < VW + 40:                      # back row: nearly sky-tone
+        w = rng.randrange(90, 180); top = rng.randrange(6, 30)
+        terraced_mesa(d, rng, x, w, top, 120, rim='#1f1a34', base='#131022')
+        x += w + rng.randrange(6, 30)
+    x = -rng.randrange(0, 40)
+    while x < VW + 40:                      # front row, rim dimmed ~12%
+        w = rng.randrange(60, 130); top = rng.randrange(30, 70)
+        terraced_mesa(d, rng, x, w, top, 120, rim='#332852', base=MESA_BASE)
+        x += w + rng.randrange(24, 70)
+    for _ in range(40):                     # micro-steps on long straight lines
+        sx, sy = rng.randrange(VW), rng.randrange(20, 100)
+        if im.getpixel((sx, sy))[3] > 0 and (sy < 2 or im.getpixel((sx, sy - 2))[3] == 0):
+            d.rectangle([sx, sy - 1, min(VW - 1, sx + rng.randrange(2, 5)), sy],
+                        fill=MESA_BASE)
+    d.rectangle([0, 116, VW - 1, 119], fill='#1d1530')   # atmospheric density
+    return im
+
+def rock_d(seed):
+    """rock_a refined: flat 2-3px tops (no hazard-spike read), dimmer highlight,
+    midtone seam between facets, ~20% lower density."""
+    rng = random.Random(seed)
+    im = sheet(VW, 80); d = ImageDraw.Draw(im)
+    hi, mid_c = '#57395f', '#4c2f55'
+    x = -rng.randrange(0, 20)
+    while x < VW + 30:
+        w = rng.randrange(20, 56)
+        hgt = rng.randrange(14, 48)
+        H = 80; top = H - hgt
+        flat = rng.randrange(3, max(4, w // 3))
+        px0 = x + rng.randrange(w // 4, w // 2)
+        pts = [(x, H)]
+        cx_, cy = x, H
+        while cx_ < px0 and cy > top:
+            sw = rng.randrange(2, 6); sh = rng.randrange(2, 7)
+            cx_ = min(px0, cx_ + sw); cy = max(top, cy - sh)
+            pts += [(cx_, pts[-1][1]), (cx_, cy)]
+        pts += [(px0, top), (px0 + flat, top)]
+        cx_, cy = px0 + flat, top
+        while cx_ < x + w and cy < H:
+            sw = rng.randrange(2, 6); sh = rng.randrange(3, 8)
+            cx_ = min(x + w, cx_ + sw); cy = min(H, cy + sh)
+            pts += [(cx_, pts[-1][1]), (cx_, cy)]
+        pts += [(x + w, H)]
+        d.polygon(pts, fill=ROCK_BASE)
+        d.line([px0, top, px0 + flat - 1, top], fill=hi)          # lit flat top
+        d.polygon([(px0, top + 1), (px0 - max(2, w // 6), H),
+                   (px0 - max(4, w // 3), H)], fill=mid_c)        # midtone face
+        d.polygon([(px0 + flat, top + 1), (x + w, H),
+                   (x + w - max(2, w // 5), H)], fill=ROCK_SH)    # shadow face
+        x += w + rng.randrange(12, 44)
+    d.rectangle([0, 78, VW - 1, 79], fill=ROCK_SH)                # AO seam (R8)
+    return im
+
+def tiles_d(seed):
+    """tiles_a refined: 1px shadow seam under the crust, clustered dashes,
+    brighter pit-edge inner highlight."""
+    rng = random.Random(seed)
+    im = tileset(seed)
+    d = ImageDraw.Draw(im)
+    for fx in (0, 80, 96):
+        d.rectangle([fx, 4, fx + 15, 4], fill='#4a2b42')
+    d.rectangle([32, 0, 32, 15], fill='#a5506b')     # edgeL leading edge
+    d.rectangle([63, 0, 63, 15], fill='#a5506b')     # edgeR leading edge
+    for fx in (16, 112):                             # clustered dashes
+        d.rectangle([fx, 0, fx + 15, 15], fill=FILL_DEEP)
+        for _ in range(2):
+            cxx, cyy = rng.randrange(1, 9), rng.randrange(3, 13)
+            for k in range(rng.randrange(2, 4)):
+                w = rng.randrange(2, 5)
+                yy = (cyy + k * 2) % 16
+                d.line([fx + cxx + k, yy, fx + min(15, cxx + k + w), yy], fill=SUBSOIL)
+        d.point((fx + rng.randrange(16), rng.randrange(16)), fill=UNDERLIP)
+    return im
+
+def props_d(seed):
+    """props_b refined: purple-tinted wreck, sky-glow 1px top edges on all
+    three props."""
+    rng = random.Random(seed)
+    im = props_set(seed)
+    cell = im.crop((96, 0, 144, 64))
+    px = cell.load()
+    for y in range(64):
+        for x in range(48):
+            r, g, b, a = px[x, y]
+            if a:
+                px[x, y] = (min(255, r + 16), g, min(255, b + 20), a)
+    im.paste(cell, (96, 0))
+    d = ImageDraw.Draw(im)
+    for x0 in (0, 48, 96):                           # dashed sky-glow top edge
+        for x in range(x0, x0 + 48):
+            for y in range(64):
+                p = im.getpixel((x, y))
+                if p[3] > 0:
+                    if (x + y) % 2:
+                        d.point((x, y), fill=SKY_GLOW)
+                    break
+    return im
+
+def title_d(seed):
+    """title_b refined: raised black point, muted galaxy core, textured floor
+    strip, 4x4 Bayer sky."""
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, '#141020'), (0.4, '#141020'),
+                                      (0.7, SKY_MID), (0.95, SKY_GLOW)],
+                      matrix=BAYER4)
+    d = ImageDraw.Draw(im)
+    for _ in range(700):
+        t = rng.random()
+        y = int(rng.gauss(60 + t * 70, 12))
+        if 0 <= y < VH:
+            d.point((int(t * VW), y), fill='#221a38' if rng.random() < 0.65 else '#8a7b9e')
+    stars3(im, rng, 90, 55, 14, band_frac=0.72)
+    rows = [('#1c1630', '#2a2246', 190, 250), ('#241c3c', '#362c58', 230, 290),
+            (MESA_BASE, MESA_RIM, 268, 320)]
+    for base, rim, tlo, thi in rows:
+        x = -rng.randrange(0, 40)
+        while x < VW + 40:
+            w = rng.randrange(80, 170); top = rng.randrange(tlo, thi)
+            terraced_mesa(d, rng, x, w, top, VH, rim=rim, base=base)
+            x += w + rng.randrange(10, 60)
+    d.rectangle([0, VH - 22, VW, VH], fill=FILL_DEEP)
+    d.rectangle([0, VH - 22, VW, VH - 22], fill=CRUST)
+    d.rectangle([0, VH - 21, VW, VH - 21], fill='#4a2b42')
+    for _ in range(60):
+        x, y = rng.randrange(VW), rng.randrange(VH - 19, VH - 2)
+        d.line([x, y, x + rng.randrange(2, 5), y], fill=SUBSOIL)
+    return im
+
 # ===========================================================================
 
 FAMILIES = {
-    'sky':   {'a': (sky_a, 101), 'b': (sky_b, 102), 'c': (sky_c, 103)},
-    'mesa':  {'a': (mesa_a, 201), 'b': (mesa_b, 202), 'c': (mesa_c, 203)},
-    'rock':  {'a': (rock_a, 301), 'b': (rock_b, 302), 'c': (rock_c, 303)},
-    'tiles': {'a': (tiles_a, 401), 'b': (tiles_b, 402), 'c': (tiles_c, 403)},
-    'props': {'a': (props_a, 501), 'b': (props_b, 502)},
-    'title': {'a': (title_a, 601), 'b': (title_b, 602)},
+    'sky':   {'a': (sky_a, 101), 'b': (sky_b, 102), 'c': (sky_c, 103), 'd': (sky_d, 104)},
+    'mesa':  {'a': (mesa_a, 201), 'b': (mesa_b, 202), 'c': (mesa_c, 203), 'd': (mesa_d, 204)},
+    'rock':  {'a': (rock_a, 301), 'b': (rock_b, 302), 'c': (rock_c, 303), 'd': (rock_d, 304)},
+    'tiles': {'a': (tiles_a, 401), 'b': (tiles_b, 402), 'c': (tiles_c, 403), 'd': (tiles_d, 404)},
+    'props': {'a': (props_a, 501), 'b': (props_b, 502), 'd': (props_d, 504)},
+    'title': {'a': (title_a, 601), 'b': (title_b, 602), 'd': (title_d, 604)},
 }
+# Round-2 mocks are composed over the refined set so the whole refreshed scene
+# is judged together.
+ROUND2_BASE = {'sky': 'd', 'mesa': 'd', 'rock': 'd', 'tiles': 'd', 'props': 'd'}
 
 def main():
     CAND.mkdir(parents=True, exist_ok=True)
@@ -532,11 +698,14 @@ def main():
             imgs[(fam, cid)] = im
             im.save(CAND / f'{fam}_{cid}.png')
             manifest[f'{fam}_{cid}'] = {'seed': seed, 'file': f'candidates/{fam}_{cid}.png'}
-    # defaults for the non-varying layers of each mock
-    base = {f: imgs[(f, 'a')] for f in ('sky', 'mesa', 'rock', 'tiles', 'props')}
+    # defaults for the non-varying layers of each mock: round-1 candidates are
+    # judged over the 'a' set, round-2 refinements over the refined 'd' set.
+    base1 = {f: imgs[(f, 'a')] for f in ('sky', 'mesa', 'rock', 'tiles', 'props')}
+    base2 = {f: imgs[(f, ROUND2_BASE[f])] for f in ROUND2_BASE}
     for fam in ('sky', 'mesa', 'rock', 'tiles', 'props'):
         for cid in FAMILIES[fam]:
-            layers = dict(base); layers[fam] = imgs[(fam, cid)]
+            layers = dict(base2 if cid == 'd' else base1)
+            layers[fam] = imgs[(fam, cid)]
             comp = compose_scene(layers['sky'], layers['mesa'], layers['rock'],
                                  layers['tiles'], layers['props'], sprites)
             up2(comp).save(MOCKS / f'{fam}_{cid}.png')

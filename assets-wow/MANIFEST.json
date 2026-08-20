@@ -11,6 +11,10 @@
   "seed": 103,
   "file": "candidates/sky_c.png"
  },
+ "sky_d": {
+  "seed": 104,
+  "file": "candidates/sky_d.png"
+ },
  "mesa_a": {
   "seed": 201,
   "file": "candidates/mesa_a.png"
@@ -22,6 +26,10 @@
  "mesa_c": {
   "seed": 203,
   "file": "candidates/mesa_c.png"
+ },
+ "mesa_d": {
+  "seed": 204,
+  "file": "candidates/mesa_d.png"
  },
  "rock_a": {
   "seed": 301,
@@ -35,6 +43,10 @@
   "seed": 303,
   "file": "candidates/rock_c.png"
  },
+ "rock_d": {
+  "seed": 304,
+  "file": "candidates/rock_d.png"
+ },
  "tiles_a": {
   "seed": 401,
   "file": "candidates/tiles_a.png"
@@ -47,6 +59,10 @@
   "seed": 403,
   "file": "candidates/tiles_c.png"
  },
+ "tiles_d": {
+  "seed": 404,
+  "file": "candidates/tiles_d.png"
+ },
  "props_a": {
   "seed": 501,
   "file": "candidates/props_a.png"
@@ -55,6 +71,10 @@
   "seed": 502,
   "file": "candidates/props_b.png"
  },
+ "props_d": {
+  "seed": 504,
+  "file": "candidates/props_d.png"
+ },
  "title_a": {
   "seed": 601,
   "file": "candidates/title_a.png"
@@ -62,5 +82,9 @@
  "title_b": {
   "seed": 602,
   "file": "candidates/title_b.png"
+ },
+ "title_d": {
+  "seed": 604,
+  "file": "candidates/title_d.png"
  }
 }
