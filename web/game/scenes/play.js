@@ -38,7 +38,7 @@ const AIR_FRAME = 6;
 
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
-export function makePlay({ atlas, input, save, go, jukebox }) {
+export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
   jukebox?.playPool('run');      // no-op if we're already on the run pool (R-restart)
   const level = buildGauntlet();   // fresh per scene: R-restart re-seals any carved gate
   const player = makePlayer(level.spawn);
@@ -124,6 +124,7 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
   // by the bolt-kill path and the ?test cheat so the two can never drift.
   function bossDeath() {
     cam.shake(10, 0.4);
+    sfx?.play('bossdown');                              // in HERE so the ?test cheat sounds too
     score.add('boss');                                  // flat +500, not a roster kill
     killCount++;                                        // ...but it still counts in the tally
     for (const [tx, ty] of level.gate) level.carve(tx, ty);
@@ -236,7 +237,8 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       if (input.pressed('retry')) { go('play'); return; }
       // Mute is checked BEFORE the pause bail: silencing the game while it's
       // paused is exactly when you want to reach for it.
-      if (input.pressed('mute')) jukebox?.toggleMute();
+      // One switch for both engines — main.js owns it (see toggleMute there).
+      if (input.pressed('mute')) toggleMute?.();
       if (input.pressed('pause')) { paused = !paused; jukebox?.setDuck(paused); }
       if (paused) return;                                // freeze EVERYTHING, clock included
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
@@ -247,6 +249,24 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       // A muzzle still at t === 0 after the update is one fired THIS frame;
       // dy marks it as the down-shot (hop, boost or the pinned variant).
       if (player.muzzle && player.muzzle.dy && player.muzzle.t === 0) gunDownT = GUN_DOWN_T;
+      // SFX are derived HERE, not raised by the player: player.js is engine-pure
+      // and importing an audio module into it would put a browser dependency in
+      // the middle of the sim (and in every offline physics harness). The scene
+      // already watches the same edges for the camera and the gun-down pose, so
+      // reading the fresh muzzle for a fourth reason costs nothing.
+      //
+      // The muzzle carries enough to tell the four fire paths apart exactly:
+      //   dy === 1, was on the ground → hop
+      //   dy === 1, was in the air    → boost (the air-charge burn)
+      //   dy === 0, dx opposes facing → burst (the slide chord fires BACKWARD)
+      //   dy === 0, dx  along facing  → pew
+      // wasAirborne is sampled BEFORE player.update() on purpose: the hop zeroes
+      // coyote as it fires, so a post-update read would call every hop a boost.
+      if (player.muzzle && player.muzzle.t === 0) {
+        const m = player.muzzle;
+        sfx?.play(m.dy ? (wasAirborne ? 'boost' : 'hop')
+                       : m.dx === -player.facing ? 'burst' : 'pew');
+      }
       // contact gate: hurt() owns damage authority via iframes; the dummy body
       // is a perf skip so overlapping-frame AABB checks stop during the stagger.
       enemies.update(dt, player.iframes > 0 ? { x: player.body.x, y: -9999, w: 0 } : player.body,
@@ -278,7 +298,8 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       playerBolts.forEachHittable(b => {
         if (boss && boss.on && boss.hitTest(b)) {
           playerBolts.kill(b);
-          if (boss.hurt()) bossDeath();
+          sfx?.play('bosshit');
+          if (boss.hurt()) bossDeath();     // bossdown rings from inside bossDeath
           return;
         }
         const e = enemies.hitTest(b);
@@ -286,6 +307,10 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
         playerBolts.kill(b);
         if (--e.hp > 0) return;
         enemies.kill(e, dead => {
+          // Minions get their OWN pop rather than a layered one: a boss summon
+          // dying and a roster grunt dying must be tellable apart by ear during
+          // the fight, and two overlapping zaps just read as one muddy zap.
+          sfx?.play(e.summoned ? 'minionpop' : 'killpop');
           const airborne = player.coyote === 0;
           score.onKill(airborne);
           killCount++;
@@ -303,7 +328,9 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
         }
       });
 
-      coins.update(dt, player.body, c => { score.add('coin'); popups.spawn(c.x, c.y, '+10'); });
+      coins.update(dt, player.body, c => {
+        sfx?.play('coin'); score.add('coin'); popups.spawn(c.x, c.y, '+10');
+      });
 
       if (wasAirborne && player.coyote > 0) { score.onLand(); flightWows = 0; }
       const evs = score.takeEvents();
@@ -314,10 +341,15 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       popups.update(dt);
 
       cam.follow(player.body.x, player.body.y, player.facing, dt, level);
-      if (player.hp < prevHp && player.state !== 'ded') cam.shake(3, 0.15);
+      // Damage is read off the hp EDGE rather than hooked into player.hurt(),
+      // so contact damage, enemy bolts and boss bolts all sound the same with
+      // one call site. A hit that kills is silent here — the death jingle below
+      // owns that frame.
+      if (player.hp < prevHp && player.state !== 'ded') { sfx?.play('hurt'); cam.shake(3, 0.15); }
       // real death: the board resets around you — every enemy back at its spawn,
       // and the run pays 100 wow for it (floored at 0). Coins stay collected.
       if (player.state === 'ded' && prevState !== 'ded') {
+        sfx?.play('ded');
         cam.shake(8, 0.3);
         score.dock(100);
         enemies.reviveAll();

@@ -4,6 +4,7 @@ import { createInput } from './engine/input.js';
 import { loadAtlas } from './engine/assets.js';
 import { makeSave } from './engine/save.js';
 import { makeJukebox } from './engine/audio.js';
+import { makeSfx } from './engine/sfx.js';
 import { stickerStats } from './engine/sticker.js';
 import { makeViewer } from './game/scenes/viewer.js';
 import { makePlay } from './game/scenes/play.js';
@@ -171,12 +172,25 @@ async function boot() {
   // '?test&music' opts a test-mode boot back INTO real audio: that's how the
   // takeoff/fanfare handoff gets smoke-tested through the cheats, which only
   // exist under ?test. Nothing in the automated suite passes it.
-  const jukebox = makeJukebox({ save, enabled: !testMode || params.has('music') });
+  const liveAudio = !testMode || params.has('music');
+  const jukebox = makeJukebox({ save, enabled: liveAudio });
+  // Synthesized SFX ride the SAME gate as the music: silent under ?test (the
+  // suite's thousands of synthetic-but-trusted keypresses would each schedule
+  // oscillators), live under '/' and under '?test&music' for the smoke probe.
+  const sfx = makeSfx({ save, enabled: liveAudio });
   // Autoplay policy: nothing can start before a real user gesture, so the first
-  // one (whatever it is) releases whatever the title scene already asked for.
-  const unlock = () => jukebox.unlock();
+  // one (whatever it is) releases whatever the title scene already asked for —
+  // and builds the AudioContext, which cannot legally exist before it either.
+  const unlock = () => { jukebox.unlock(); sfx.unlock(); };
   addEventListener('keydown', unlock, { once: true });
   addEventListener('pointerdown', unlock, { once: true });
+  // ONE user-facing switch. Music and SFX are two engines but a single mute:
+  // the jukebox owns the persisted flag (save.data.audio.muted) and returns the
+  // new value, which is pushed straight onto the SFX master gain. Every caller
+  // of mute — this button, the M key in title.js and play.js — goes through
+  // here, so the two can never drift apart.
+  const toggleMute = () => sfx.setMuted(jukebox.toggleMute());
+
   // Sound button. ORDERING, traced: a click on the button dispatches
   // pointerdown -> (mouseup) -> click, in that order and always. So the very
   // first click a player ever makes runs the window-level unlock() first and
@@ -189,7 +203,7 @@ async function boot() {
     const v = toVirtual(e.clientX, e.clientY);
     if (!v) return;
     if (v.x >= MUTE_BTN.x && v.x < MUTE_BTN.x + MUTE_BTN.w &&
-        v.y >= MUTE_BTN.y && v.y < MUTE_BTN.y + MUTE_BTN.h) jukebox.toggleMute();
+        v.y >= MUTE_BTN.y && v.y < MUTE_BTN.y + MUTE_BTN.h) toggleMute();
   });
   let atlas;
   try {
@@ -206,7 +220,7 @@ async function boot() {
     scene = scenes[name](...args); sceneName = name;
   }
   scenes.viewer = () => makeViewer({ atlas, input });
-  scenes.play = () => makePlay({ atlas, input, save, go, jukebox });
+  scenes.play = () => makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute });
   // toggleDisplay is handed to the title scene rather than read from a global:
   // the title is the only place the setting is offered, and this keeps main.js
   // the single owner of both fit() and the save write.
@@ -215,7 +229,7 @@ async function boot() {
     save.patch({ display: mode });
     return mode;
   };
-  scenes.title = () => makeTitle({ input, go, save, jukebox, toggleDisplay });
+  scenes.title = () => makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
@@ -224,7 +238,7 @@ async function boot() {
     if (breakdown.score > prevBest) save.patch({ best: { gauntlet: breakdown.score } });
     // Fanfare lives here rather than in win.js for the same reason the best
     // score does: the win scene stays a pure layout of numbers it was handed.
-    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go });
+    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx });
   };
 
   // --- test hook -----------------------------------------------------------
@@ -243,6 +257,9 @@ async function boot() {
                     dpr: devicePixelRatio || 1 }),
     playTape(t) { tape = t; tapeI = 0; },
     jukebox: { current: jukebox.current },
+    // Same shape as the jukebox hook: the only window onto the WebAudio graph,
+    // whose nodes are not in the DOM and have no other observable state.
+    sfx: { current: sfx.current },
     // Sticker <video> elements are never in the DOM, so querySelectorAll finds
     // nothing — this is the only window onto how many decoders we opened.
     stickers: stickerStats,

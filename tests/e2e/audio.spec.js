@@ -116,3 +116,101 @@ test('?test boot builds a silent jukebox and never touches the audio dir', async
   expect(await page.evaluate(() => window.__blast?.jukebox.current().inert)).toBe(true);
   expect(req.any).toEqual([]);            // not even the manifest
 });
+
+// --- SFX --------------------------------------------------------------------
+// Same doctrine as the music specs above: no assertion that a note came out.
+// What IS stable is that an audio DEVICE is never opened — an AudioContext is
+// a real hardware resource, and the two rules it must obey (never before a user
+// gesture, never at all under ?test) are both observable by counting
+// constructions from an init script.
+const COUNT_CTX = `
+  window.__ctxCount = 0;
+  for (const key of ['AudioContext', 'webkitAudioContext']) {
+    const Real = window[key];
+    if (!Real) continue;
+    window[key] = class extends Real { constructor(...a) { super(...a); window.__ctxCount++; } };
+  }`;
+
+test('?test boot builds a silent sfx engine and opens ZERO AudioContexts', async ({ page }) => {
+  const errors = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.addInitScript(COUNT_CTX);
+  await page.goto('http://localhost:8123/?test');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__blast.state().pstate === 'idle', null, { timeout: 15000 });
+  // A real (trusted) gesture that also fires the gun: unlock() runs, and so does
+  // a play() — neither may open a device in the silent build.
+  await page.keyboard.press('KeyX', { delay: 30 });
+  await page.waitForTimeout(200);
+
+  const st = await page.evaluate(() => window.__blast.sfx.current());
+  expect(await page.evaluate(() => window.__ctxCount)).toBe(0);
+  expect(st.inert).toBe(true);
+  expect(st.ready).toBe(false);
+  expect(st.master).toBe(null);
+  // The engine still records what the GAME asked for, which is what makes the
+  // event wiring observable at all without making a sound.
+  expect(st.plays).toBeGreaterThan(0);
+  expect(st.log).toContain('pew');
+  expect(errors).toEqual([]);
+});
+
+test('the live front door opens no AudioContext until a user gesture', async ({ page }) => {
+  const errors = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.addInitScript(COUNT_CTX);
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__ctxCount)).toBe(0);
+  expect(await page.evaluate(() => window.__blast.sfx.current().ready)).toBe(false);
+
+  await page.keyboard.press('KeyX', { delay: 30 });     // title: advances the intro AND clicks
+  await page.waitForTimeout(200);
+  const st = await page.evaluate(() => window.__blast.sfx.current());
+  expect(await page.evaluate(() => window.__ctxCount)).toBe(1);   // exactly one, ever
+  expect(st.ready).toBe(true);
+  expect(st.master).toBe(0.5);                          // SFX sit UNDER the music
+  expect(st.log).toEqual(['uiclick']);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * Toggle mute and wait for it to land. keyboard.press() with a short delay is
+ * NOT safe here: input.js resolves `pressed` as held && !prev, sampled once per
+ * animation frame, so a keydown+keyup that both fall between two frames is
+ * dropped entirely. Under a full-suite run frames can be well over 30ms apart.
+ * Holding the key until the toggle is observed is immune to that, and holding
+ * cannot double-toggle — the edge only fires once.
+ */
+async function toggleMute(page, want) {
+  await page.keyboard.down('KeyM');
+  await page.waitForFunction(w => window.__blast.sfx.current().muted === w, want, { timeout: 10000 });
+  await page.keyboard.up('KeyM');
+  await page.waitForTimeout(50);
+}
+
+test('M is ONE switch: it mutes the music and the sfx together, and persists', async ({ page }) => {
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  await page.keyboard.press('KeyX', { delay: 30 });     // gesture: builds the context
+  await page.waitForFunction(() => window.__blast.sfx.current().ready === true, null, { timeout: 5000 });
+
+  await toggleMute(page, true);
+  // Muted is a HARD zero on the master gain node, not a volume the mix can leak.
+  expect(await page.evaluate(() => window.__blast.sfx.current().master)).toBe(0);
+  expect(await page.evaluate(() => window.__blast.jukebox.current().muted)).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('suchblast_v1')).audio.muted)).toBe(true);
+
+  await toggleMute(page, false);
+  expect(await page.evaluate(() => window.__blast.sfx.current().master)).toBe(0.5);
+  expect(await page.evaluate(() => window.__blast.jukebox.current().muted)).toBe(false);
+
+  // And the flag survives a reload — one persisted flag drives both engines.
+  await toggleMute(page, true);
+  await page.reload();
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  expect(await page.evaluate(() => window.__blast.sfx.current().muted)).toBe(true);
+});

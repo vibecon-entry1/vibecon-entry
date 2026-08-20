@@ -63,7 +63,7 @@ const LEGEND = [
 
 // `save` is read-only here: the title only ever DISPLAYS the banked best.
 // main.js's win-scene factory is still the one and only writer.
-export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
+export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay }) {
   // The title pool starts the moment this scene exists. Before the player's
   // first keypress the jukebox just records the intent and main.js's unlock
   // listener starts it — so the music comes up on the same press that walks the
@@ -125,13 +125,15 @@ export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
   return {
     update(dt) {
       t += dt;
-      if (input.pressed('mute')) jukebox?.toggleMute();
+      // One switch for both engines — main.js owns it (see toggleMute there).
+      if (input.pressed('mute')) toggleMute?.();
       // D is also WASD's 'right', which means nothing on the title screen —
       // see the KEYMAP note in engine/input.js. Handled ONLY here: no other
       // scene reads 'display', so walking right in play can never re-fit the
       // canvas mid-jump.
       if (input.pressed('display')) display = toggleDisplay?.() ?? display;
       if (!input.pressed('fire')) return;
+      sfx?.play('uiclick');            // the only sound the title makes
       intro++;
       if (intro >= INTRO.length) { go('play'); return; }
       phase = `intro${intro}`;

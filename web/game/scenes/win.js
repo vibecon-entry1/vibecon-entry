@@ -60,7 +60,7 @@ function makeConfetti() {
 }
 const CONFETTI_G = 520;                       // px/s^2
 
-export function makeWin({ breakdown, best, input, go }) {
+export function makeWin({ breakdown, best, input, go, sfx }) {
   const { kills, coins, deaths, timeS, timeBonus, score } = breakdown;
   // main.js resolves `best` to max(previous, this run) before building us, so a
   // record is "we ARE the best". An exact tie with a previous best reads as a
@@ -129,7 +129,9 @@ export function makeWin({ breakdown, best, input, go }) {
   return {
     update(dt) {
       t += dt;
-      if (input.pressed('retry')) go('title');
+      // No entry sting: the fanfare started at takeoff and is still ringing
+      // through this screen. The only sound here is the button.
+      if (input.pressed('retry')) { sfx?.play('uiclick'); go('title'); }
     },
 
     render(ctx) {
