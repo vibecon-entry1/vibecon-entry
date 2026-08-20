@@ -1,7 +1,8 @@
 // Pooled projectile bolts. dir = (dx,dy) unit-ish; rendering rotates the
 // horizontal bolt art for vertical shots (90° stays pixel-crisp).
+// One instance per FACTION (player vs enemies) — never share a pool.
 import { TILE } from './chunks.js';
-import { animFrame, animDone } from '../engine/assets.js';
+import { animFrame } from '../engine/assets.js';
 
 const MAX = 32, SPEED = 380, LIFE = 0.6;
 
@@ -32,6 +33,11 @@ export function makeBullets() {
       }
     },
     forEachHittable(fn) { for (const b of pool) if (b.on) fn(b); },   // Plan 2: enemy collision
+    kill(b) {                                     // the ONLY external kill path
+      if (!b.on) return;
+      b.on = false;
+      pops.push({ x: b.x, y: b.y, t: 0 });
+    },
     count() { return pool.filter(b => b.on).length; },
     pops() { return pops; },
     render(ctx, atlas) {

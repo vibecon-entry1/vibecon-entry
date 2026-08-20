@@ -27,3 +27,15 @@ test('bolt expires after lifetime', () => {
   for (let i = 0; i < 40; i++) B.update(1 / 60, L);   // 0.66s > 0.6s life
   assert.equal(B.count(), 0);
 });
+
+test('kill() deactivates with a pop; external b.on writes are not the API', () => {
+  const B = makeBullets();
+  B.spawn(80, 8, 1, 0);
+  let victim = null;
+  B.forEachHittable(b => victim = b);
+  B.kill(victim);
+  assert.equal(B.count(), 0);
+  assert.equal(B.pops().length, 1);
+  B.kill(victim);                                  // idempotent
+  assert.equal(B.pops().length, 1);
+});
