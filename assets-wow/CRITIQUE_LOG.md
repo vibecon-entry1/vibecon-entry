@@ -73,3 +73,26 @@ Final before/after sign-off review (baseline 03_mid_run vs final_scene):
 READ 6, HARM 6, POLISH 5 — "confirmed clear upgrade"; biggest remaining gap:
 foreground tile variety / organic decoration (cracks, edge transitions),
 logged as an open item in INTEGRATION_NOTES.md.
+
+## Round 4 — REDO: direction sheets (supersedes the round 1-3 winning set)
+
+The round 1-3 winning set was REJECTED at user review ("reads as the same game
+slightly darker") — the loop had converged on timidity by optimizing harmony
+with the baseline. Method change: art is now sourced by prompted image
+generation (prompts + raw outputs under assets-wow/raw/), post-processed to
+native 640x360 fidelity and quantized by tools/genart_v2_post.py, with a hard
+divergence floor (mean absolute RGB delta vs baseline plate >= 25). Four
+radically distinct worlds, committed to assets-wow/directions/ for a USER
+taste pick before any refinement.
+
+| sheet | divergence | colors | READ | HARM | EXEC | review notes |
+|---|---|---|---|---|---|---|
+| dir1_sunset_canyon | 65.94 | 40 | 6 | 4 | 4 | bright ground line clear; sky banding noted |
+| dir2_neon_abyss | 26.29 | 40 | 7 | 4 | 6 | neon ground vs dark world = instant read; hero warm-vs-cool contrast |
+| dir3_butterscotch_day | 123.99 | 36 | 4 | 5 | 6 | cleanest commercial execution; tan hero risks blending — needs contrast handling if picked |
+| dir4_moss_dusk | 60.87 | 40 | 5 | 6 | 7 | strongest texturing; arches must not read walkable |
+
+Review scope was readability / sprite harmony / execution only — similarity to
+the current game was explicitly excluded. Sprite ground lines were nudged
+1-3px after the review flagged minor float/sink. Awaiting user direction pick;
+no refinement rounds until then.
