@@ -60,9 +60,16 @@ export function makeEnemies(defs, level) {
       }
     },
     forEach(fn) { for (const e of list) if (e.on) fn(e); },
+    // Bolt-vs-enemy overlap. The TOP slop is 14, not the 4 used on the sides
+    // and underneath: the forward bolt leaves the barrel at body.y - 30 (true
+    // gun height), which is above a hopper's 24px head when the hero is at a
+    // hop apex. The extra 10px of upward tolerance is what buys the same
+    // airborne-shot effectiveness the old, visually-wrong y-22 origin gave for
+    // free. Asymmetric on purpose — widening the bottom would let a bolt kill
+    // through the floor.
     hitTest(pt) {
       for (const e of list)
-        if (e.on && Math.abs(pt.x - e.x) < e.w / 2 + 4 && pt.y > e.y - e.h - 4 && pt.y < e.y + 4)
+        if (e.on && Math.abs(pt.x - e.x) < e.w / 2 + 4 && pt.y > e.y - e.h - 14 && pt.y < e.y + 4)
           return e;
       return null;
     },

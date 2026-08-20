@@ -172,7 +172,7 @@ export function makePlayer(spawnFeet) {
           b.vy = P.BOOST_VY;
         }
       } else {
-        fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 22);
+        fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 30);
       }
     }
 

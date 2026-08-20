@@ -16,8 +16,16 @@ test('plain boot: title → intro → play flow', async ({ page }) => {
   await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
   expect((await page.evaluate(() => window.__blast.state())).scene).toBe('title');
 
-  // 1st X: title -> intro0.
-  await page.keyboard.press('KeyX', { delay: 30 });
+  // 1st X: title -> intro0. Same bounded retry as the card loop below, and for
+  // the same documented reason: a press whose keyup lands in the same rAF as
+  // its keydown is never observed as an edge. Under full-suite load (all specs
+  // in parallel) rAFs stretch and this DOES bite — seen failing here on a
+  // single un-retried press while passing in isolation. The assertion is
+  // unchanged; only the "exactly one press must land" assumption is gone.
+  for (let i = 0; i < 15 && (await page.evaluate(() => window.__blast.state())).phase !== 'intro0'; i++) {
+    await page.keyboard.press('KeyX', { delay: 30 });
+    await page.waitForTimeout(60);
+  }
   expect((await page.evaluate(() => window.__blast.state())).phase).toBe('intro0');
 
   // 3 more cards to clear (intro0 -> intro1 -> intro2 -> play), one X each.

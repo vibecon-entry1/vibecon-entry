@@ -15,6 +15,10 @@ import { makePopups } from '../popups.js';
 import { makeCamera } from '../../engine/camera.js';
 import { animFrame, animDone } from '../../engine/assets.js';
 import { P } from '../physics.js';
+// HUD + pause text uses the 5x7 bitmap font (engine/font.js). In-world text
+// (the sign boards below, score popups) deliberately keeps canvas fillText: it
+// lives in the world at 8px and reads as set dressing, not as UI chrome.
+import { drawText, drawTextShadow } from '../../engine/font.js';
 
 const VW = 640, VH = 360;
 
@@ -524,14 +528,12 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       for (let i = 0; i < P.AIR_CHARGES; i++)
         atlas.drawCentered(ctx, 'pip', atlas.anims.pip.frames[i < player.airCharges ? 0 : 1],
                            10 + i * 10 + 4, 24 + 6);
-      ctx.font = '10px monospace';
-      ctx.textAlign = 'right';
       ctx.fillStyle = '#eec548';
       // 608, not 630: the shell layer's sound button occupies x 615..637 at the
       // top-right corner (see main.js), and at 630 the score ran straight under
       // the speaker glyph. Caught in the branding pass's visual check.
-      ctx.fillText(`wow ${score.value()}`, 608, 18);
-      ctx.textAlign = 'left';
+      // y is now the TOP of the 14px-tall text box (scale 2), not a baseline.
+      drawText(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' });
 
       // (12) pause veil, over the HUD and everything else.
       if (paused) {
@@ -542,13 +544,10 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
         ctx.fillStyle = 'rgba(11,11,18,.88)'; ctx.fillRect(160, 138, 320, 74);
         ctx.fillStyle = '#3a3350';
         ctx.fillRect(160, 138, 320, 1); ctx.fillRect(160, 211, 320, 1);   // top+bottom rule
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 26px monospace';
-        ctx.fillStyle = '#2a1c33'; ctx.fillText('such pause.', VW / 2 + 2, 176 + 2);
-        ctx.fillStyle = '#eec548'; ctx.fillText('such pause.', VW / 2, 176);
-        ctx.font = '10px monospace'; ctx.fillStyle = '#8fa';
-        ctx.fillText('Esc resume  ·  R restart', VW / 2, 200);
-        ctx.textAlign = 'left';
+        drawTextShadow(ctx, 'such pause.', VW / 2, 152, { align: 'center', scale: 4 },
+                       '#eec548', '#2a1c33');
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, 'Esc resume  ·  R restart', VW / 2, 190, { align: 'center', scale: 2 });
       }
     },
 

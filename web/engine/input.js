@@ -2,14 +2,25 @@
 // A virtual source (input tape) can override devices — that's how E2E drives
 // the game deterministically from inside the fixed-step loop.
 // preventDefault fires window-wide for mapped keys; add a target guard if text inputs ever exist.
+//
+// A code may map to SEVERAL actions (array form). KeyD is the only one today:
+// it is WASD's `right` and it is also the display toggle, because the title
+// screen — the only scene that reads `display` — has no notion of walking
+// right, so the two can never both mean something at once. The array form
+// costs one loop here and avoids inventing a second, worse key for a setting
+// the player is told about by name on the title screen.
 const KEYMAP = {
   ArrowLeft: 'left', KeyA: 'left',
-  ArrowRight: 'right', KeyD: 'right',
+  ArrowRight: 'right', KeyD: ['right', 'display'],
   ArrowDown: 'down', KeyS: 'down',
   KeyX: 'fire', KeyZ: 'fire', Space: 'fire',
   Escape: 'pause', KeyR: 'retry', KeyM: 'mute', F1: 'debug',
 };
-const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug'];
+const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug', 'display'];
+const actionsFor = (code) => {
+  const a = KEYMAP[code];
+  return a == null ? null : (Array.isArray(a) ? a : [a]);
+};
 
 export function createInput(target = window) {
   const held = Object.fromEntries(ACTIONS.map(a => [a, false]));
@@ -17,12 +28,12 @@ export function createInput(target = window) {
   let virtual = null;                       // {left,right,down,fire} or null
 
   target.addEventListener('keydown', e => {
-    const a = KEYMAP[e.code];
-    if (a) { held[a] = true; e.preventDefault(); }
+    const as = actionsFor(e.code);
+    if (as) { for (const a of as) held[a] = true; e.preventDefault(); }
   });
   target.addEventListener('keyup', e => {
-    const a = KEYMAP[e.code];
-    if (a) { held[a] = false; e.preventDefault(); }
+    const as = actionsFor(e.code);
+    if (as) { for (const a of as) held[a] = false; e.preventDefault(); }
   });
 
   const pad = { left: false, right: false, down: false, fire: false };

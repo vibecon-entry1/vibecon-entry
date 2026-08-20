@@ -18,13 +18,75 @@ const off = document.createElement('canvas');
 off.width = VW; off.height = VH;
 const ctx = off.getContext('2d');
 
+// --- display layer ----------------------------------------------------------
+// The old fit() sized the canvas in CSS pixels and let the browser upscale the
+// backing store to the physical panel. On any HiDPI screen (dpr 2) that meant
+// every game pixel was resampled with bilinear smoothing on its way to glass —
+// which is exactly the "dull, text blurry on the big screen" report. The fix is
+// to size the BACKING STORE in device pixels and shrink it back down in CSS, so
+// the browser has nothing left to interpolate.
+//
+// Two modes, persisted in the save (see save.js DEFAULTS.display):
+//   crisp — integer device-pixel scale, letterboxed. Every game pixel is a
+//           whole number of hardware pixels. Perfectly sharp; leaves borders.
+//   fill  — fractional scale, fills the window on the constrained axis.
+//
+// SMOOTHING IN FILL MODE, decided by looking at it: at 1500x850 (scale 2.34,
+// i.e. 1.37x crisp's 2) the two settings were captured side by side. With
+// smoothing ON every glyph and sprite edge picks up a grey-purple halo and the
+// whole frame goes soft — the exact "dull" this pass exists to kill. With it
+// OFF the only artefact is that some strokes are 2 source-pixels wide and some
+// 3, which reads as slightly uneven chunk, not as blur. Nearest wins, so
+// imageSmoothingEnabled stays false in BOTH modes. (Screenshots lived in the
+// gitignored tests/artifacts/ tree; the conclusion is recorded here because the
+// evidence isn't.)
+let displayMode = 'crisp';                    // rebound from the save at boot
+let scale = 1;                                // device pixels per game pixel
+
 function fit() {
-  const s = Math.max(1, Math.floor(Math.min(innerWidth / VW, innerHeight / VH)));
-  screen.width = VW * s; screen.height = VH * s;
-  screen.style.width = `${VW * s}px`; screen.style.height = `${VH * s}px`;
+  const dpr = devicePixelRatio || 1;
+  // Both branches work in DEVICE pixels: innerWidth is CSS px, so the *dpr is
+  // what makes `scale` mean "hardware pixels per game pixel" rather than
+  // "CSS pixels per game pixel" (the old, blurry meaning).
+  const raw = Math.min(innerWidth * dpr / VW, innerHeight * dpr / VH);
+  scale = displayMode === 'fill' ? Math.max(1, raw) : Math.max(1, Math.floor(raw));
+
+  // Backing store in device pixels; CSS box is that divided back by dpr, so the
+  // element still occupies the right amount of layout space. round() on the
+  // backing store because a canvas dimension must be an integer — in crisp mode
+  // scale is already whole and this is a no-op.
+  screen.width = Math.round(VW * scale);
+  screen.height = Math.round(VH * scale);
+  screen.style.width = `${screen.width / dpr}px`;
+  screen.style.height = `${screen.height / dpr}px`;
+  // Resizing a canvas resets its whole 2D state, smoothing flag included — this
+  // has to be re-asserted after EVERY fit(), not once at boot.
   sctx.imageSmoothingEnabled = false;
+  armDprWatch(dpr);
 }
+
+// devicePixelRatio changes with no resize event when a window is dragged between
+// monitors, or the OS zoom changes. matchMedia on the CURRENT ratio fires once
+// when it stops being true, so the listener is re-armed against the new ratio
+// each time — a single static query would only ever catch the first change.
+let dprMql = null;
+function armDprWatch(dpr) {
+  if (dprMql?.dpr === dpr) return;            // already watching this ratio
+  dprMql?.mql.removeEventListener?.('change', fit);
+  const mql = matchMedia(`(resolution: ${dpr}dppx)`);
+  mql.addEventListener?.('change', fit);
+  dprMql = { dpr, mql };
+}
+
+/** Switch modes and re-fit. Returns the new mode; caller owns persistence. */
+function setDisplay(mode) {
+  displayMode = mode === 'fill' ? 'fill' : 'crisp';
+  fit();
+  return displayMode;
+}
+
 addEventListener('resize', fit); fit();
+// ----------------------------------------------------------------------------
 
 // --- shell layer ------------------------------------------------------------
 // Chrome that belongs to the PAGE, not to any scene: it is drawn onto the same
@@ -98,6 +160,9 @@ async function boot() {
   const testMode = params.has('test');
   const input = createInput();
   const save = makeSave(localStorage);
+  // The save is only readable once boot() runs, so fit() has already laid the
+  // canvas out once in the default crisp mode; this re-fits into the stored one.
+  setDisplay(save.data.display);
   // One jukebox for the whole page: scenes come and go, the music doesn't.
   // Silent under ?test — the e2e suite drives play with synthetic key presses,
   // and every one of those is a TRUSTED gesture, so a live jukebox would have
@@ -142,7 +207,15 @@ async function boot() {
   }
   scenes.viewer = () => makeViewer({ atlas, input });
   scenes.play = () => makePlay({ atlas, input, save, go, jukebox });
-  scenes.title = () => makeTitle({ input, go, save, jukebox });
+  // toggleDisplay is handed to the title scene rather than read from a global:
+  // the title is the only place the setting is offered, and this keeps main.js
+  // the single owner of both fit() and the save write.
+  const toggleDisplay = () => {
+    const mode = setDisplay(displayMode === 'crisp' ? 'fill' : 'crisp');
+    save.patch({ display: mode });
+    return mode;
+  };
+  scenes.title = () => makeTitle({ input, go, save, jukebox, toggleDisplay });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
@@ -160,7 +233,15 @@ async function boot() {
   window.__blast = {
     ready: false, frame: 0,
     state: () => ({ scene: sceneName, anims: Object.keys(atlas.anims).length,
-                    ...(scene.state?.() ?? {}) }),
+                    ...(scene.state?.() ?? {}),
+                    // Display keys go AFTER the scene spread, not before: they
+                    // describe the shell, and main.js is their only owner, so a
+                    // scene must never be able to shadow what the display e2e
+                    // asserts on.
+                    display: displayMode, scale,
+                    backing: { w: screen.width, h: screen.height },
+                    css: { w: screen.style.width, h: screen.style.height },
+                    dpr: devicePixelRatio || 1 }),
     playTape(t) { tape = t; tapeI = 0; },
     jukebox: { current: jukebox.current },
     // Sticker <video> elements are never in the DOM, so querySelectorAll finds

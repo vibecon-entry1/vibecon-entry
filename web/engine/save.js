@@ -9,6 +9,12 @@ const KEY = 'suchblast_v1';
 export const DEFAULTS = {
   v: 1, best: { gauntlet: 0, wow: 0 }, wowUnlocked: false, muted: false,
   audio: { lastFirst: {}, muted: false },
+  // 'crisp' = integer device-pixel scale (letterboxed, every game pixel is a
+  // whole number of hardware pixels). 'fill' = fractional scale that fills the
+  // window. Flat string, so patch()'s plain spread handles it with no new merge
+  // rule; a v1 save written before the setting existed simply has no key and
+  // falls back to the default below.
+  display: 'crisp',
 };
 
 export function makeSave(storage) {
@@ -20,6 +26,11 @@ export function makeSave(storage) {
       // A v1 save written before music existed has no audio key at all; the
       // version didn't change because nothing about the OLD keys changed.
       data.audio = { ...DEFAULTS.audio, ...(parsed.audio ?? {}) };
+      // Same story as `audio`: added after v1 shipped, no version bump needed
+      // because no OLD key changed meaning. Unknown values fall back rather
+      // than being trusted — a hand-edited localStorage shouldn't be able to
+      // put fit() into a mode it has no branch for.
+      if (data.display !== 'crisp' && data.display !== 'fill') data.display = DEFAULTS.display;
     }
   } catch { /* corrupt or unavailable → defaults */ }
   return {

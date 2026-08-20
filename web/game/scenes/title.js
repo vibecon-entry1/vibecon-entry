@@ -8,6 +8,11 @@
 // stars are generated once from a fixed seed, so the sky is stable across
 // reloads and screenshots are diffable.
 import { getSticker, BRAND } from '../../engine/sticker.js';
+// Screen text goes through the 5x7 bitmap font, not canvas fillText: see the
+// header of engine/font.js for why. Everything below positions by the TOP of
+// the text box, so the old fillText baselines were each shifted up by the
+// glyph height at that scale.
+import { drawText, drawTextShadow, measure } from '../../engine/font.js';
 
 const VW = 640, VH = 360;
 
@@ -50,15 +55,15 @@ const INTRO = [
 ];
 
 const LEGEND = [
-  // Spelled DOWN rather than an arrow glyph: canvas monospace has no ↓ and the
-  // fallback face renders it as a stray comma-height mark.
+  // Spelled DOWN rather than an arrow glyph: the pixel font has no ↓ either,
+  // and an unauthored glyph renders as a tofu box by design.
   'arrows/WASD move  ·  X fire  ·  DOWN+X hop  ·  DOWN+move slide',
   'Esc pause  ·  R restart  ·  M mute',
 ];
 
 // `save` is read-only here: the title only ever DISPLAYS the banked best.
 // main.js's win-scene factory is still the one and only writer.
-export function makeTitle({ input, go, save, jukebox }) {
+export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
   // The title pool starts the moment this scene exists. Before the player's
   // first keypress the jukebox just records the intent and main.js's unlock
   // listener starts it — so the music comes up on the same press that walks the
@@ -90,6 +95,9 @@ export function makeTitle({ input, go, save, jukebox }) {
 
   // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
   let phase = 'title';
+  // Mirrors main.js's display mode purely so the settings line has something to
+  // print; main.js stays the owner of both fit() and the save write.
+  let display = save?.data?.display ?? 'crisp';
   let t = 0;
   let intro = -1;
 
@@ -106,6 +114,11 @@ export function makeTitle({ input, go, save, jukebox }) {
     update(dt) {
       t += dt;
       if (input.pressed('mute')) jukebox?.toggleMute();
+      // D is also WASD's 'right', which means nothing on the title screen —
+      // see the KEYMAP note in engine/input.js. Handled ONLY here: no other
+      // scene reads 'display', so walking right in play can never re-fit the
+      // canvas mid-jump.
+      if (input.pressed('display')) display = toggleDisplay?.() ?? display;
       if (!input.pressed('fire')) return;
       intro++;
       if (intro >= INTRO.length) { go('play'); return; }
@@ -127,47 +140,50 @@ export function makeTitle({ input, go, save, jukebox }) {
       }
       ctx.globalAlpha = 1;
 
-      ctx.textAlign = 'center';
+      const C = { align: 'center' };
       if (phase === 'title') {
-        ctx.fillStyle = '#2a1c33';                       // drop shadow slab
-        ctx.font = 'bold 28px monospace';
-        ctx.fillText('SUCH BLAST', VW / 2 + 2, 132 + 2);
-        ctx.fillStyle = '#eec548';
-        ctx.fillText('SUCH BLAST', VW / 2, 132);
+        drawTextShadow(ctx, 'SUCH BLAST', VW / 2, 104, { ...C, scale: 4 }, '#eec548', '#2a1c33');
 
-        ctx.font = '9px monospace'; ctx.fillStyle = '#8a7db0';
-        ctx.fillText('a very mars. much escape.', VW / 2, 152);
+        ctx.fillStyle = '#8a7db0';
+        drawText(ctx, 'a very mars. much escape.', VW / 2, 146, C);
 
         ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4);
-        ctx.font = '12px monospace'; ctx.fillStyle = '#8fa';
-        ctx.fillText('MUST START — press X', VW / 2, 214);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, 'MUST START — press X', VW / 2, 206, { ...C, scale: 2 });
         ctx.globalAlpha = 1;
 
         // Banked best, under the start prompt. Hidden entirely on a fresh save:
         // 'BEST WOW: 0' reads as a taunt, not a record.
         const best = save?.data?.best?.gauntlet ?? 0;
         if (best > 0) {
-          ctx.font = '10px monospace'; ctx.fillStyle = '#eec548';
-          ctx.fillText(`BEST WOW: ${best}`, VW / 2, 236);
+          ctx.fillStyle = '#eec548';
+          drawText(ctx, `BEST WOW: ${best}`, VW / 2, 230, { ...C, scale: 2 });
         }
 
-        ctx.font = '8px monospace'; ctx.fillStyle = '#6f6a86';
-        LEGEND.forEach((l, i) => ctx.fillText(l, VW / 2, 320 + i * 13));
+        // Settings line, above the control legend and set apart from it by
+        // colour: the key name is lit like the other prompts, the current value
+        // is not, so the eye lands on the thing you can press.
+        const label = `DISPLAY: ${display.toUpperCase()} · press D`;
+        const lx = VW / 2 - measure(label) / 2;
+        ctx.fillStyle = '#6f6a86';
+        drawText(ctx, label, lx, 300);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, display.toUpperCase(), lx + measure('DISPLAY: '), 300);
+
+        ctx.fillStyle = '#6f6a86';
+        LEGEND.forEach((l, i) => drawText(ctx, l, VW / 2, 316 + i * 11, C));
 
         drawRocket(ctx, t);
       } else {
         // intro card: one line, doge-paced, with a quiet advance hint.
-        ctx.font = 'bold 20px monospace';
-        ctx.fillStyle = '#2a1c33'; ctx.fillText(INTRO[intro], VW / 2 + 2, 180 + 2);
-        ctx.fillStyle = '#e8e0d0'; ctx.fillText(INTRO[intro], VW / 2, 180);
+        drawTextShadow(ctx, INTRO[intro], VW / 2, 160, { ...C, scale: 3 }, '#e8e0d0', '#2a1c33');
         ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4);
-        ctx.font = '9px monospace'; ctx.fillStyle = '#8fa';
-        ctx.fillText('press X', VW / 2, 300);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, 'press X', VW / 2, 294, C);
         ctx.globalAlpha = 1;
       }
-      ctx.textAlign = 'left';
     },
 
-    state: () => ({ phase }),
+    state: () => ({ phase }),   // display is reported by main.js, its owner
   };
 }

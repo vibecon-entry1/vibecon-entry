@@ -42,6 +42,41 @@ test('saucer bobs and fires at a near player on a cooldown', () => {
   assert.equal(far.spawned.length, 0);                // out of range: holds fire
 });
 
+test('hitTest top slop is 14px (airborne bolts clear the head), sides/bottom 4px', () => {
+  const E = makeEnemies(L.entities.filter(e => e.type === 'hopper'), L);
+  let h; E.forEach(e => h = e);
+  assert.equal(E.hitTest({ x: h.x, y: h.y - h.h - 13 }), h);      // inside the top slop
+  assert.equal(E.hitTest({ x: h.x, y: h.y - h.h - 14 }), null);   // exactly on it: out
+  assert.equal(E.hitTest({ x: h.x, y: h.y + 3 }), h);             // bottom slop unchanged
+  assert.equal(E.hitTest({ x: h.x, y: h.y + 4 }), null);
+  assert.equal(E.hitTest({ x: h.x + h.w / 2 + 3, y: h.y - 10 }), h);
+  assert.equal(E.hitTest({ x: h.x + h.w / 2 + 4, y: h.y - 10 }), null);
+});
+
+// The gun-origin regression guard. Moving the forward-bolt origin from
+// body.y-22 to the true gun height body.y-30 raised every forward bolt by 8px,
+// which on its own would have cost airborne shots their reach. The top slop
+// went 4 -> 14 to pay for it. This pins the RESULT of that trade rather than
+// either number: the hero must still be able to be at least as high off the
+// ground as before and land a forward bolt on a grounded hopper.
+test('gun-height bolts keep the pre-change airborne reach', () => {
+  const E = makeEnemies(L.entities.filter(e => e.type === 'hopper'), L);
+  let h; E.forEach(e => h = e);
+  const GY = h.y;
+  // Highest feet-clearance that still connects, measured through the real hitTest.
+  let after = -1;
+  for (let a = 0; a <= 80; a++) if (E.hitTest({ x: h.x, y: GY - a - 30 })) after = a;
+  // Same sweep against the OLD geometry (origin -22, top slop 4), inlined
+  // because that code no longer exists to call.
+  let before = -1;
+  for (let a = 0; a <= 80; a++) {
+    const y = GY - a - 22;
+    if (y > h.y - h.h - 4 && y < h.y + 4) before = a;
+  }
+  assert.ok(after >= before,
+    `airborne reach regressed: ${after}px now vs ${before}px before`);
+});
+
 test('hitTest finds an overlapping bolt and kill removes with callback', () => {
   const E = makeEnemies(L.entities.filter(e => e.type === 'hopper'), L);
   let h; E.forEach(e => h = e);

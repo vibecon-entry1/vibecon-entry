@@ -3,6 +3,9 @@
 // best is resolved by main.js BEFORE this scene is built, so the win scene
 // never touches save — it only reads two numbers and lays them out.
 import { getSticker, BRAND } from '../../engine/sticker.js';
+// Ledger + headings go through the 5x7 bitmap font (engine/font.js); y values
+// below are the TOP of each text box, where they used to be baselines.
+import { drawText, drawTextShadow } from '../../engine/font.js';
 
 const VW = 640, VH = 360;
 
@@ -129,51 +132,44 @@ export function makeWin({ breakdown, best, input, go }) {
       g.addColorStop(1, 'rgba(11,11,18,0)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);   // full height: a short rect leaves a seam
 
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 20px monospace';
-      ctx.fillStyle = '#2a1c33'; ctx.fillText('MUCH MARS. VERY HOME.', VW / 2 + 2, 52 + 2);
-      ctx.fillStyle = '#eec548'; ctx.fillText('MUCH MARS. VERY HOME.', VW / 2, 52);
+      drawTextShadow(ctx, 'MUCH MARS. VERY HOME.', VW / 2, 36,
+                     { align: 'center', scale: 3 }, '#eec548', '#2a1c33');
 
-      // ledger
-      ctx.font = '11px monospace';
-      let y = 122;
+      // ledger. Every row is scale 2 (14px tall); the old 20px row pitch is
+      // kept so the block occupies the same slab of screen as before.
+      const T2 = { scale: 2 };
+      let y = 112;
       for (const [label, mid, val] of ROWS) {
-        ctx.textAlign = 'left'; ctx.fillStyle = '#8a7db0';
-        ctx.fillText(label, LX, y);
-        ctx.textAlign = 'center'; ctx.fillStyle = '#5c5470';
-        ctx.fillText(mid, (LX + RX) / 2 + 20, y);
-        ctx.textAlign = 'right'; ctx.fillStyle = '#e8e0d0';
-        ctx.fillText(val, RX, y);
+        ctx.fillStyle = '#8a7db0'; drawText(ctx, label, LX, y, T2);
+        ctx.fillStyle = '#5c5470'; drawText(ctx, mid, (LX + RX) / 2 + 20, y, { ...T2, align: 'center' });
+        ctx.fillStyle = '#e8e0d0'; drawText(ctx, val, RX, y, { ...T2, align: 'right' });
         y += 20;
       }
       // deaths is informational: it already cost the run 100 wow each, live.
-      ctx.textAlign = 'left'; ctx.fillStyle = '#8a7db0';
-      ctx.fillText(`deaths ${deaths}`, LX, y);
-      ctx.textAlign = 'right'; ctx.fillStyle = deaths ? '#e2413f' : '#8fa';
-      ctx.fillText(deaths ? 'very ouch' : 'no ouch. wow.', RX, y);
+      ctx.fillStyle = '#8a7db0'; drawText(ctx, `deaths ${deaths}`, LX, y, T2);
+      ctx.fillStyle = deaths ? '#e2413f' : '#8fa';
+      drawText(ctx, deaths ? 'very ouch' : 'no ouch. wow.', RX, y, { ...T2, align: 'right' });
 
       ctx.strokeStyle = '#3a3350'; ctx.beginPath();
-      ctx.moveTo(LX, y + 12); ctx.lineTo(RX, y + 12); ctx.stroke();
+      ctx.moveTo(LX, y + 22); ctx.lineTo(RX, y + 22); ctx.stroke();
 
-      ctx.textAlign = 'left'; ctx.font = 'bold 16px monospace'; ctx.fillStyle = '#eec548';
-      ctx.fillText('TOTAL WOW', LX, y + 38);
-      ctx.textAlign = 'right'; ctx.fillText(`${score}`, RX, y + 38);
+      ctx.fillStyle = '#eec548';
+      drawText(ctx, 'TOTAL WOW', LX, y + 36, { scale: 3 });
+      drawText(ctx, `${score}`, RX, y + 36, { scale: 3, align: 'right' });
 
-      ctx.font = '10px monospace'; ctx.fillStyle = '#8fa';
-      ctx.textAlign = 'left'; ctx.fillText('BEST WOW', LX, y + 62);
-      ctx.textAlign = 'right'; ctx.fillText(`${best}`, RX, y + 62);
+      ctx.fillStyle = '#8fa';
+      drawText(ctx, 'BEST WOW', LX, y + 66, T2);
+      drawText(ctx, `${best}`, RX, y + 66, { ...T2, align: 'right' });
 
-      ctx.textAlign = 'center';
       if (record) {
         ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 5);
-        ctx.font = '10px monospace'; ctx.fillStyle = '#eec548';
-        ctx.fillText('very new record!', VW / 2, y + 82);
+        ctx.fillStyle = '#eec548';
+        drawText(ctx, 'very new record!', VW / 2, y + 90, { ...T2, align: 'center' });
         ctx.globalAlpha = 1;
       }
 
-      ctx.font = '11px monospace'; ctx.fillStyle = '#6f6a86';
-      ctx.fillText('R = very again', VW / 2, 336);
-      ctx.textAlign = 'left';
+      ctx.fillStyle = '#6f6a86';
+      drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });
 
       drawSticker(ctx);
     },
