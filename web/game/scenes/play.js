@@ -74,12 +74,17 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   let hitstop = 0;
   // --- run stats + extraction ------------------------------------------------
   let timeS = 0;                 // run clock, seconds (paused during takeoff)
-  let killCount = 0;             // roster kills + the boss
+  // killCredited: roster kills banked since the LAST respawn — refundKills()
+  // zeroes it in lockstep with score.js's own killEarned, so the breakdown's
+  // kill tally never brags about points the ledger already took back.
+  // bossKilled is tracked separately and never resets: the boss dies once,
+  // the gate stays carved, and the tally should keep crediting it forever.
+  let killCredited = 0, bossKilled = false;
   let takeoff = -1;              // -1 = not started; >= 0 = seconds elapsed
   let liftY = 0;                 // how far the ship (and rider) has risen, px
   let thrustT = 0.25;            // thrust-FX metronome (pre-armed: puff on frame 1)
   let thrustSide = 1;            // alternating nozzle
-  let prevHp = P.HP_MAX; let prevState = 'spawn';
+  let prevHp = P.HP_MAX; let prevState = 'spawn'; let prevDeaths = 0;
   // WOW+ escalation: one popup per flight that grows instead of spamming a new
   // popup per event. Counts the WOW+ events banked during the CURRENT flight
   // (reset the frame we land), capped at three '+'.
@@ -174,7 +179,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     hitstop = Math.max(hitstop, 0.09);
     sfx?.play('bossdown');                              // in HERE so the ?test cheat sounds too
     score.add('boss');                                  // flat +500, not a roster kill
-    killCount++;                                        // ...but it still counts in the tally
+    bossKilled = true;                                  // ...but it still counts in the tally,
+                                                         // permanently — refundKills never touches it
     for (const [tx, ty] of level.gate) level.carve(tx, ty);
     // Popup at the gate, not at the corpse: it points at what just changed.
     // gate.at(-1) — the BOTTOM tile of the wall (parseChunk records row-major,
@@ -273,7 +279,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   function wowBreakdown() {
     return {
       score: score.value(),
-      kills: killCount,
+      kills: killCredited + (bossKilled ? 1 : 0),
       coins: coins.total() - coins.remaining(),
       timeS: Math.floor(timeS),
       chunks: maxChunk,
@@ -290,7 +296,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     // so a brisk full run still banks thousands while a 5-minute stroll zeroes out.
     const timeBonus = Math.max(0, 6000 - t * 20);
     return {
-      kills: killCount,
+      kills: killCredited + (bossKilled ? 1 : 0),
       coins: coins.total() - coins.remaining(),
       deaths: player.deaths,
       timeS: t,
@@ -423,6 +429,26 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       const wasAirborne = player.coyote === 0;
       gunDownT = Math.max(0, gunDownT - dt);
       player.update(dt, input.actions(), level, playerBolts);
+      // Every respawn revives the roster and refunds every point a kill has
+      // earned since the last one — soft (pit heart-loss) AND real death
+      // alike. Tracked off the DEATHS COUNTER edge, not the 'ded' state edge:
+      // a soft pit respawn never touches 'ded' at all (player.js hands off to
+      // 'ded' only when the pit takes the LAST heart), so watching the state
+      // edge would miss it entirely. player.js guarantees exactly one
+      // deaths++ per respawn (soft pit: immediate; real death: the ded
+      // block's corpse-timer/pit-out path), so this fires once per respawn,
+      // never double-fires, and needs no `!wow` guard of its own — an
+      // endless (wow) level never increments player.deaths (see
+      // player.js's `level.endless` branches), so a wow death can never
+      // reach here; it resolves through dedT/wowend below instead, and the
+      // scene is discarded either way. Summoned boss minions get swept out
+      // by reviveAll() too — a mid-fight pit dunk clears them, by design.
+      if (player.deaths !== prevDeaths) {
+        prevDeaths = player.deaths;
+        score.refundKills();
+        killCredited = 0;
+        enemies.reviveAll();
+      }
       // A muzzle still at t === 0 after the update is one fired THIS frame;
       // dy marks it as the down-shot (hop, boost or the pinned variant).
       if (player.muzzle && player.muzzle.dy && player.muzzle.t === 0) gunDownT = GUN_DOWN_T;
@@ -490,7 +516,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           sfx?.play(e.summoned ? 'minionpop' : 'killpop');
           const airborne = player.coyote === 0;
           score.onKill(airborne);
-          killCount++;
+          killCredited++;
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
           cam.shake(5, 0.2);
@@ -526,15 +552,17 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       if (player.hp < prevHp && player.state !== 'ded') {
         sfx?.play('hurt'); cam.shake(3, 0.15); hitstop = Math.max(hitstop, 0.03);
       }
-      // real death: the board resets around you — every enemy back at its spawn,
-      // and the run pays 100 wow for it (floored at 0). Coins stay collected.
+      // real death: on top of the roster/ledger reset the deaths-counter edge
+      // above already applies, a real death pays a flat 100 wow — and, since
+      // dock() no longer floors, that can push the score negative if little
+      // was banked. Coins stay collected either way.
       if (player.state === 'ded' && prevState !== 'ded') {
         sfx?.play('ded');
         cam.shake(8, 0.3);
-        // Only the gauntlet has a board to reset and a run left to charge for
-        // it. In wow this death IS the run: docking 100 wow off the final tally
-        // would be charging a fee on the way out the door.
-        if (!wow) { score.dock(100); enemies.reviveAll(); }
+        // Only the gauntlet has a run left to charge a fee on. In wow this
+        // death IS the run: docking 100 wow off the final tally would be
+        // charging a fee on the way out the door.
+        if (!wow) score.dock(100);
       }
       prevHp = player.hp; prevState = player.state;
       if (wow) {
@@ -831,7 +859,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       bossPhase: boss && boss.on ? boss.phase : null,
       minions: (() => { let n = 0; enemies.forEach(e => { if (e.summoned) n++; }); return n; })(),
       gateOpen: gateIsOpen(),
-      timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
+      timeS: Math.floor(timeS), killCount: killCredited + (bossKilled ? 1 : 0), takeoff: takeoff >= 0,
       mode, seed, chunkIndex, maxChunk,
       idleT, countdownOn: idleT >= AFK_WARN && outT < 0,
     }),

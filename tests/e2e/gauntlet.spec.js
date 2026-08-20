@@ -92,3 +92,73 @@ test('contact hurts once per iframe window; death respawns at checkpoint with fu
   expect(st.hp).toBe(3);
   expect(errors).toEqual([]);
 });
+
+test('respawn economy: a kill\'s points refund on the very next respawn, world resets with it', async ({ page }) => {
+  const errors = await boot(page);
+  // Identical opening to 'forward fire kills a hopper' above (calibrated
+  // there): sprint C1, hop both C2 pits, stop at f800 well short of hopper1's
+  // contact range, hold fire. That lands one clean grounded kill (+100, no
+  // WOW+ since we never leave the ground) with enemies 39->38.
+  const tape = [];
+  const at = (f, a) => tape.push({ f, a });
+  at(0, { right: true });
+  at(390, { down: true, fire: true }); at(391, { right: true });
+  at(515, { down: true, fire: true }); at(516, { right: true });
+  at(630, { down: true, fire: true }); at(631, { right: true });
+  at(800, { fire: true });
+  at(850, null);
+  await runTape(page, tape, 20000);
+  const afterKill = await page.evaluate(() => window.__blast.state());
+  expect(afterKill.enemies).toBe(38);
+  expect(afterKill.deaths).toBe(0);
+
+  // Now dunk into a pit. hp starts at 3, so this is a SOFT respawn (one heart
+  // lost, not a full-hp beam-in) — but the user ruling is every respawn, soft
+  // or real, revives the roster and refunds every kill point earned since the
+  // last one. score.js's killEarned tracks exactly the +100 this kill banked
+  // (no coins were on this route, and the kill itself carried no WOW+ bonus),
+  // so the refund should land the score back EXACTLY where it stood before
+  // the kill: afterKill.score - 100.
+  await page.evaluate(() => window.__blast.cheat.pit());
+  await page.waitForFunction(() => window.__blast.state().deaths === 1, null,
+                             { timeout: 10000 });
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.screenshot({ path: 'tests/artifacts/gauntlet-refund.png' });
+  expect(st.enemies).toBe(39);              // the whole roster is back, hopper included
+  expect(st.score).toBe(afterKill.score - 100);
+  expect(st.hp).toBe(2);                    // SOFT respawn: one heart down, not a full heal
+  expect(errors).toEqual([]);
+});
+
+test('a real death with nothing earned docks the flat 100 and goes negative', async ({ page }) => {
+  const errors = await boot(page);
+  const start = await page.evaluate(() => window.__blast.state());
+  expect(start.score).toBe(0);              // fresh boot, nothing banked yet
+
+  // Two soft pit dunks in place (no movement, no kills, no coins picked up)
+  // burn the first two hearts and prove the refund is a genuine no-op when
+  // killEarned is already zero — score should not move at all.
+  await page.evaluate(() => window.__blast.cheat.pit());
+  await page.waitForFunction(() => window.__blast.state().deaths === 1, null,
+                             { timeout: 10000 });
+  await page.evaluate(() => window.__blast.cheat.pit());
+  await page.waitForFunction(() => window.__blast.state().deaths === 2, null,
+                             { timeout: 10000 });
+  const beforeLast = await page.evaluate(() => window.__blast.state());
+  expect(beforeLast.score).toBe(0);
+  expect(beforeLast.hp).toBe(1);
+
+  // The third dunk takes the last heart: a real death. dock(100) fires on the
+  // 'ded' state edge, and — with the floor removed from score.js's dock() —
+  // there is nothing left to clamp it at zero.
+  await page.evaluate(() => window.__blast.cheat.pit());
+  await page.waitForFunction(() => window.__blast.state().pstate === 'ded', null,
+                             { timeout: 10000 });
+  await page.waitForFunction(() => window.__blast.state().deaths === 3, null,
+                             { timeout: 10000 });
+  const st = await page.evaluate(() => window.__blast.state());
+  await page.screenshot({ path: 'tests/artifacts/gauntlet-negative-score.png' });
+  expect(st.score).toBe(-100);
+  expect(st.hp).toBe(3);                    // real death: full-hp respawn
+  expect(errors).toEqual([]);
+});
