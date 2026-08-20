@@ -60,6 +60,19 @@ Hero look: shiba in a navy jacket + light blue tie, carrying a red/orange blaste
 Enemies: white one-eyed hopper and a red flying variant. Palette reads as
 black bg / cream + tan fur / navy / red-orange accents.
 
+## Derived art
+`tools/posegen.py` builds `assets-gen/pose_gundown.png` — a "blaster aimed down"
+hero pose the pack never shipped. The Stand frame's "gun" is actually an energy
+blast (red flare shell, yellow core, white-hot tip) leaving the fist, so the
+generator floods that colour cluster out at native 64×64, patches the coat, and
+re-pastes it rotated 90° clockwise at the hip. `npm run assets` runs it, and the
+result lands in the atlas as the 1-frame `gundown` anim. `--ascii` dumps
+before/after pixel maps for eyeballing the surgery.
+
+Air pose: `air` holds duck frame 6 (the most tucked of the eight) instead of
+looping `run`. A/B'd in-game — the run loop mid-air is the same silhouette as
+running on the ground, so you can't tell you left it; the tuck can't be mistaken.
+
 ## Dev quickstart
 - `npm run assets`  rebuild atlas from ../assets source pack
 - `npm run serve`   → http://localhost:8123 (F1 = anim viewer, R = restart)

@@ -97,3 +97,59 @@ test('reviveAll restores killed and drifted enemies', () => {
     assert.equal(h.e.fireCd, 0);
   }
 });
+
+// --- boss summons ---------------------------------------------------------
+// spawnDef() pushes a live minion into the roster mid-run. It must be a FULL
+// roster member (patrols, hittable, killable, contact-damaging) so the scene
+// needs zero extra wiring — but flagged `summoned` so reviveAll() deletes it.
+test('spawnDef adds a live enemy that patrols, is hittable and killable', () => {
+  const E = makeEnemies([], L);
+  assert.equal(E.count(), 0);
+  const m = E.spawnDef({ type: 'hopper', x: 6 * 16 + 8, y: 4 * 16 });
+  assert.ok(m);
+  assert.equal(m.summoned, true);
+  assert.equal(E.count(), 1);
+
+  const x0 = m.x;
+  for (let i = 0; i < 60; i++) E.update(DT, { x: m.x, y: -9999, w: 0 }, stubBullets(), () => {});
+  assert.notEqual(m.x, x0);                          // patrols like any hopper
+
+  assert.equal(E.hitTest({ x: m.x, y: m.y - 10 }), m);
+  let killed = null;
+  E.kill(m, e => killed = e);
+  assert.equal(killed, m);
+  assert.equal(E.count(), 0);
+});
+
+test('spawnDef rejects an unknown kind', () => {
+  const E = makeEnemies([], L);
+  assert.equal(E.spawnDef({ type: 'nope', x: 0, y: 0 }), null);
+  assert.equal(E.count(), 0);
+});
+
+test('a summoned saucer fires at a near player like an authored one', () => {
+  const E = makeEnemies([], L);
+  const m = E.spawnDef({ type: 'saucer', x: 6 * 16 + 8, y: 4 * 16 });
+  const B = stubBullets();
+  for (let i = 0; i < 200; i++) E.update(DT, { x: m.x, y: 4 * 16, w: 0 }, B, () => {});
+  assert.ok(B.spawned.length >= 1);
+  assert.deepEqual(B.spawned[0].slice(2), [0, 1]);
+});
+
+test('reviveAll DELETES summoned minions while restoring the authored roster', () => {
+  const E = makeEnemies(L.entities, L);
+  const m = E.spawnDef({ type: 'hopper', x: 6 * 16 + 8, y: 4 * 16 });
+  assert.equal(E.count(), 3);
+  E.reviveAll();
+  assert.equal(E.count(), 2);                        // the two authored ones only
+  const kinds = []; E.forEach(e => kinds.push(e));
+  assert.equal(kinds.includes(m), false);
+});
+
+test('reviveAll drops summoned minions even after they were killed', () => {
+  const E = makeEnemies([], L);
+  const m = E.spawnDef({ type: 'hopper', x: 6 * 16 + 8, y: 4 * 16 });
+  E.kill(m, () => {});
+  E.reviveAll();
+  assert.equal(E.count(), 0);                        // never comes back
+});

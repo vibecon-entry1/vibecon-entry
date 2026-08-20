@@ -18,5 +18,10 @@ export function makeCoins(defs) {
     },
     forEach(fn) { for (const c of list) if (c.on) fn(c); },
     remaining() { return list.filter(c => c.on).length; },
+    // Authored coin count. The win screen needs "how many did you get", and the
+    // only honest way to say that is total - remaining: the level's coin budget
+    // moved (50 -> 151 across the chunk expansion) and a literal in the scene
+    // silently went negative.
+    total() { return list.length; },
   };
 }

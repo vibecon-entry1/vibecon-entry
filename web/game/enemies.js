@@ -11,16 +11,24 @@ const KIND = {
 };
 const SAUCER_RANGE = 180, SAUCER_CD = 1.6, SAUCER_BOB = 10;
 
-export function makeEnemies(defs, level) {
-  const list = defs.filter(d => KIND[d.type]).map(d => ({
+// One live enemy from a def. Shared by the authored roster and by runtime
+// spawnDef() summons so a boss-summoned minion is byte-identical to a chunk one
+// (same fields, same wiring, same kill/hitTest/contact paths) — the ONLY
+// difference is the `summoned` flag, which reviveAll() reads.
+function initEnemy(d, summoned = false) {
+  return {
     type: d.type, ...KIND[d.type],
     // hopper y is a hard floor-alignment invariant from chunk data — never corrected at runtime
     x: d.x, y: d.y, homeY: d.y - (d.type === 'saucer' ? 40 : 0),
-    vx: KIND[d.type].speed, t: (d.x * 7919) % 6, fireCd: 0, on: true,
+    vx: KIND[d.type].speed, t: (d.x * 7919) % 6, fireCd: 0, on: true, summoned,
     // spawn snapshot: everything reviveAll() has to undo. hp is mutated by bolt
     // hits (redhoppers take two), x drifts along the patrol, saucer y rides the bob.
     spawn: { x: d.x, y: d.y, hp: KIND[d.type].hp, vx: KIND[d.type].speed },
-  }));
+  };
+}
+
+export function makeEnemies(defs, level) {
+  let list = defs.filter(d => KIND[d.type]).map(d => initEnemy(d));
 
   const t = v => Math.floor(v / TILE);
   const groundAhead = (e) => level.solidAt(t(e.x + Math.sign(e.vx) * (e.w / 2 + 2)), t(e.y + 1));
@@ -59,10 +67,22 @@ export function makeEnemies(defs, level) {
       return null;
     },
     kill(e, onKill) { if (e.on) { e.on = false; onKill?.(e); } },
+    // Push a live enemy into the roster mid-run (boss summon). Returns the
+    // enemy so callers can pop FX off it; null for an unknown kind.
+    spawnDef(d) {
+      if (!KIND[d.type]) return null;
+      const e = initEnemy(d, true);
+      list.push(e);
+      return e;
+    },
     // Real death rewinds the whole roster, not just the corpses: an enemy you
     // merely walked past has drifted off its spawn, so the retry would otherwise
     // start from a scrambled board. Full roster, no partial restore.
     reviveAll() {
+      // Summoned minions are NOT part of the authored roster: they were a boss
+      // phase's output, not level content, so a real death deletes them outright
+      // rather than reviving them (otherwise every retry compounds the arena).
+      list = list.filter(e => !e.summoned);
       for (const e of list) {
         e.on = true;
         e.hp = e.spawn.hp;

@@ -127,10 +127,15 @@ def hud():
 def main():
     OUT.mkdir(exist_ok=True)
     tiles(); parallax(); coin(); hud()
-    made = sorted(p.name for p in OUT.glob('*.png'))
+    made = ['coin.png', 'hearts.png', 'par_mesas.png', 'par_rocks.png',
+            'par_stars.png', 'pips.png', 'tiles.png']
     print('generated:', ', '.join(made))
-    assert made == ['coin.png', 'hearts.png', 'par_mesas.png', 'par_rocks.png',
-                    'par_stars.png', 'pips.png', 'tiles.png']
+    # Subset check, not an exact listing: assets-gen/ also holds art from OTHER
+    # generators (tools/posegen.py's pose_gundown.png), and an equality assert
+    # here fails the whole asset build the moment one of those lands.
+    on_disk = {p.name for p in OUT.glob('*.png')}
+    missing = [f for f in made if f not in on_disk]
+    assert not missing, missing
 
 if __name__ == '__main__':
     main()

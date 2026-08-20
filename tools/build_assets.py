@@ -49,6 +49,10 @@ GEN = [
     ('par_stars', 'par_stars.png', 640, 360,  1, False),
     ('par_mesas', 'par_mesas.png', 640, 120,  1, False),
     ('par_rocks', 'par_rocks.png', 640,  80,  1, False),
+    # Surgical pose derived from the pack's Stand frame by tools/posegen.py —
+    # same 64x64 cell, same feet line, so it drops straight into drawFeet next
+    # to the authored player anims.
+    ('gundown',   'pose_gundown.png', 64,  64,  1, False),
 ]
 
 def slice_sheet(path, cw, ch, factor):
@@ -136,7 +140,9 @@ def palette(frames):
     return keep
 
 def main():
-    import subprocess; subprocess.run(['python3', str(ROOT / 'tools' / 'genart.py')], check=True)
+    import subprocess
+    for tool in ('genart.py', 'posegen.py'):
+        subprocess.run(['python3', str(ROOT / 'tools' / tool)], check=True)
     OUT.mkdir(parents=True, exist_ok=True)
     frames, anims = collect()
     atlas, rects = pack(frames)
@@ -151,8 +157,8 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 193, len(frames)
-    assert len(anims) == 28, len(anims)
+    assert len(frames) == 194, len(frames)
+    assert len(anims) == 29, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':

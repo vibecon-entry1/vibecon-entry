@@ -19,10 +19,18 @@ import { P } from '../physics.js';
 const VW = 640, VH = 360;
 
 const ANIM_FOR = {                       // state → atlas anim
-  spawn: 'spawn', idle: 'stand', walk: 'run', air: 'run',
+  spawn: 'spawn', idle: 'stand', walk: 'run', air: 'duck',
   slide: 'slide', duck: 'duck',
   hit: 'hit', ded: 'dead',
 };
+// 'air' is the one state that does NOT play its anim: it holds a single tucked
+// frame out of the duck cycle (see AIR_FRAME below). A/B'd in-game against the
+// run loop it was the clear winner — a run cycle in mid-air reads as the same
+// silhouette as running on the ground, so at a glance you can't tell you left
+// it, whereas the tuck is unmistakably airborne and sits right under the boot
+// thruster. duck frame 6 is the most compact of the eight (46px tall, knee
+// fully up); frames 0/1/7 are the stand-up transitions.
+const AIR_FRAME = 6;
 
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
@@ -56,11 +64,23 @@ export function makePlay({ atlas, input, save, go }) {
   // popup per event. Counts the WOW+ events banked during the CURRENT flight
   // (reset the frame we land), capped at three '+'.
   let flightWows = 0;
+  // Down-shot pose timer. The player state machine has no 'firing down' state
+  // (a down-shot is an impulse on 'air'/'walk'/'idle', not a state), and adding
+  // one would put a cosmetic beat in charge of physics. So this is a pure DRAW
+  // override: a shot resets it, and while it runs the hero is drawn in the
+  // gundown pose regardless of what state he is actually in.
+  let gunDownT = 0;
+  const GUN_DOWN_T = 0.15;
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
   // through a mid-fight real death, so the arena can never re-arm a second saucer.
   let boss = null, bossSpawned = false, bossAnimT = 0;
+  // Summon phase bookkeeping. The cap is checked at SPAWN time against the live
+  // summoned population, so a player who clears minions gets fresh ones on the
+  // next cycle while a player who ignores them never faces more than MINION_CAP.
+  let sawSummon = false;
   const fx = [];                          // explode puffs: { x, y, t } — t < 0 = staggered wait
+  const MINION_CAP = 4;                   // live boss-summoned minions at once
   // Floor top at the trigger column, scanned out of the level rather than
   // hardcoded: the arena's authored row count is a chunks.js detail, and the
   // FLOOR_PAD repeat rows below it make an arithmetic guess easy to get wrong.
@@ -70,6 +90,30 @@ export function makePlay({ atlas, input, save, go }) {
     return level.h;
   })();
   if (typeof window !== 'undefined' && window.__blast) window.__blast.P = P;  // live tuning hook
+
+  // The boss's summon phase output. The boss emits defs; the scene decides what
+  // actually lands — that split keeps boss.js free of any enemy-list knowledge.
+  // Summoned minions go through enemies.spawnDef(), which makes them ordinary
+  // roster members: hitTest/kill/contact-damage/sleep-gate all pick them up for
+  // free. The only thing they do NOT get is revival (see enemies.reviveAll).
+  function onSummon(defs) {
+    let live = 0;
+    enemies.forEach(e => { if (e.summoned) live++; });
+    for (const d of defs) {
+      if (live >= MINION_CAP) break;
+      if (enemies.spawnDef(d)) {
+        live++;
+        fx.push({ x: d.x, y: d.y - 20, t: 0 });     // a puff so they don't just blink in
+      }
+    }
+    if (!sawSummon) {
+      sawSummon = true;
+      // Parked well left of the boss for the same reason the reveal popup is:
+      // during summon the boss sits at its hover home near the arena's right
+      // wall, and text anchored there runs off the edge into the score HUD.
+      popups.spawn(boss.x - 200, boss.y + 60, 'very minions.');
+    }
+  }
 
   // Everything that happens the moment the boss's last hp point lands. Shared
   // by the bolt-kill path and the ?test cheat so the two can never drift.
@@ -161,10 +205,12 @@ export function makePlay({ atlas, input, save, go }) {
   // score.value() never learns about it, so calling breakdown() twice is safe.
   function breakdown() {
     const t = Math.floor(timeS);
-    const timeBonus = Math.max(0, 3000 - t * 10);
+    // Retuned for the 31-chunk campaign: a bigger pot that decays twice as fast,
+    // so a brisk full run still banks thousands while a 5-minute stroll zeroes out.
+    const timeBonus = Math.max(0, 6000 - t * 20);
     return {
       kills: killCount,
-      coins: 50 - coins.remaining(),
+      coins: coins.total() - coins.remaining(),
       deaths: player.deaths,
       timeS: t,
       timeBonus,
@@ -188,7 +234,11 @@ export function makePlay({ atlas, input, save, go }) {
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
       timeS += dt;
       const wasAirborne = player.coyote === 0;
+      gunDownT = Math.max(0, gunDownT - dt);
       player.update(dt, input.actions(), level, playerBolts);
+      // A muzzle still at t === 0 after the update is one fired THIS frame;
+      // dy marks it as the down-shot (hop, boost or the pinned variant).
+      if (player.muzzle && player.muzzle.dy && player.muzzle.t === 0) gunDownT = GUN_DOWN_T;
       // contact gate: hurt() owns damage authority via iframes; the dummy body
       // is a perf skip so overlapping-frame AABB checks stop during the stagger.
       enemies.update(dt, player.iframes > 0 ? { x: player.body.x, y: -9999, w: 0 } : player.body,
@@ -210,7 +260,7 @@ export function makePlay({ atlas, input, save, go }) {
         // every phase change, so driving the 2f loop off it would stutter.
         bossAnimT += dt;
         boss.update(dt, player.iframes > 0 ? { x: player.body.x, y: -9999, w: 0 } : player.body,
-                    enemyBolts, fromX => player.hurt(fromX));
+                    enemyBolts, fromX => player.hurt(fromX), onSummon);
       }
       for (let i = fx.length - 1; i >= 0; i--) {
         fx[i].t += dt;
@@ -349,9 +399,14 @@ export function makePlay({ atlas, input, save, go }) {
         ctx.fillStyle = '#2c8'; ctx.fillRect(c.x + 2, c.y - 26, 10, 7);
       }
 
-      // (5) coins
-      coins.forEach(c => atlas.drawCentered(ctx, 'coin',
-        animFrame(atlas.anims.coin, c.t), c.x, c.y));
+      // (5) coins — culled to the camera window ±VW. There are 151 coins on the
+      // 31-chunk level and drawCentered is not free; only the ones anywhere near
+      // the viewport are worth a draw call.
+      const coinX0 = cam.x - VW, coinX1 = cam.x + 2 * VW;
+      coins.forEach(c => {
+        if (c.x < coinX0 || c.x > coinX1) return;
+        atlas.drawCentered(ctx, 'coin', animFrame(atlas.anims.coin, c.t), c.x, c.y);
+      });
 
       // (6) enemies
       enemies.forEach(e => atlas.drawFeet(ctx, e.anim,
@@ -395,19 +450,54 @@ export function makePlay({ atlas, input, save, go }) {
       const flicker = player.iframes > 0 && player.state !== 'ded' &&
                       Math.floor(player.iframes * 12) % 2;
       if (!flicker && takeoff < 0) {
-        const anim = ANIM_FOR[player.state];
-        atlas.drawFeet(ctx, anim, animFrame(atlas.anims[anim], player.stateT),
+        // gundown wins over the state's own anim for GUN_DOWN_T after a
+        // down-shot — but never over the two poses that ARE the story of the
+        // frame (staggered, dead), which would otherwise be silently replaced.
+        const posed = gunDownT > 0 && player.state !== 'ded' &&
+                      player.state !== 'hit' && player.state !== 'spawn';
+        const anim = posed ? 'gundown' : ANIM_FOR[player.state];
+        atlas.drawFeet(ctx, anim,
+                       posed ? atlas.anims.gundown.frames[0]
+                             : player.state === 'air' ? atlas.anims.duck.frames[AIR_FRAME]
+                             : animFrame(atlas.anims[anim], player.stateT),
                        player.body.x, player.body.y, player.facing < 0);
       }
 
-      // (8) muzzle flash at the recorded shot origin (mirrored for leftward shots)
-      if (player.muzzle) {
+      // (7b) ROCKET BOOTS. The down-shot is the game's whole vertical verb, and
+      // the player reads it as thrust coming out of the feet — so while the body
+      // is actually rising we burn a scaled-up muzzle flame straight down under
+      // the boots. This is pure FX: nothing about it touches physics or state.
+      // The muzzle anim is NOT looped through here: it is a 3-frame IGNITION
+      // (a 3px spark, a 10px ring, then the full burst-plus-streak), so
+      // animFrame'ing it spends two thirds of every cycle drawing almost
+      // nothing. A thruster wants the last frame held; the flicker comes from
+      // pulsing the plume's length instead, which also keeps the bright core
+      // welded to the boots rather than blinking out.
+      // Rotated +PI/2 the burst's streak trails straight DOWN, which is what
+      // sells it as exhaust rather than an upward shot. The scale is applied
+      // OUTSIDE drawCentered's own rotate, so it acts on world axes: x fattens
+      // the plume, y shortens the (very long, very thin) bolt streak into a
+      // cone. Uniform scaling here drew a 40px laser line down to the floor.
+      if (takeoff < 0 && player.state !== 'ded' && player.body.vy < -40) {
+        const burst = atlas.anims.blast_muzzle.frames[2];
+        const pulse = 0.62 + 0.12 * (Math.floor(player.stateT * 24) % 2);
+        ctx.save();
+        ctx.translate(Math.round(player.body.x), Math.round(player.body.y + 6));
+        ctx.scale(2.6, pulse);
+        atlas.drawCentered(ctx, 'blast_muzzle', burst, 0, 0, Math.PI / 2);
+        ctx.restore();
+      }
+
+      // (8) muzzle flash at the recorded shot origin (mirrored for leftward
+      // shots). DOWN-shots are skipped: their recorded origin sits 6px above the
+      // feet, right on top of the boot flame above, and the two stacked flames
+      // read as one fat smear rather than a thruster. The boots own that beat now.
+      if (player.muzzle && !player.muzzle.dy) {
         const m = player.muzzle;
         ctx.save();
         if (m.dx < 0) { ctx.translate(m.x, m.y); ctx.scale(-1, 1); ctx.translate(-m.x, -m.y); }
         atlas.drawCentered(ctx, 'blast_muzzle',
-          animFrame(atlas.anims.blast_muzzle, m.t), m.x, m.y,
-          m.dy ? Math.PI / 2 : 0);
+          animFrame(atlas.anims.blast_muzzle, m.t), m.x, m.y, 0);
         ctx.restore();
       }
 
@@ -462,6 +552,7 @@ export function makePlay({ atlas, input, save, go }) {
       // bossPhase is observability-only (headless fight probes assert that a
       // player actually LIVES to see spread/slam now that hp is 40).
       bossPhase: boss && boss.on ? boss.phase : null,
+      minions: (() => { let n = 0; enemies.forEach(e => { if (e.summoned) n++; }); return n; })(),
       gateOpen: gateIsOpen(),
       timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
     }),
