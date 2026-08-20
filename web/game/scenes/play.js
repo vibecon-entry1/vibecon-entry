@@ -409,6 +409,32 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);
   }
 
+  // --- single props -----------------------------------------------------------
+  // The parallax strips TILE: they are 640 wide and the render wraps them, so
+  // anything drawn into one exists again every 640px of layer travel. A prop
+  // that is supposed to be a landmark — one of it, in one place — therefore
+  // cannot live in the strip. It gets its own draw here instead: one call, at a
+  // fixed coordinate in the LAYER's own space, with the band's parallax factor
+  // applied exactly the way band() applies it. So it drifts with its band and
+  // hides behind it, but there is only ever the one.
+  //
+  // Coordinates are layer-space (world x * the band's factor), and each was
+  // picked by scrolling to it: PROPS[0] rides the far mesas and comes up around
+  // the middle of the run, PROPS[1] rides the nearer rocks out where the level
+  // stops being polite. The y is the same offset inside the band each one had
+  // when it was painted into the strip, so the composition — how much of it the
+  // rock swallows — is unchanged.
+  const PROPS = [
+    { name: 'prop1', x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
+    { name: 'prop2', x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56 },
+  ];
+
+  function drawProp(ctx, p, drift) {
+    const sx = Math.round(p.x - cam.x * p.fx);
+    if (sx > VW || sx + atlas.anims[p.name].cw < 0) return;   // off-screen: skip
+    drawLayer(ctx, p.name, sx, restLine + p.bias - p.bh + drift(p.fy) + p.y);
+  }
+
   return {
     update(dt) {
       ambT += dt;
@@ -654,6 +680,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // sits behind every band that follows and drifts with them.
       if (xOn?.()) { drawDeco1(ctx, sox + 96, 52 + drift(0.05));
                      drawDeco1(ctx, sox + VW + 96, 52 + drift(0.05)); }
+      // Props go down BEFORE their band, so the band occludes them the same way
+      // the strip art did when they were painted underneath it.
+      drawProp(ctx, PROPS[0], drift);
       band('par_mesas', 0.30, 0.12, 4);
       // far-ground haze under the near band: with the camera riding high the
       // real floor drops away faster than the parallax does, and without this
@@ -661,6 +690,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       const rocksBottom = restLine + 10 + drift(0.20);
       ctx.fillStyle = '#2a1c33';
       ctx.fillRect(0, rocksBottom - 20, VW, VH - rocksBottom + 20);
+      drawProp(ctx, PROPS[1], drift);
       band('par_rocks', 0.60, 0.20, 10);
 
       ctx.save(); cam.apply(ctx);

@@ -162,3 +162,37 @@ test('a real death with nothing earned docks the flat 100 and goes negative', as
   expect(st.hp).toBe(3);                    // real death: full-hp respawn
   expect(errors).toEqual([]);
 });
+
+test('scenery props are landmarks: each one exists at exactly one place', async ({ page }) => {
+  const errors = await boot(page);
+  // The parallax bands TILE every 640px, so anything painted into a strip
+  // repeats forever. These two props are drawn by the scene instead, once each,
+  // and this is the test that keeps them that way: a colour that only that
+  // prop's art uses is counted over the whole finished frame at camera
+  // positions spread across the level. Exactly one position may see it.
+  const counts = await page.evaluate(async (spots) => {
+    const SIG = { prop1: [113, 86, 69], prop2: [156, 82, 55] };
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const out = [];
+    for (const x of spots) {
+      window.__blast.cheat.warp(x);
+      await sleep(700);                       // let the camera catch up and redraw
+      const c = document.getElementById('screen');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const n = { warp: x, prop1: 0, prop2: 0 };
+      for (let i = 0; i < d.length; i += 4)
+        for (const k in SIG)
+          if (d[i] === SIG[k][0] && d[i + 1] === SIG[k][1] && d[i + 2] === SIG[k][2]) n[k]++;
+      out.push(n);
+    }
+    return out;
+  }, [1000, 6000, 9020, 12000, 15800, 20000, 23000]);
+
+  for (const k of ['prop1', 'prop2']) {
+    const seen = counts.filter(c => c[k] > 0);
+    expect(seen.map(c => c.warp), `${k} seen at ${JSON.stringify(seen)}`).toHaveLength(1);
+  }
+  expect(counts.find(c => c.warp === 9020).prop1).toBeGreaterThan(0);   // mid-run, far band
+  expect(counts.find(c => c.warp === 15800).prop2).toBeGreaterThan(0);  // deep, near band
+  expect(errors).toEqual([]);
+});

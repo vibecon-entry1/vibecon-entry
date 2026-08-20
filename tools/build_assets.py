@@ -55,6 +55,15 @@ GEN = [
     ('gundown',   'pose_gundown.png', 64,  64,  1, False),
 ]
 
+EXTRA_DIR = ROOT / 'assets-extra'
+# Single-cell props. Same shape as GEN, different source tree: these are hand
+# art rather than generated, and the scene places each one at exactly one spot
+# in the world instead of tiling it.
+EXTRA = [
+    ('prop1',     'deco1.png',      19,  28,  1, False),
+    ('prop2',     'deco2.png',      27,  28,  1, False),
+]
+
 def slice_sheet(path, cw, ch, factor):
     """yield native-resolution frames (trimmed img, ox, oy, native_cw, native_ch)"""
     im = Image.open(SRC / path).convert('RGBA')
@@ -95,16 +104,17 @@ def collect():
     anims[name] = dict(frames=list(range(base, base + len(ship_files))),
                        fps=fps, loop=loop, feetY=feet, cw=256, ch=200)
 
-    for name, fname, fw, fh, fps, loop in GEN:
-        im = Image.open(GEN_DIR / fname).convert('RGBA')
-        base = len(frames)
-        n = im.width // fw
-        for i in range(n):
-            cell = im.crop((i * fw, 0, (i + 1) * fw, fh))
-            bb = cell.getbbox(alpha_only=True) or (0, 0, fw, fh)
-            frames.append((cell.crop(bb), bb[0], bb[1]))
-        anims[name] = dict(frames=list(range(base, base + n)), fps=fps, loop=loop,
-                           feetY=fh, cw=fw, ch=fh)
+    for src_dir, table in ((GEN_DIR, GEN), (EXTRA_DIR, EXTRA)):
+        for name, fname, fw, fh, fps, loop in table:
+            im = Image.open(src_dir / fname).convert('RGBA')
+            base = len(frames)
+            n = im.width // fw
+            for i in range(n):
+                cell = im.crop((i * fw, 0, (i + 1) * fw, fh))
+                bb = cell.getbbox(alpha_only=True) or (0, 0, fw, fh)
+                frames.append((cell.crop(bb), bb[0], bb[1]))
+            anims[name] = dict(frames=list(range(base, base + n)), fps=fps, loop=loop,
+                               feetY=fh, cw=fw, ch=fh)
 
     return frames, anims
 
@@ -159,8 +169,8 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 194, len(frames)
-    assert len(anims) == 29, len(anims)
+    assert len(frames) == 196, len(frames)
+    assert len(anims) == 31, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':
