@@ -5,7 +5,7 @@
 </p>
 
 <h1 align="center">SUCH BLAST</h1>
-<p align="center"><b>a VibeCon 2026 game. one verb. the gun is your legs. much blast.</b></p>
+<p align="center"><b>a VibeCon 2026 game. the gun is your legs. much blast.</b></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/made%20for-VibeCon%202026-ff3a3a" alt="vibecon">
