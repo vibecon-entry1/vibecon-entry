@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/level-1488%20tiles-532e6d" alt="level">
   <img src="https://img.shields.io/badge/boss-MEGA%20SAUCER-982c2c" alt="boss">
   <img src="https://img.shields.io/badge/endless-WOW%20ZONE-eec548" alt="wow zone">
-  <img src="https://img.shields.io/badge/license-MIT%20%2B%20doge%20carve--out-1e2f51" alt="license">
+  <img src="https://img.shields.io/badge/license-MIT%20%2B%20dogelon%20carve--out-1e2f51" alt="license">
   <img src="https://img.shields.io/badge/playable-1%E2%80%935%20min-ffa900" alt="playable">
 </p>
 
