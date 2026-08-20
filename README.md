@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/badge/playable-1%E2%80%935%20min-ffa900" alt="playable">
 </p>
 
-<p align="center">🎮 <b>PLAY:</b> <i>very link soon — GitHub Pages incoming</i> 🎮</p>
+<p align="center">🎮 <b>PLAY:</b> <a href="https://vibecon-entry1.github.io/vibecon-entry/"><b>vibecon-entry1.github.io/vibecon-entry</b></a> 🎮</p>
 
 ---
 
