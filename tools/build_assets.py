@@ -38,6 +38,18 @@ SHEETS = [
 SHIP_DIR = 'Added sprites/Dogelon_Ship'   # 18 pre-sliced 6912x5400, factor 27
 SHIP = ('ship', 12, True)
 
+GEN_DIR = ROOT / 'assets-gen'
+# name, file, frame_w, frame_h, fps, loop  (frames slice left-to-right)
+GEN = [
+    ('tiles',     'tiles.png',      16,  16,  1, False),
+    ('coin',      'coin.png',       12,  12, 10, True),
+    ('heart',     'hearts.png',     10,  10,  1, False),
+    ('pip',       'pips.png',        8,  12,  1, False),
+    ('par_stars', 'par_stars.png', 640, 360,  1, False),
+    ('par_mesas', 'par_mesas.png', 640, 120,  1, False),
+    ('par_rocks', 'par_rocks.png', 640,  80,  1, False),
+]
+
 def slice_sheet(path, cw, ch, factor):
     """yield native-resolution frames (trimmed img, ox, oy, native_cw, native_ch)"""
     im = Image.open(SRC / path).convert('RGBA')
@@ -77,6 +89,18 @@ def collect():
     name, fps, loop = SHIP
     anims[name] = dict(frames=list(range(base, base + len(ship_files))),
                        fps=fps, loop=loop, feetY=feet, cw=256, ch=200)
+
+    for name, fname, fw, fh, fps, loop in GEN:
+        im = Image.open(GEN_DIR / fname).convert('RGBA')
+        base = len(frames)
+        n = im.width // fw
+        for i in range(n):
+            cell = im.crop((i * fw, 0, (i + 1) * fw, fh))
+            bb = cell.getbbox(alpha_only=True) or (0, 0, fw, fh)
+            frames.append((cell.crop(bb), bb[0], bb[1]))
+        anims[name] = dict(frames=list(range(base, base + n)), fps=fps, loop=loop,
+                           feetY=fh, cw=fw, ch=fh)
+
     return frames, anims
 
 def pack(frames, max_w=2048):
@@ -111,6 +135,7 @@ def palette(frames):
     return keep
 
 def main():
+    import subprocess; subprocess.run(['python3', str(ROOT / 'tools' / 'genart.py')], check=True)
     OUT.mkdir(parents=True, exist_ok=True)
     frames, anims = collect()
     atlas, rects = pack(frames)
@@ -125,8 +150,8 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 176, len(frames)
-    assert len(anims) == 20, len(anims)
+    assert len(frames) == 193, len(frames)
+    assert len(anims) == 27, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':
