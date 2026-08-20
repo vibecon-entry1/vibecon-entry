@@ -50,6 +50,89 @@ export function createInput(target = window) {
 
   const pad = { left: false, right: false, down: false, fire: false };
 
+  // Touch source. Merged into actions() exactly like the gamepad — the sim
+  // never learns which device a `left` came from. NOT routed through
+  // setVirtual: that channel belongs to test tapes, and a live thumb fighting
+  // a tape would corrupt every calibrated run.
+  //
+  // Zones split the canvas at VW/2 in VIRTUAL pixels (the same 640-wide space
+  // every scene draws in): left half is a floating stick — drag from the touch
+  // origin resolves to left/right/down — and the right half is FIRE, with a
+  // downward drag adding `down` so hop/boost stay one-thumb moves.
+  const MOVE_SPLIT = 320;                   // VW / 2
+  const MOVE_DEAD = 12;                     // virtual px before a drag means left/right
+  const DOWN_DRAG = 18;                     // virtual px of downward drag that means `down`
+  const TAP_SLOP = 24;                      // total travel beyond this is a drag, not a tap
+  const touch = { left: false, right: false, down: false, fire: false };
+  let touchSeen = false;
+  const uiTaps = [];                        // completed taps (virtual coords), per frame
+  const track = new Map();                  // pointerId → {ox,oy,x,y,zone,claimed,moved}
+
+  function attachTouch(el, { toVirtual, claim } = {}) {
+    const recompute = () => {
+      const next = { left: false, right: false, down: false, fire: false };
+      for (const p of track.values()) {
+        if (p.claimed) continue;
+        const dx = p.x - p.ox, dy = p.y - p.oy;
+        if (p.zone === 'move') {
+          if (dx < -MOVE_DEAD) next.left = true;
+          else if (dx > MOVE_DEAD) next.right = true;
+          if (dy > DOWN_DRAG) next.down = true;
+        } else {
+          next.fire = true;
+          if (dy > DOWN_DRAG) next.down = true;
+        }
+      }
+      // Rising edges feed the tap record, same as a keydown: a touch that
+      // begins and ends inside one 16ms gap must still read as pressed() once.
+      for (const k in next) {
+        if (next[k] && !touch[k]) tap[k] = true;
+        touch[k] = next[k];
+      }
+    };
+    el.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'touch') return;   // mouse keeps its click semantics
+      e.preventDefault();                      // no synthesized click, no dbl-tap zoom
+      const v = toVirtual(e.clientX, e.clientY);
+      if (!v) return;
+      touchSeen = true;
+      // The shell gets first refusal (its buttons live inside the fire zone).
+      // A string return injects that action's tap; any truthy return removes
+      // the pointer from game-action duty for its whole lifetime.
+      const claimed = claim?.(v);
+      if (typeof claimed === 'string') tap[claimed] = true;
+      track.set(e.pointerId, { ox: v.x, oy: v.y, x: v.x, y: v.y, moved: 0,
+                               claimed: !!claimed,
+                               zone: v.x < MOVE_SPLIT ? 'move' : 'fire' });
+      el.setPointerCapture?.(e.pointerId);
+      recompute();
+    });
+    el.addEventListener('pointermove', e => {
+      const p = track.get(e.pointerId);
+      if (!p) return;
+      e.preventDefault();
+      const v = toVirtual(e.clientX, e.clientY);
+      if (!v) return;
+      p.x = v.x; p.y = v.y;
+      p.moved = Math.max(p.moved, Math.hypot(v.x - p.ox, v.y - p.oy));
+      recompute();
+    });
+    const release = e => {
+      const p = track.get(e.pointerId);
+      if (!p) return;
+      const v = toVirtual(e.clientX, e.clientY);
+      if (v) { p.x = v.x; p.y = v.y; }        // lift point: taps report where the finger left
+      // Only a clean pointerup that never travelled counts as a UI tap —
+      // pointercancel and drags are not "the player poked that spot".
+      if (e.type === 'pointerup' && !p.claimed && p.moved <= TAP_SLOP)
+        uiTaps.push({ x: p.x, y: p.y });
+      track.delete(e.pointerId);
+      recompute();
+    };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+  }
+
   function pollGamepad() {
     const gp = navigator.getGamepads?.()?.[0];
     if (!gp) { pad.left = pad.right = pad.down = pad.fire = false; return; }
@@ -62,11 +145,27 @@ export function createInput(target = window) {
 
   return {
     setVirtual(v) { virtual = v; },         // null to release
+    attachTouch,
+    // Everything the shell needs to draw touch affordances, and nothing the
+    // sim could want: the sim keeps reading actions() only.
+    touchState() {
+      const pointers = [];
+      for (const p of track.values())
+        if (!p.claimed) pointers.push({ zone: p.zone, ox: p.ox, oy: p.oy, x: p.x, y: p.y });
+      return { seen: touchSeen, pointers };
+    },
+    /** Taps that completed THIS frame (virtual coords). Cleared in endFrame. */
+    taps() { return uiTaps; },
     beginFrame() { pollGamepad(); },
-    endFrame() { Object.assign(prev, this.actions()); for (const k in tap) delete tap[k]; },
+    endFrame() {
+      Object.assign(prev, this.actions());
+      for (const k in tap) delete tap[k];
+      uiTaps.length = 0;
+    },
     actions() {
       const a = { ...held };
-      a.left ||= pad.left; a.right ||= pad.right; a.down ||= pad.down; a.fire ||= pad.fire;
+      a.left ||= pad.left || touch.left; a.right ||= pad.right || touch.right;
+      a.down ||= pad.down || touch.down; a.fire ||= pad.fire || touch.fire;
       return virtual ? { ...a, ...virtual } : a;
     },
     held(a) { return this.actions()[a]; },

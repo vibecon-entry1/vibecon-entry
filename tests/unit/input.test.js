@@ -108,3 +108,140 @@ test('touched does not fire twice for one held key across frames', () => {
   assert.equal(input.touched('fire'), true);    // still down
   assert.equal(input.pressed('fire'), false);   // but no second edge
 });
+
+// --- touch source -----------------------------------------------------------
+// The fake element speaks pointer events the way the canvas does; toVirtual is
+// identity so test coords ARE virtual coords (move zone x<320, fire zone x>=320).
+function fakeEl() {
+  const listeners = {};
+  return {
+    addEventListener(type, fn) { (listeners[type] ??= []).push(fn); },
+    setPointerCapture() {},
+    fire(type, props) {
+      for (const fn of listeners[type] ?? [])
+        fn({ type, pointerType: 'touch', preventDefault: () => {}, ...props });
+    },
+  };
+}
+const idMap = { toVirtual: (x, y) => ({ x, y }) };
+
+function touchRig(opts = {}) {
+  const w = fakeWindow();
+  const input = createInput(w);
+  const el = fakeEl();
+  input.attachTouch(el, { ...idMap, ...opts });
+  return { w, input, el };
+}
+
+test('touch: fire-zone hold merges like a device, clears on release', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  assert.equal(input.actions().fire, true);
+  assert.equal(input.held('fire'), true);
+  el.fire('pointerup', { pointerId: 1, clientX: 400, clientY: 200 });
+  assert.equal(input.actions().fire, false);
+});
+
+test('touch: a tap inside ONE frame still reads pressed exactly once', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  el.fire('pointerup', { pointerId: 1, clientX: 400, clientY: 200 });
+  assert.equal(input.held('fire'), false);
+  assert.equal(input.pressed('fire'), true);
+  input.endFrame();
+  assert.equal(input.pressed('fire'), false);
+});
+
+test('touch: move-zone drag — deadzone, direction, down threshold', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 100, clientY: 200 });
+  assert.equal(input.actions().right, false);               // origin: no intent yet
+  el.fire('pointermove', { pointerId: 1, clientX: 108, clientY: 200 });
+  assert.equal(input.actions().right, false);               // inside the 12px deadzone
+  el.fire('pointermove', { pointerId: 1, clientX: 120, clientY: 200 });
+  assert.equal(input.actions().right, true);
+  el.fire('pointermove', { pointerId: 1, clientX: 120, clientY: 230 });
+  assert.equal(input.actions().right, true);                // down-forward = slide intent
+  assert.equal(input.actions().down, true);
+  el.fire('pointermove', { pointerId: 1, clientX: 80, clientY: 200 });
+  assert.equal(input.actions().left, true);
+  assert.equal(input.actions().down, false);
+  el.fire('pointerup', { pointerId: 1, clientX: 80, clientY: 200 });
+  assert.deepEqual([input.actions().left, input.actions().right], [false, false]);
+});
+
+test('touch: fire-zone drag down while holding adds down (hop/boost chord)', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 500, clientY: 180 });
+  el.fire('pointermove', { pointerId: 1, clientX: 500, clientY: 210 });
+  assert.equal(input.actions().fire, true);
+  assert.equal(input.actions().down, true);
+});
+
+test('touch: two pointers plus keyboard combine into one action set', () => {
+  const { w, input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 100, clientY: 200 });
+  el.fire('pointermove', { pointerId: 1, clientX: 140, clientY: 200 });
+  el.fire('pointerdown', { pointerId: 2, clientX: 500, clientY: 200 });
+  w.fire('keydown', 'ArrowDown');
+  const a = input.actions();
+  assert.deepEqual([a.right, a.fire, a.down], [true, true, true]);
+  el.fire('pointerup', { pointerId: 2, clientX: 500, clientY: 200 });
+  assert.equal(input.actions().right, true);                // move thumb survives alone
+  assert.equal(input.actions().fire, false);
+});
+
+test('touch: claimed pointer feeds the shell action, never the game', () => {
+  const { input, el } = touchRig({ claim: v => (v.x > 600 ? 'pause' : false) });
+  el.fire('pointerdown', { pointerId: 1, clientX: 620, clientY: 10 });
+  assert.equal(input.pressed('pause'), true);
+  assert.equal(input.actions().fire, false);                // inside fire zone, but claimed
+  el.fire('pointerup', { pointerId: 1, clientX: 620, clientY: 10 });
+  assert.equal(input.taps().length, 0);                     // claimed taps are not UI taps
+});
+
+test('touch: clean tap lands in taps(); a drag does not; endFrame clears', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  el.fire('pointerup', { pointerId: 1, clientX: 402, clientY: 203 });
+  assert.equal(input.taps().length, 1);
+  assert.equal(Math.round(input.taps()[0].x), 402);
+  el.fire('pointerdown', { pointerId: 2, clientX: 400, clientY: 200 });
+  el.fire('pointermove', { pointerId: 2, clientX: 400, clientY: 280 });
+  el.fire('pointerup', { pointerId: 2, clientX: 400, clientY: 280 });
+  assert.equal(input.taps().length, 1);                     // the drag added nothing
+  input.endFrame();
+  assert.equal(input.taps().length, 0);
+});
+
+test('touch: mouse pointers never reach the touch source', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, pointerType: 'mouse', clientX: 400, clientY: 200 });
+  assert.equal(input.actions().fire, false);
+});
+
+test('touch: pointercancel releases held actions and records no tap', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  assert.equal(input.actions().fire, true);
+  el.fire('pointercancel', { pointerId: 1, clientX: 400, clientY: 200 });
+  assert.equal(input.actions().fire, false);
+  assert.equal(input.taps().length, 0);
+});
+
+test('touch: a held touch keeps touched() true across frames (afk presence)', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  input.endFrame();
+  assert.equal(input.touched('fire'), true);                // idle clock reads this
+  assert.equal(input.pressed('fire'), false);
+});
+
+test('touch: virtual tape still overrides a live thumb', () => {
+  const { input, el } = touchRig();
+  el.fire('pointerdown', { pointerId: 1, clientX: 400, clientY: 200 });
+  input.setVirtual({ fire: false });
+  assert.equal(input.actions().fire, false);
+  input.setVirtual(null);
+  assert.equal(input.actions().fire, true);
+});
