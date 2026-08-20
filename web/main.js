@@ -12,6 +12,7 @@ import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
 import { makeWowEnd } from './game/scenes/wowend.js';
 import { drawText, drawTextShadow } from './engine/font.js';
+import { fitScale } from './engine/fit.js';
 import { P } from './game/physics.js';
 
 export const VW = 640, VH = 360;
@@ -49,11 +50,14 @@ let scale = 1;                                // device pixels per game pixel
 
 function fit() {
   const dpr = devicePixelRatio || 1;
-  // Both branches work in DEVICE pixels: innerWidth is CSS px, so the *dpr is
-  // what makes `scale` mean "hardware pixels per game pixel" rather than
-  // "CSS pixels per game pixel" (the old, blurry meaning).
-  const raw = Math.min(innerWidth * dpr / VW, innerHeight * dpr / VH);
-  scale = displayMode === 'fill' ? Math.max(1, raw) : Math.max(1, Math.floor(raw));
+  // Everything works in DEVICE pixels: innerWidth is CSS px, so the *dpr
+  // inside fitScale is what makes `scale` mean "hardware pixels per game
+  // pixel" rather than "CSS pixels per game pixel" (the old, blurry meaning).
+  // Below one device pixel per game pixel fitScale goes FRACTIONAL in both
+  // modes — the old Math.max(1, ...) clamp pushed the canvas off small phone
+  // screens. The math lives in engine/fit.js so that branch is unit-tested.
+  scale = fitScale({ winW: innerWidth, winH: innerHeight, dpr, mode: displayMode,
+                     vw: VW, vh: VH });
 
   // Backing store in device pixels; CSS box is that divided back by dpr, so the
   // element still occupies the right amount of layout space. round() on the
