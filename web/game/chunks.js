@@ -111,8 +111,10 @@ export const GB1 = parseChunk([
 // 14-16 are the floor slab, and because row 16 is the one that repeats, any pit
 // gap must be cut through rows 14/15/16 so it runs to the level bottom.
 // Standing surfaces keep >= 3 empty rows overhead (44px body + solid ceiling);
-// the ONE deliberate exception is C5's slide corridor, a 2-row (32px) opening
-// that only the 24px slide box fits through.
+// the deliberate exceptions are the slide corridors — 2-row (32px) openings
+// that only the 24px slide box fits through. There are four now: C5, E5, E13
+// and E17, and every one of them is listed in the geometry test's corridor
+// exception ranges.
 export const SKY_PAD = 12;
 export const FLOOR_PAD = 5;
 function ch(rows) {
@@ -219,12 +221,377 @@ const C7 = ch([
   '############.....#######......##################',
 ]);
 
+// ---- escalation tiers E1-E21 ------------------------------------------------
+// Inserted BETWEEN C7 and C8: C1-C7 are byte-identical to the Plan-2 gauntlet
+// (the early-game e2e tapes are calibrated against their absolute x), and
+// C8/C9/C10 simply shift right. Same 17-row x 48-char contract as above.
+//
+// TIER 2 (E1-E10): every mechanic C1-C7 taught, one notch harder — wider hop
+// pits, 8-10 wide boost canyons, hoppers on shelves, single saucers over pits,
+// long slide corridors, 2-wide stepping stones.
+// TIER 3 (E11-E21): combos — red hoppers guarding shelves flush with pits
+// (marked INTENTIONAL SETPIECE where the knockback is the hazard),
+// double-saucer volleys, corridor-into-canyon chains, six-stone staircases
+// under fire, and E15's multi-refill canyon.
+//
+// Silhouette rule: no two adjacent chunks share a floor profile (pits / mesas /
+// stones / corridors / flat rotate), and a threat-free half-chunk breather
+// lands every ~4 chunks (E4, E8, E12, E16, E21).
+//
+// Authoring geometry that falls out of the 3-empty-rows-overhead invariant:
+//   * a raised SHELF over intact floor must sit at authored row 10 or higher
+//     (rows 11-13 would leave the floor beneath with < 3 clear rows);
+//   * therefore every STEPPING STONE lives inside a pit, where there is no
+//     floor underneath to starve — stones sit at authored rows 10-13;
+//   * a MESA (solid from its top row down through row 16) has no such limit:
+//     its lower rows are not surfaces, so mesas give 1-4 tile terraces;
+//   * SLIDE CORRIDOR slabs are always authored row 11 -> a 32px opening, and
+//     each one is listed in the geometry test's corridor exception ranges.
+
+// E1 — the escalation gate. One sign, no threats: the tier-2 opener is
+// pure traversal. Hop pits widen past anything C2 taught — 4-wide (64px) then
+// 5-wide (80px) — but a flat-run hop still covers ~97px, so both stay honest.
+// Coins ride the arcs.
+const E1 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '................$..............$.$..............',
+  '.............$....$.............................',
+  '.....S..........................................',
+  '##############....############.....#############',
+  '##############....############.....#############',
+  '##############....############.....#############',
+]);
+
+// E2 — checkpoint 5, then the first tier-2 boost canyon: 8 wide (128px),
+// past hop range, so the pips come out. A lone hopper paces the approach at
+// col 14, twelve tiles clear of the near lip.
+const E2 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '............................$..$................',
+  '.........................$........$.............',
+  '................................................',
+  '..C...........h.................................',
+  '##########################........##############',
+  '##########################........##############',
+  '##########################........##############',
+]);
+
+// E3 — hoppers on a ledge. The 4-tile shelf (cols 18-25) carries its own
+// patroller above solid ground, so a knock off the edge costs a heart at worst,
+// never a pit. Ground hopper at col 6, a 4-wide hop pit to close.
+const E3 = ch([
+  R, R, R, R, R, R, R, R, R,
+  '...................$.h.$........................',
+  '..................########......................',
+  '...................................$.$..........',
+  '................................................',
+  '......h.........................................',
+  '##################################....##########',
+  '##################################....##########',
+  '##################################....##########',
+]);
+
+// E4 — single saucer over a pit, then a threat-free breather. 3-wide
+// warm-up, then 6-wide (96px) with a saucer parked at the C4 height: boost up
+// into bolt range or eat the bolts. Cols 22-47 are flat and empty on purpose —
+// the first of the every-fourth-chunk breathers.
+const E4 = ch([
+  R, R, R, R, R, R, R, R,
+  '...................u............................',
+  '................................................',
+  '................................................',
+  '.........$.......$..$...........................',
+  '................................................',
+  '..............................$.................',
+  '########...#####......##########################',
+  '########...#####......##########################',
+  '########...#####......##########################',
+]);
+
+// E5 — checkpoint 6 (open sky, before the mouth) then a long slide
+// corridor: slab at authored row 11, floor top at row 14 = the same 32px opening
+// C5 taught, but 14 tiles of it. Hopper past the exit at col 35, five clear of
+// the closing 4-wide pit.
+const E5 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '....................##############.......$.$....',
+  '................................................',
+  '..C.....................$...$......h............',
+  '########################################....####',
+  '########################################....####',
+  '########################################....####',
+]);
+
+// E6 — staircase over a 14-wide canyon. Three 2-wide stepping stones
+// (rows 12/12/13) break 224px of nothing into four honest hops: 32px up onto the
+// first, two level 48px strides, then a step down to the far lip.
+const E6 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '..................$....$........................',
+  '..................##...##...$...................',
+  '......h....................##...................',
+  '################..............##################',
+  '################..............##################',
+  '################..............##################',
+]);
+
+// E7 — 9-wide boost canyon (144px) opening the chunk cold, a hopper on
+// the long middle flat, and a 3-wide sting at the end. Silhouette is the inverse
+// of E6: gaps at the shoulders, solid through the belly.
+const E7 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '..............$...$.............................',
+  '...........................................$....',
+  '................................................',
+  '..............................h.................',
+  '############.........#####################...###',
+  '############.........#####################...###',
+  '############.........#####################...###',
+]);
+
+// E8 — checkpoint 7 on a threat-free half-chunk (cols 0-23), then two
+// staggered pits, 4 then 5 wide. Breather number two: nothing shoots here, the
+// geometry is the whole test.
+const E8 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '...........................$.$.......$.$........',
+  '................................................',
+  '..C.......$.....................................',
+  '##########################....######.....#######',
+  '##########################....######.....#######',
+  '##########################....######.....#######',
+]);
+
+// E9 — mesa staircase up, then a drop-gap down. Three solid terraces
+// (1/2/3 tiles) walk you up to a 48px-high lip, and from there an 8-wide gap that
+// plays SHORTER than it measures because you're falling 48px into the landing.
+// Hopper on the far flat at col 40.
+const E9 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '....................$.......$..$................',
+  '...............$..########......................',
+  '..............############......................',
+  '..........################..............h.......',
+  '##########################........##############',
+  '##########################........##############',
+  '##########################........##############',
+]);
+
+// E10 — tier-2 finale: pure broken-ground rhythm. Four pits (3/4/3/4)
+// with nothing but footwork between them. No enemies at all — the metre is the
+// enemy, and it sets up the tier-3 combos that start next chunk.
+const E10 = ch([
+  R, R, R, R, R, R, R, R, R, R, R,
+  '..........$........$.$.......$........$.$.......',
+  '................................................',
+  '................................................',
+  '#########...######....######...######....#######',
+  '#########...######....######...######....#######',
+  '#########...######....######...######....#######',
+]);
+
+// E11 — tier 3 opens with the C7 setpiece, sharpened. Checkpoint 8,
+// then a red hopper on a shelf whose right edge sits ONE tile from a 6-wide pit:
+// contact knockback (~4.1 tiles) throws you straight in. INTENTIONAL SETPIECE —
+// this is the whole point of the chunk, not a spacing bug. Ground hopper at 36.
+const E11 = ch([
+  R, R, R, R, R, R, R, R, R,
+  '...............$..H.$...........................',
+  '..............########..$.$.....................',
+  '................................................',
+  '................................................',
+  '..C.................................h...........',
+  '######################......####################',
+  '######################......####################',
+  '######################......####################',
+]);
+
+// E12 — breather three: cols 0-22 flat and threat-free, then a
+// double-saucer volley over three pits. Two saucers cover overlapping ground, so
+// ducking one bolt line walks you into the other.
+const E12 = ch([
+  R, R, R, R, R, R, R, R,
+  '..........................u.......u.............',
+  '................................................',
+  '................................................',
+  '.........................$.$.....$.$.....$......',
+  '................................................',
+  '............$...................................',
+  '########################....####....####...#####',
+  '########################....####....####...#####',
+  '########################....####....####...#####',
+]);
+
+// E13 — slide corridor into an immediate boost canyon. 12 tiles of 32px
+// ceiling (cols 6-17), three tiles of daylight, then 160px of nothing: the burst
+// speed you carry out of the corridor IS the crossing. Slide-hop keeps it. Red
+// hopper on the far flat, six clear of both lips, then a 4-wide closer.
+const E13 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '........................$...$...................',
+  '......############........................$.....',
+  '................................................',
+  '..........$...$...$.................H...........',
+  '#####################..........##########....###',
+  '#####################..........##########....###',
+  '#####################..........##########....###',
+]);
+
+// E14 — checkpoint 9, then the long staircase: a 28-wide void spanned by six
+// 2-wide stones that climb three steps and descend three, with two saucers
+// parked over the apex. Every stride is 32-48px; the difficulty is doing them
+// under fire, on 32px of landing each time.
+// The saucers sit at authored row 5, not row 7. Row 7 was authored first and
+// the live-crossing probe caught it: a boosting player's HEAD lands exactly in
+// the saucer's contact box mid-stride, and knockback off a 2-wide stone over a
+// 28-wide void is an unavoidable heart every single time. Two rows up they
+// still rain bolts on the staircase; they are no longer a wall.
+const E14 = ch([
+  R, R, R, R, R,
+  '..................u...........u.................',
+  R, R, R,
+  '....................$...........................',
+  '................$...##...$......................',
+  '............$...##.......##..$..................',
+  '............##...............##..$..............',
+  '..C..............................##.............',
+  '##########............................##########',
+  '##########............................##########',
+  '##########............................##########',
+]);
+
+// E15 — the multi-refill canyon. 22 tiles (352px) of open air with two saucers
+// strung across it — the longest crossing in the game by 144px. BOTH paths are
+// kinematically verified (see the margin table): pips-only clears it with all
+// three charges spent and ~50px to spare (tight, and it is meant to be, and it
+// costs you a saucer contact on the way through), while blasting a saucer
+// mid-flight refills the tank (play.js: kills refill the tank) and turns the
+// same crossing into ~200px of slack. That is C4's lesson scaled to a chunk.
+const E15 = ch([
+  R, R, R, R, R, R, R,
+  '....................$...........................',
+  '................u.......u.......................',
+  '............$...............$...................',
+  '................................................',
+  '.................................$..............',
+  '................................................',
+  '........................................h.......',
+  '##########......................################',
+  '##########......................################',
+  '##########......................################',
+]);
+
+// E16 — mesa climb with a red hopper on the summit, then breather four
+// (cols 32-47, flat, one lazy hopper). Terraces at 1/2/3 tiles read as a
+// different silhouette from E9's because the descent is a single step, not a
+// gap.
+const E16 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '.....................$..H.$.....................',
+  '.............$......########....................',
+  '............################....................',
+  '......##########################....$...h.......',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// E17 — checkpoint 10, then corridor-into-canyon again, harder: 14
+// tiles of 32px ceiling, ONE tile of daylight at the mouth, then an 11-wide
+// (176px) canyon. Slide out, slide-hop off the lip, spend a pip. A 7-wide gap
+// follows before you get to breathe.
+const E17 = ch([
+  R, R, R, R, R, R, R, R, R,
+  '..........................$...$.................',
+  '................................................',
+  '........##############...................$......',
+  '................................................',
+  '..C.........$...$...$...........................',
+  '#######################...........####.......###',
+  '#######################...........####.......###',
+  '#######################...........####.......###',
+]);
+
+// E18 — double-saucer volley over broken ground, then the second red
+// setpiece. Three pits under two saucers, then a shelf (cols 32-39) whose right
+// edge is FLUSH with a 5-wide pit and a red hopper on top. INTENTIONAL SETPIECE:
+// take the knock and you take the fall.
+const E18 = ch([
+  R, R, R, R, R, R, R,
+  '............u........u..........................',
+  '................................................',
+  '...................................$H...........',
+  '................................########........',
+  '.........$.......$.$.......$..............$.....',
+  '................................................',
+  '................................................',
+  '########....####.....#####....##########.....###',
+  '########....####.....#####....##########.....###',
+  '########....####.....#####....##########.....###',
+]);
+
+// E19 — high plateau, long drop. Two terraces lift you 64px onto a
+// 12-tile mesa with a hopper walking it, and the only way off is a 13-wide
+// (208px) gap that lands you a full 64px lower. Falling buys airtime; a pip buys
+// the rest.
+const E19 = ch([
+  R, R, R, R, R, R, R, R, R,
+  '..................$.h..$......$.................',
+  '...........$..############.........$............',
+  '..........################......................',
+  '......####################......................',
+  '......####################.................h....',
+  '##########################.............#########',
+  '##########################.............#########',
+  '##########################.............#########',
+]);
+
+// E20 — checkpoint 11 and the full combo: a 12-wide canyon crossed on
+// two stepping stones, a red hopper holding the middle flat (six clear of both
+// lips), then a 7-wide gap and a hopper guarding the landing strip.
+const E20 = ch([
+  R, R, R, R, R, R, R, R, R, R,
+  '....................................$...........',
+  '.............$....$...................$.........',
+  '.............##...##............................',
+  '..C......................$.H.................h..',
+  '##########............############.......#######',
+  '##########............############.......#######',
+  '##########............############.......#######',
+]);
+
+// E21 — last escalation, then the run-in to the arena. 10 tiles of clean floor
+// (the canyon used to open at col 6, which put its launch lip inside the patrol
+// of E20's closing hopper — the run-in to the last jump in the game should not
+// be shared with a walker), then an 11-wide canyon, a saucer parked over SOLID
+// ground at col 22, and the third red setpiece: a shelf two tiles clear of a
+// 5-wide pit. INTENTIONAL — same knockback trap as C7 and E11/E18. Cols 39-47
+// are flat and empty, and C8's arena floor continues that breather.
+// The saucer is deliberately NOT over the canyon. Authored there it sat inside
+// the contact box of the 2-pip crossing line and could not be blasted out of
+// the arc either, so the last chunk before the boss charged an unavoidable
+// heart. Over solid ground it is an ordinary C6-style overhead threat.
+const E21 = ch([
+  R, R, R, R, R, R, R,
+  '......................u.........................',
+  '................$...............................',
+  '............$.......$......$H.$.................',
+  '........................########................',
+  '...................................$............',
+  '................................................',
+  '..........................................$.....',
+  '##########...........#############.....#########',
+  '##########...........#############.....#########',
+  '##########...........#############.....#########',
+]);
+
 const SIGN_TEXTS = [
   'press X. very pew.',
   'hold DOWN + X. shoot ground. trust me bro.',
   'DOWN+X in air = boost. 3 pips. kills refill.',
   'DOWN+move = slide. X while sliding = zoom.',
   'rude saucers drop bolts. keep moving or blast.',
+  'much danger ahead. very brave.',
 ];
 
 // C8 — boss arena. Flat 48-wide floor, open sky (the MEGA SAUCER hovers and
@@ -282,7 +649,13 @@ const C10 = ch([
 
 // Fresh level per scene: carve() mutates tiles, so each run must parse its own copy.
 export function buildGauntlet() {
-  const L = stitchChunks([C1, C2, C3, C4, C5, C6, C7, C8, C9, C10], SIGN_TEXTS);
-  L.bossTrigger = (7 * 48 + 8) * TILE;
+  const L = stitchChunks([
+    C1, C2, C3, C4, C5, C6, C7,
+    E1, E2, E3, E4, E5, E6, E7, E8, E9, E10,
+    E11, E12, E13, E14, E15, E16, E17, E18, E19, E20, E21,
+    C8, C9, C10,
+  ], SIGN_TEXTS);
+  // C8 is chunk index 28 now (7 originals + 21 escalation chunks).
+  L.bossTrigger = (28 * 48 + 8) * TILE;
   return L;
 }

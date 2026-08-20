@@ -74,19 +74,25 @@ test('stitchChunks demands exact signTexts count', () => {
 
 test('GAUNTLET stitches clean with expected population', () => {
   assert.equal(GAUNTLET.hTiles, 34);
-  assert.equal(GAUNTLET.wTiles, 10 * 48);
-  assert.equal(GAUNTLET.signs.length, 5);
+  assert.equal(GAUNTLET.wTiles, 31 * 48);          // C1-C7 + E1-E21 + C8/C9/C10 = 1488 tiles
+  assert.equal(GAUNTLET.signs.length, 6);          // 5 tutorial + E1's 'much danger ahead'
   assert.ok(GAUNTLET.signs.every(s => s.text.length > 0));
+  // Counted off the authored ASCII, not a target: 13 hoppers / 6 red hoppers /
+  // 10 saucers / 101 coins were added across E1-E21 on top of the originals.
   const byType = {};
   for (const e of GAUNTLET.entities) byType[e.type] = (byType[e.type] ?? 0) + 1;
-  assert.equal(byType.hopper, 4);
-  assert.equal(byType.redhopper, 2);
-  assert.equal(byType.saucer, 4);
-  assert.equal(byType.coin, 50);
+  assert.equal(byType.hopper, 17);                 // 4 original + 13 escalation
+  assert.equal(byType.redhopper, 8);               // 2 original + 6 escalation
+  assert.equal(byType.saucer, 14);                 // 4 original + 10 escalation
+  assert.equal(byType.coin, 151);                  // 50 original + 101 escalation
   assert.ok(byType.coin >= 15);
-  assert.equal(GAUNTLET.checkpoints.length, 4);
-  // checkpoints open chunks 3, 5, 7 and 9
-  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)), [98, 194, 290, 386]);
+  assert.equal(GAUNTLET.checkpoints.length, 11);
+  // checkpoints open C3, C5, C7 (chunks 2/4/6), then E2, E5, E8, E11, E14, E17,
+  // E20 (chunks 8/11/14/17/20/23/26), then C9 (chunk 29). All at chunk col 2.
+  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)),
+    [98, 194, 290, 386, 530, 674, 818, 962, 1106, 1250, 1394]);
+  assert.deepEqual(GAUNTLET.checkpoints.map(c => Math.floor(c.x / TILE)),
+    [2, 4, 6, 8, 11, 14, 17, 20, 23, 26, 29].map(i => i * 48 + 2));
 });
 
 test('carve opens a solid tile', () => {
@@ -97,27 +103,28 @@ test('carve opens a solid tile', () => {
 });
 
 test('GAUNTLET has boss arena, victory stretch, ship pad', () => {
-  assert.equal(GAUNTLET.wTiles, 10 * 48);
+  assert.equal(GAUNTLET.wTiles, 31 * 48);
   // gate: solid column pair at the arena's right edge, running the FULL height
   // of C8's authored block (14 rows x 2 cols = 28 tiles). Three rows was
   // hoppable — a hop + 3-boost chain lifts the feet ~217px, over a 48px wall.
   assert.equal(GAUNTLET.gate.length, 28);
   const gcols = [...new Set(GAUNTLET.gate.map(([tx]) => tx))].sort((a, b) => a - b);
-  assert.deepEqual(gcols, [382, 383]);
+  assert.deepEqual(gcols, [1390, 1391]);           // C8 is chunk 28 now: 28*48 + 46/47
   const grows = [...new Set(GAUNTLET.gate.map(([, ty]) => ty))].sort((a, b) => a - b);
   assert.equal(grows[0], 12);                       // top = first authored row (12 sky rows above)
   assert.equal(grows.at(-1), 25);                   // bottom = the row on the floor
   assert.equal(grows.length, 14);
   // gate is recorded row-major, so at(-1) is the BOTTOM tile — what play.js
   // anchors the 'gate very open.' popup to.
-  assert.deepEqual(GAUNTLET.gate.at(-1), [383, 25]);
+  assert.deepEqual(GAUNTLET.gate.at(-1), [1391, 25]);
   // the wall out-tops any boost chain: 26 - 12 = 14 rows = 224px of solid
   // above the floor, vs a ~217px ceiling on hop + 3 boosts.
   assert.ok((26 - grows[0]) * TILE > 217);
   for (const [tx, ty] of GAUNTLET.gate) assert.equal(GAUNTLET.solidAt(tx, ty), true);
-  assert.ok(GAUNTLET.bossTrigger > 7 * 48 * 16 && GAUNTLET.bossTrigger < 8 * 48 * 16);
-  assert.ok(GAUNTLET.shipPad.x > 9 * 48 * 16);
-  assert.equal(GAUNTLET.checkpoints.length, 4);   // + one at C9 start
+  assert.ok(GAUNTLET.bossTrigger > 28 * 48 * 16 && GAUNTLET.bossTrigger < 29 * 48 * 16);
+  assert.equal(GAUNTLET.bossTrigger, (28 * 48 + 8) * TILE);
+  assert.ok(GAUNTLET.shipPad.x > 30 * 48 * 16);
+  assert.equal(GAUNTLET.checkpoints.length, 11);  // 10 + one at C9 start
 });
 
 test('GAUNTLET geometry holds the authoring invariants', () => {
@@ -126,20 +133,31 @@ test('GAUNTLET geometry holds the authoring invariants', () => {
   for (let tx = 0; tx < L.wTiles; tx++)
     assert.equal(L.solidAt(tx, FLOOR), L.solidAt(tx, L.hTiles - 1),
       `column ${tx}: pit must run to the level bottom`);
-  // >= 3 empty rows above every standing surface, except the C5 slide corridor
-  const CORR = { x0: 4 * 48 + 18, x1: 4 * 48 + 31 };
+  // >= 3 empty rows above every standing surface, except the slide corridors.
+  // FOUR of them now: C5's original plus E5, E13 and E17. Each entry is the
+  // chunk-local column span of that chunk's authored-row-11 slab; extending
+  // this list is the honest price of authoring a new corridor, and the 32px
+  // assertion below is what keeps the exception from being a blank cheque.
+  const CORRIDORS = [
+    { chunk: 4,  x0: 18, x1: 31 },   // C5  — the teaching corridor
+    { chunk: 11, x0: 20, x1: 33 },   // E5  — tier 2, longer
+    { chunk: 19, x0: 6,  x1: 17 },   // E13 — corridor into a 10-wide canyon
+    { chunk: 23, x0: 8,  x1: 21 },   // E17 — corridor into an 11-wide canyon
+  ].map(c => ({ x0: c.chunk * 48 + c.x0, x1: c.chunk * 48 + c.x1 }));
+  const inCorridor = tx => CORRIDORS.some(c => tx >= c.x0 && tx <= c.x1);
   for (let ty = 0; ty < L.hTiles; ty++)
     for (let tx = 0; tx < L.wTiles; tx++) {
       if (!L.solidAt(tx, ty) || L.solidAt(tx, ty - 1)) continue;
-      const corridor = ty === FLOOR && tx >= CORR.x0 && tx <= CORR.x1;
+      const corridor = ty === FLOOR && inCorridor(tx);
       const clear = !L.solidAt(tx, ty - 1) && !L.solidAt(tx, ty - 2) && !L.solidAt(tx, ty - 3);
       assert.ok(corridor || clear, `surface ${tx},${ty} needs 3 empty rows overhead`);
     }
-  // the corridor opening is exactly 32px: slab bottom row 23, floor top row 26
-  for (let tx = CORR.x0; tx <= CORR.x1; tx++) {
-    assert.ok(L.solidAt(tx, 23), `corridor slab missing at ${tx}`);
-    assert.ok(!L.solidAt(tx, 24) && !L.solidAt(tx, 25), `corridor must be open at ${tx}`);
-  }
+  // every corridor opening is exactly 32px: slab bottom row 23, floor top row 26
+  for (const c of CORRIDORS)
+    for (let tx = c.x0; tx <= c.x1; tx++) {
+      assert.ok(L.solidAt(tx, 23), `corridor slab missing at ${tx}`);
+      assert.ok(!L.solidAt(tx, 24) && !L.solidAt(tx, 25), `corridor must be open at ${tx}`);
+    }
   assert.equal((FLOOR - 24) * TILE, 32);
   // hoppers stand ON a floor; saucers are allowed to float
   for (const e of GAUNTLET.entities) {

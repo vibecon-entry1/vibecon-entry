@@ -61,12 +61,16 @@ test('pause freezes the clock', async ({ page }) => {
 test('boss gate: trigger, kill, carve', async ({ page }) => {
   const errors = await boot(page);
 
-  await page.evaluate(() => window.__blast.cheat.warp(5400));
+  // 21500 = tile 1343 = E21's last column: flat, threat-free breather floor,
+  // 132px short of the boss trigger at (28*48+8)*16 = 21632. (Pre-expansion
+  // this was 5400, back when C8 was chunk 7.)
+  await page.evaluate(() => window.__blast.cheat.warp(21500));
   const tape = [{ f: 0, a: { right: true } }, { f: 200, a: null }];
   await runTape(page, tape, 20000);
   await page.waitForFunction(() => window.__blast.state().bossSpawned === true, null, { timeout: 20000 });
 
   const st1 = await page.evaluate(() => window.__blast.state());
+  expect(st1.x).toBeGreaterThan(21632);          // actually walked past the trigger
   expect(st1.bossOn).toBe(true);
   expect(st1.bossHp).toBe(40);
   expect(st1.gateOpen).toBe(false);
@@ -88,7 +92,7 @@ test('win: takeoff → win screen → best persists', async ({ page }) => {
   // update() when it notices player.x > bossTrigger, so killBoss() right
   // after warp() (no frame in between) finds boss still null and no-ops.
   // Same fix as the boss-gate test above: give it a frame to notice.
-  await page.evaluate(() => window.__blast.cheat.warp(5400));
+  await page.evaluate(() => window.__blast.cheat.warp(21500));   // see the boss-gate test
   await runTape(page, [{ f: 0, a: { right: true } }, { f: 200, a: null }], 20000);
   await page.waitForFunction(() => window.__blast.state().bossSpawned === true, null, { timeout: 20000 });
 

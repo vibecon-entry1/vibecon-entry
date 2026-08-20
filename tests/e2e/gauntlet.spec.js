@@ -4,8 +4,8 @@ import { boot, runTape } from './helpers.mjs';
 test('world is populated: enemies, coins render without errors', async ({ page }) => {
   const errors = await boot(page);
   const st = await page.evaluate(() => window.__blast.state());
-  expect(st.enemies).toBe(10);
-  expect(st.coins).toBe(50);
+  expect(st.enemies).toBe(39);   // 17 hoppers + 8 red hoppers + 14 saucers
+  expect(st.coins).toBe(151);
   expect(st.hp).toBe(3);
   await page.screenshot({ path: 'tests/artifacts/gauntlet-spawn.png' });
   expect(errors).toEqual([]);
@@ -30,7 +30,7 @@ test('forward fire kills a hopper; score wiring live', async ({ page }) => {
   // ~85px short of hopper1's contact range when the stop happens), reproduced
   // clean across three consecutive real-page runs: hp stays at 3, one bolt
   // lands the kill once the hopper's 30px/s patrol drifts inside forward-bolt
-  // range (380px/s * 0.6s life = 228px). enemies 10->9, score 110->210 (a
+  // range (380px/s * 0.6s life = 228px). enemies 39->38, score 110->210 (a
   // "+100" kill, no airborne WOW bonus since we're grounded).
   const tape = [];
   const at = (f, a) => tape.push({ f, a });
@@ -44,7 +44,7 @@ test('forward fire kills a hopper; score wiring live', async ({ page }) => {
   const st = await page.evaluate(() => window.__blast.state());
   await page.screenshot({ path: 'tests/artifacts/gauntlet-combat.png' });
   expect(st.score).toBeGreaterThanOrEqual(100);
-  expect(st.enemies).toBe(9);
+  expect(st.enemies).toBe(38);   // one hopper down
   expect(st.deaths).toBe(0);
   expect(errors).toEqual([]);
 });

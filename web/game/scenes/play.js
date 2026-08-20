@@ -96,15 +96,17 @@ export function makePlay({ atlas, input, save, go }) {
   // second saucer inside one scene (R-restart rebuilds the whole scene, which is
   // the only intended reset). The one scary case is a real death DURING the
   // fight: respawn() teleports to player.checkpoint, and C9's checkpoint sits at
-  // tx386 — BEYOND the gate at tx382/383 — so respawning there would drop the
+  // tx1394 — BEYOND the gate at tx1390/1391 — so respawning there would drop the
   // player past a sealed gate with the boss still alive behind them.
   // It cannot happen: player.js only captures a checkpoint on TOUCH
   // (|dx| < 12 && |dy| < 24 against the marker), and the gate wall is solid
   // across EVERY row above the floor until bossDeath() carves it. The
-  // player physically cannot reach tx386 before the boss dies, so the live
-  // checkpoint throughout the fight is #3 at tx290 (C7) — a mid-fight death
-  // walks you back to C7 and into the arena again, with the same boss.
-  // (checkpoint columns: 98, 194, 290, 386.)
+  // player physically cannot reach tx1394 before the boss dies, so the live
+  // checkpoint throughout the fight is the LAST pre-arena one, E20's at tx1250
+  // — a mid-fight death walks you back through E21's breather and into the
+  // arena again, with the same boss.
+  // (checkpoint columns after the E1-E21 expansion: 98, 194, 290, 386, 530,
+  //  674, 818, 962, 1106, 1250, 1394.)
 
   // --- test-only cheats. Gated on ?test so a normal player never sees them.
   // has('test'), not search.includes('test'): the loose form armed cheats for any
