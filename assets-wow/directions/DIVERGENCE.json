@@ -30,5 +30,21 @@
   "divergence_vs_baseline": 60.87,
   "raw": "raw/dir4_moss_dusk/raw_0.jpg",
   "prompt": "raw/dir4_moss_dusk/prompt.txt"
+ },
+ "hybrid_a_golden_hour": {
+  "desc": "golden-hour canyon: banded violet-to-butterscotch sky, giant slatted sun, dust haze, chunky red-strata stone band",
+  "palette_colors": 40,
+  "ground_y": 286,
+  "divergence_vs_baseline": 112.08,
+  "raw": "raw/hybrid_a_golden_hour/raw_0.jpg",
+  "prompt": "raw/hybrid_a_golden_hour/prompt.txt"
+ },
+ "hybrid_b_late_afternoon": {
+  "desc": "late afternoon: deepening amber bands, half-sunken slatted sun, raking light, molten crimson stone band with ember cracks",
+  "palette_colors": 40,
+  "ground_y": 268,
+  "divergence_vs_baseline": 82.18,
+  "raw": "raw/hybrid_b_late_afternoon/raw_0.jpg",
+  "prompt": "raw/hybrid_b_late_afternoon/prompt.txt"
  }
 }

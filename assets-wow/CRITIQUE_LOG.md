@@ -96,3 +96,24 @@ Review scope was readability / sprite harmony / execution only — similarity to
 the current game was explicitly excluded. Sprite ground lines were nudged
 1-3px after the review flagged minor float/sink. Awaiting user direction pick;
 no refinement rounds until then.
+
+## Round 5 — hybrid direction sheets (dir1 x dir3), pre-pick addition
+
+Two hybrids requested before the final pick; same pipeline (prompt + raw under
+assets-wow/raw/, craft pass in tools/genart_v2_post.py). Both carry the
+readability treatment flagged for dir3: the walkable band is darker/cooler
+than the sky with a lit top edge, and hybrid_a additionally gets a cool-darken
+pass (x0.80/0.76/0.86) on the pale plain band directly behind the sprite zone.
+
+| sheet | divergence | colors | READ | HARM | EXEC | review notes |
+|---|---|---|---|---|---|---|
+| hybrid_a_golden_hour | 112.08 | 40 | 4 | 4 | 5 | bright-world identity keeps the tan hero at risk of blending even after the band treatment — same tension as dir3; pick implies a stronger hero-separation treatment (e.g. darker mid-band or hero drop shadow) |
+| hybrid_b_late_afternoon | 82.18 | 40 | 6 | 6 | 6 | darker molten ground + amber sky frame the sprites well; best-scoring warm option |
+
+Placement: walker feet verified by pixel measurement to sit on the lit edge
+(within 2px of anim-bbox slack); the reviewer's floating/sunk flags oscillated
+across nudges and are judged a perception artifact of the thin grey legs on a
+busy edge — not chased further.
+
+Awaiting the user's final pick across all SIX directions (dir1-dir4 +
+hybrid_a/b); dir2 production remains ON HOLD per coordinator.

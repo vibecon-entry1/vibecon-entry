@@ -42,7 +42,28 @@ DIRECTIONS = {
         'bright butterscotch daylight, dust-haze horizon, chunky saturated stone terrain'),
     'dir4_moss_dusk': (40, 236,
         'teal-to-magenta dusk, lit cloud bands, skyline arches, moss-fringed ground lip'),
+    # hybrids of dir1 + dir3, requested before the final pick
+    'hybrid_a_golden_hour': (40, 286,
+        'golden-hour canyon: banded violet-to-butterscotch sky, giant slatted sun, dust haze, chunky red-strata stone band'),
+    'hybrid_b_late_afternoon': (40, 268,
+        'late afternoon: deepening amber bands, half-sunken slatted sun, raking light, molten crimson stone band with ember cracks'),
 }
+
+# Readability treatment (the dir3 flag): cool-darken the pale plain band that
+# sits directly behind the sprite zone so the tan hero separates from it.
+# name -> (y0, y1, (r_mul, g_mul, b_mul))
+BAND_COOL = {
+    'hybrid_a_golden_hour': (244, 288, (0.80, 0.76, 0.86)),
+}
+# Per-sheet flyer anchor when the default x tangles with scenery.
+FLYER_X = {'hybrid_b_late_afternoon': 470}
+
+def cool_band(im, y0, y1, mul):
+    px = im.load()
+    for y in range(y0, y1):
+        for x in range(im.width):
+            r, g, b = px[x, y][:3]
+            px[x, y] = (int(r * mul[0]), int(g * mul[1]), int(b * mul[2]), 255)
 
 def to_native(raw_path, colors):
     im = Image.open(raw_path).convert('RGB')
@@ -57,11 +78,11 @@ def to_native(raw_path, colors):
     used = len({c for _, c in out.getcolors(maxcolors=1 << 20)})
     return out.convert('RGBA'), used
 
-def place_cast(im, sprites, ground_y):
+def place_cast(im, sprites, ground_y, flyer_x=545):
     """Official sprites, unmodified, standing ON the surface; saucer hovers."""
     paste_feet(im, sprites['run'], 180, ground_y)
     paste_feet(im, sprites['enemywalk'], 430, ground_y)
-    paste_feet(im, sprites['enemyfly'], 545, ground_y - 78)
+    paste_feet(im, sprites['enemyfly'], flyer_x, ground_y - 78)
     coin = sprites['coin'][0].convert('RGBA')
     for i, cx in enumerate((240, 262, 284)):
         im.alpha_composite(coin, (cx, ground_y - 46 - (4 if i == 1 else 0)))
@@ -82,7 +103,10 @@ def main():
     report, sheets = {}, []
     for name, (colors, ground_y, desc) in DIRECTIONS.items():
         im, used = to_native(RAW / name / 'raw_0.jpg', colors)
-        place_cast(im, sprites, ground_y)
+        if name in BAND_COOL:
+            y0, y1, mul = BAND_COOL[name]
+            cool_band(im, y0, y1, mul)
+        place_cast(im, sprites, ground_y, flyer_x=FLYER_X.get(name, 545))
         delta = divergence(im, base)
         report[name] = {'desc': desc, 'palette_colors': used,
                         'ground_y': ground_y,
@@ -92,7 +116,8 @@ def main():
         up2(im).save(OUT / f'{name}.png')
         sheets.append((name, im))
         print(f'{name}: colors={used} divergence={delta:.2f}')
-    contact = Image.new('RGB', (VW * 2, VH * 2))
+    rows = (len(sheets) + 1) // 2
+    contact = Image.new('RGB', (VW * 2, VH * rows))
     d = ImageDraw.Draw(contact)
     for i, (name, im) in enumerate(sheets):
         x, y = (i % 2) * VW, (i // 2) * VH
