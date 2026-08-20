@@ -1,26 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { P } from '../../web/game/physics.js';
+import { boot, runTape } from './helpers.mjs';
 
 // Tapes are frame-indexed STATE CHANGES: an entry's actions hold until the next
 // entry; end every tape with an { a: null } release. Same-frame entries collapse.
-
-async function boot(page) {
-  const errors = [];
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  page.on('pageerror', e => errors.push(String(e)));
-  await page.goto('http://localhost:8123/');
-  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
-  await page.waitForFunction(() => window.__blast.state().pstate === 'idle', null, { timeout: 15000 });
-  return errors;
-}
-
-async function runTape(page, tape, doneMs = 15000) {
-  await page.evaluate(t => {
-    const base = window.__blast.frame;
-    window.__blast.playTape(t.map(e => ({ f: base + e.f, a: e.a })));
-  }, tape);
-  await page.waitForFunction(() => window.__blast.tapeDone(), null, { timeout: doneMs });
-}
 
 test('walks right under tape control', async ({ page }) => {
   const errors = await boot(page);

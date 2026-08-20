@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test';
 
+// None of these four adopt tests/e2e/helpers.mjs's boot()/runTape() — each one's
+// setup differs from the shared helper in a way that would change behavior:
+//   - "boots clean": only waits ready (checks scene/anims that don't depend on
+//     player pstate); boot() also waits for pstate === 'idle', an extra wait
+//     not present here.
+//   - "tape final entry": doesn't collect errors and doesn't wait for idle
+//     before driving the tape (adding the idle wait would delay the tape start).
+//   - "boot failure": needs addInitScript registered BEFORE goto; boot() does
+//     the goto internally, so it can't be interleaved.
+//   - "viewer renders every anim": collects only pageerror (not console errors)
+//     and, like the tape test, waits ready only, no idle wait.
+
 test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
