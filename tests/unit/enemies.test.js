@@ -64,3 +64,11 @@ test('contact damage fires with enemy x on overlap; silent without', () => {
   E.update(DT, { x: h.x + 100, y: h.y, w: 20, h: 44 }, stubBullets(), x => hitFrom = x);
   assert.equal(hitFrom, null);
 });
+
+test('enemies beyond 1400px sleep (no patrol motion)', () => {
+  const E = makeEnemies(L.entities.filter(e => e.type === 'hopper'), L);
+  let h; E.forEach(e => h = e);
+  const x0 = h.x;
+  for (let i = 0; i < 60; i++) E.update(DT, { x: h.x + 1500, y: 0 }, stubBullets(), () => {});
+  assert.equal(h.x, x0);
+});

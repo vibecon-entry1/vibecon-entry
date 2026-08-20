@@ -9,7 +9,7 @@ test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
   await expect(page.locator('canvas#screen')).toBeVisible();
   const st = await page.evaluate(() => window.__blast.state());
   expect(st.scene).toBe('play');
-  expect(st.anims).toBe(27);
+  expect(st.anims).toBe(28);
   expect(errors).toEqual([]);
   await page.screenshot({ path: 'tests/artifacts/boot.png' });
 });

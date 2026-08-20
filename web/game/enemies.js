@@ -27,6 +27,7 @@ export function makeEnemies(defs, level) {
     update(dt, playerBody, enemyBullets, onHurtPlayer) {
       for (const e of list) {
         if (!e.on) continue;
+        if (Math.abs(playerBody.x - e.x) > 1400) continue;   // offscreen enemies sleep (pacing + perf)
         e.t += dt;
         if (e.type === 'saucer') {
           e.y = e.homeY + Math.sin(e.t * 2.2) * SAUCER_BOB;

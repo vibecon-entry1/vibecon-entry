@@ -33,7 +33,8 @@ SHEETS = [
     ('Added sprites/Dogelon_spawn.png',      1024, 2048, 16, {'spawn':        (None, None, 20, False)}),
     ('Added sprites/Dogelon_enemywalk.png',  1728, 1728, 27, {'enemywalk':    (0, 8, 10, True),
                                                               'enemywalk_red':(8, 10, 10, True)}),
-    ('Added sprites/Dogelon_enemyfly.png',   1728, 1728, 27, {'enemyfly':     (None, None, 10, True)}),
+    ('Added sprites/Dogelon_enemyfly.png',   1728, 1728, 27, {'enemyfly':     (0, 6, 10, True),
+                                                              'enemyfly_red': (6, 8, 10, True)}),
 ]
 SHIP_DIR = 'Added sprites/Dogelon_Ship'   # 18 pre-sliced 6912x5400, factor 27
 SHIP = ('ship', 12, True)
@@ -151,7 +152,7 @@ def main():
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
     assert len(frames) == 193, len(frames)
-    assert len(anims) == 27, len(anims)
+    assert len(anims) == 28, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':

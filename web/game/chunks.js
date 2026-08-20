@@ -211,7 +211,7 @@ const SIGN_TEXTS = [
   'hold DOWN + X. shoot ground. trust me.',
   'DOWN+X in air = boost. 3 pips. kills refill.',
   'DOWN+move = slide. X while sliding = zoom.',
-  'rude saucers drop bolts. duck or blast.',
+  'rude saucers drop bolts. keep moving or blast.',
 ];
 
 export const GAUNTLET = stitchChunks([C1, C2, C3, C4, C5, C6, C7], SIGN_TEXTS);

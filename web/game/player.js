@@ -49,7 +49,7 @@ export function makePlayer(spawnFeet) {
     pl.airCharges = P.AIR_CHARGES;
     pl.muzzle = null;
     pl.hp = P.HP_MAX;
-    pl.iframes = 0;
+    pl.iframes = P.IFRAMES;   // post-beam grace: checkpoint 1 sits inside a hopper patrol
     setState('spawn');
   }
 
@@ -166,7 +166,7 @@ export function makePlayer(spawnFeet) {
         fire(bullets, -pl.facing, 0, b.x - pl.facing * 14, b.y - 12);
         b.vx = pl.facing * Math.min(Math.abs(b.vx) + P.BURST_VX, P.BURST_MAX);
       } else {
-        fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 30);
+        fire(bullets, pl.facing, 0, b.x + pl.facing * 26, b.y - 22);
       }
     }
 

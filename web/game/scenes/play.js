@@ -43,6 +43,7 @@ export function makePlay({ atlas, input, save, go }) {
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
   let won = false;
+  let prevHp = P.HP_MAX; let prevState = 'spawn';
   // WOW+ escalation: one popup per flight that grows instead of spamming a new
   // popup per event. Counts the WOW+ events banked during the CURRENT flight
   // (reset the frame we land), capped at three '+'.
@@ -64,7 +65,7 @@ export function makePlay({ atlas, input, save, go }) {
       player.update(dt, input.actions(), level, playerBolts);
       // contact gate: hurt() owns damage authority via iframes; the dummy body
       // is a perf skip so overlapping-frame AABB checks stop during the stagger.
-      enemies.update(dt, player.iframes > 0 ? { x: -9999, y: -9999, w: 0 } : player.body,
+      enemies.update(dt, player.iframes > 0 ? { x: player.body.x, y: -9999, w: 0 } : player.body,
                      enemyBolts, fromX => player.hurt(fromX));
       playerBolts.update(dt, level);
       enemyBolts.update(dt, level);
@@ -79,6 +80,7 @@ export function makePlay({ atlas, input, save, go }) {
           score.onKill(airborne);
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
+          cam.shake(5, 0.2);
         });
       });
 
@@ -101,6 +103,9 @@ export function makePlay({ atlas, input, save, go }) {
       popups.update(dt);
 
       cam.follow(player.body.x, player.body.y, player.facing, dt, level);
+      if (player.hp < prevHp && player.state !== 'ded') cam.shake(3, 0.15);
+      if (player.state === 'ded' && prevState !== 'ded') cam.shake(8, 0.3);
+      prevHp = player.hp; prevState = player.state;
       if (player.coyote > 0 && player.body.x > level.w - 48) won = true;   // grounded on the end pad
     },
 
@@ -215,8 +220,6 @@ export function makePlay({ atlas, input, save, go }) {
       ctx.fillStyle = '#eec548';
       ctx.fillText(`wow ${score.value()}`, 630, 18);
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#e8e0d0';
-      ctx.fillText(`${player.state} deaths:${player.deaths}`, 10, 50);
       if (won) {
         ctx.font = '24px monospace'; ctx.textAlign = 'center';
         ctx.fillText('much gauntlet. very win.', VW / 2, 100);
