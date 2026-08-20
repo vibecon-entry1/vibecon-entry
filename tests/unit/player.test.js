@@ -142,10 +142,37 @@ test('slide off a ledge goes airborne and restores height when clear', () => {
 test('pit fall respawns at checkpoint in spawn state', () => {
   const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
   const pl = makePlayer(PIT.spawn); drive(pl, PIT, 150, () => ({}));
-  drive(pl, PIT, 400, () => ({ right: true }));
+  // Stop at the FIRST respawn. The old flat 400-frame right-hold now runs three
+  // pit falls (hp 3->2->1->0, the last one a real death that refills to 3), so a
+  // fixed frame count can no longer see the single-pit heart cost.
+  for (let i = 0; i < 400 && pl.state !== 'spawn'; i++) drive(pl, PIT, 1, () => ({ right: true }));
   assert.equal(pl.state, 'spawn');
   assert.equal(pl.body.x, PIT.spawn.x);
   assert.ok(pl.deaths >= 1);
+  assert.equal(pl.hp, 2);                          // the pit cost a heart
+});
+
+// M3 gate economy: a pit that takes the LAST heart is a real death, not a soft
+// respawn — pit check zeroes hp and hands off to 'ded', whose pit-out shortcut
+// owns the single deaths++ and the full-hp respawn the next frame.
+test('pit at 1 hp is a real death \u2014 full flow, single count', () => {
+  const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
+  const pl = makePlayer(PIT.spawn); drive(pl, PIT, 150, () => ({}));
+  pl.hp = 1;
+  let sawDed = false;
+  for (let i = 0; i < 200 && !sawDed; i++) {
+    drive(pl, PIT, 1, () => ({ right: true }));
+    if (pl.state === 'ded') sawDed = true;
+  }
+  assert.ok(sawDed, 'pit at 1 hp routed through the ded flow');
+  assert.equal(pl.hp, 0);
+  assert.equal(pl.deaths, 0);                      // ded transition does NOT count
+  while (pl.state !== 'spawn') drive(pl, PIT, 1, () => ({}));
+  assert.equal(pl.deaths, 1);                      // exactly one, from the ded pit-out
+  assert.equal(pl.hp, P.HP_MAX);                   // hard respawn refills
+  assert.equal(pl.body.x, PIT.spawn.x);
+  drive(pl, PIT, 5, () => ({}));
+  assert.equal(pl.deaths, 1);                      // no re-entry
 });
 
 test('respawn under a low ceiling never embeds, and the gun gets you out', () => {

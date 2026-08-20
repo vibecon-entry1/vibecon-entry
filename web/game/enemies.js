@@ -17,6 +17,9 @@ export function makeEnemies(defs, level) {
     // hopper y is a hard floor-alignment invariant from chunk data — never corrected at runtime
     x: d.x, y: d.y, homeY: d.y - (d.type === 'saucer' ? 40 : 0),
     vx: KIND[d.type].speed, t: (d.x * 7919) % 6, fireCd: 0, on: true,
+    // spawn snapshot: everything reviveAll() has to undo. hp is mutated by bolt
+    // hits (redhoppers take two), x drifts along the patrol, saucer y rides the bob.
+    spawn: { x: d.x, y: d.y, hp: KIND[d.type].hp, vx: KIND[d.type].speed },
   }));
 
   const t = v => Math.floor(v / TILE);
@@ -56,6 +59,18 @@ export function makeEnemies(defs, level) {
       return null;
     },
     kill(e, onKill) { if (e.on) { e.on = false; onKill?.(e); } },
+    // Real death rewinds the whole roster, not just the corpses: an enemy you
+    // merely walked past has drifted off its spawn, so the retry would otherwise
+    // start from a scrambled board. Full roster, no partial restore.
+    reviveAll() {
+      for (const e of list) {
+        e.on = true;
+        e.hp = e.spawn.hp;
+        e.x = e.spawn.x; e.y = e.spawn.y;
+        e.vx = e.spawn.vx;
+        e.fireCd = 0;
+      }
+    },
     count() { return list.filter(e => e.on).length; },
   };
 }

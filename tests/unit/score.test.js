@@ -16,3 +16,15 @@ test('kills and coins score; airborne multi-kill pops WOW+', () => {
   s.onKill(true);
   assert.ok(!s.takeEvents().includes('WOW+'));      // flight reset
 });
+
+test('dock subtracts and floors at zero', () => {
+  const s = makeScore();
+  s.onKill(false);                                  // 100
+  s.add('coin');                                    // 110
+  s.dock(100);
+  assert.equal(s.value(), 10);
+  s.dock(100);
+  assert.equal(s.value(), 0);                       // floored, never negative
+  s.dock(100);
+  assert.equal(s.value(), 0);
+});

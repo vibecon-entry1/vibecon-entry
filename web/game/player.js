@@ -42,14 +42,19 @@ export function makePlayer(spawnFeet) {
   // Beam back in at the checkpoint. Shared by pit death and hp-0 death; the
   // caller owns the deaths++ so a corpse that also slides into a pit can't
   // double-count. Height is bodyFits-guarded — never embed in a ceiling.
-  function respawn(level) {
+  //
+  // `full` splits the two respawn flavours the gate economy needs:
+  //   full  → hard respawn out of 'ded': hearts back to HP_MAX.
+  //   soft  → a pit you survived: hp already paid its heart, keep the remainder.
+  // iframes are granted either way (checkpoint 1 sits inside a hopper patrol).
+  function respawn(level, full) {
     const cp = pl.checkpoint, b = pl.body;
     Object.assign(b, { x: cp.x, y: cp.y, vx: 0, vy: 0,
                        h: bodyFits(level, cp.x, cp.y, W, STAND_H) ? STAND_H : SLIDE_H });
     pl.airCharges = P.AIR_CHARGES;
     pl.muzzle = null;
-    pl.hp = P.HP_MAX;
-    pl.iframes = P.IFRAMES;   // post-beam grace: checkpoint 1 sits inside a hopper patrol
+    if (full) pl.hp = P.HP_MAX;
+    pl.iframes = P.IFRAMES;
     setState('spawn');
   }
 
@@ -85,7 +90,7 @@ export function makePlayer(spawnFeet) {
       // immediately instead of waiting out the corpse timer. This is still a
       // single-count fast-path — respawn() sets state 'spawn', so this block
       // can't re-enter and double up the deaths++ / respawn() call.
-      if (pl.stateT > 18 / 12 || b.y > level.h + 64) { pl.deaths++; respawn(level); }
+      if (pl.stateT > 18 / 12 || b.y > level.h + 64) { pl.deaths++; respawn(level, true); }
       return;
     }
     if (pl.state === 'hit') {                         // stagger: brief, physics-only
@@ -188,10 +193,16 @@ export function makePlayer(spawnFeet) {
     if (b.h < STAND_H && pl.state !== 'slide' && pl.state !== 'duck' && !tryStand(level))
       setState(b.h <= SLIDE_H ? 'slide' : 'duck');   // pinned: pose must match the box
 
-    // pit death → respawn beam at checkpoint
+    // Pits cost a heart. Survivable pit = soft respawn (deaths++ here, hp kept);
+    // the pit that takes the LAST heart is a real death instead, so it hands off
+    // to 'ded' and lets the full flow run. No deaths++ on that hand-off — the
+    // body is still below the level, so next frame the ded block's pit-out
+    // shortcut fires with its own single deaths++ and a full-hp respawn. That
+    // respawn sets state 'spawn', so neither branch can re-enter.
     if (b.y > level.h + 64) {
-      pl.deaths++;
-      respawn(level);
+      pl.hp--;
+      if (pl.hp > 0) { pl.deaths++; respawn(level, false); }
+      else setState('ded');
     }
     // checkpoint capture
     for (const c of level.checkpoints)

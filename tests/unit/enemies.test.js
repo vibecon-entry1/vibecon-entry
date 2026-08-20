@@ -72,3 +72,28 @@ test('enemies beyond 1400px sleep (no patrol motion)', () => {
   for (let i = 0; i < 60; i++) E.update(DT, { x: h.x + 1500, y: 0 }, stubBullets(), () => {});
   assert.equal(h.x, x0);
 });
+
+// Real death restores the whole roster: killed enemies come back, and the ones
+// that merely drifted along their patrol go home too (spawn x/y + kind speed).
+test('reviveAll restores killed and drifted enemies', () => {
+  const E = makeEnemies(L.entities, L);
+  const all = []; E.forEach(e => all.push(e));
+  const home = all.map(e => ({ e, x: e.x, y: e.y, vx: e.vx, hp: e.hp }));
+  const hopper = all.find(e => e.type === 'hopper');
+  for (let i = 0; i < 120; i++) E.update(DT, { x: hopper.x, y: -9999, w: 0 }, stubBullets(), () => {});
+  assert.notEqual(hopper.x, home.find(h => h.e === hopper).x);   // drifted off spawn
+  hopper.hp = 0;
+  E.kill(hopper, () => {});
+  assert.equal(E.count(), 1);
+
+  E.reviveAll();
+  assert.equal(E.count(), 2);
+  for (const h of home) {
+    assert.equal(h.e.on, true);
+    assert.equal(h.e.x, h.x);
+    assert.equal(h.e.y, h.y);
+    assert.equal(h.e.vx, h.vx);
+    assert.equal(h.e.hp, h.hp);
+    assert.equal(h.e.fireCd, 0);
+  }
+});

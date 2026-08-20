@@ -14,6 +14,7 @@ export function makeScore() {
       }
     },
     onLand() { flightKills = 0; },
+    dock(n) { value = Math.max(0, value - n); },     // real death penalty; never negative
     takeEvents() { return events.splice(0); },
     value() { return value; },
   };

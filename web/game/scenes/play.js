@@ -104,7 +104,13 @@ export function makePlay({ atlas, input, save, go }) {
 
       cam.follow(player.body.x, player.body.y, player.facing, dt, level);
       if (player.hp < prevHp && player.state !== 'ded') cam.shake(3, 0.15);
-      if (player.state === 'ded' && prevState !== 'ded') cam.shake(8, 0.3);
+      // real death: the board resets around you — every enemy back at its spawn,
+      // and the run pays 100 wow for it (floored at 0). Coins stay collected.
+      if (player.state === 'ded' && prevState !== 'ded') {
+        cam.shake(8, 0.3);
+        score.dock(100);
+        enemies.reviveAll();
+      }
       prevHp = player.hp; prevState = player.state;
       if (player.coyote > 0 && player.body.x > level.w - 48) won = true;   // grounded on the end pad
     },
