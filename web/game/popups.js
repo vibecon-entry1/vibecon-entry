@@ -1,4 +1,11 @@
 // Floating doge text: rises, fades over 0.8s. Pool of 8.
+//
+// Drawn on the 5x7 bitmap font (engine/font.js) rather than canvas fillText —
+// the AA fringe of a 10px canvas font got magnified by the DPR-crisp world
+// scale, so a popup was the softest thing on screen mid-fade. The font draws
+// filled rects, so ctx.globalAlpha still fades it exactly as before.
+import { drawText } from '../engine/font.js';
+
 const LIFE = 0.8, RISE = 25;
 
 export function makePopups() {
@@ -11,12 +18,11 @@ export function makePopups() {
     },
     update(dt) { for (const p of pool) if (p.on && (p.t += dt) > LIFE) p.on = false; },
     render(ctx) {
-      ctx.font = '10px monospace';
+      ctx.fillStyle = '#eec548';
       for (const p of pool) {
         if (!p.on) continue;
         ctx.globalAlpha = 1 - p.t / LIFE;
-        ctx.fillStyle = '#eec548';
-        ctx.fillText(p.text, p.x - p.text.length * 3, p.y - RISE * (p.t / LIFE));
+        drawText(ctx, p.text.toUpperCase(), p.x, p.y - RISE * (p.t / LIFE), { align: 'center' });
       }
       ctx.globalAlpha = 1;
     },

@@ -16,9 +16,9 @@ import { makeCamera } from '../../engine/camera.js';
 import { animFrame, animDone } from '../../engine/assets.js';
 import { P } from '../physics.js';
 // HUD + pause text uses the 5x7 bitmap font (engine/font.js). In-world text
-// (the sign boards below, score popups) deliberately keeps canvas fillText: it
-// lives in the world at 8px and reads as set dressing, not as UI chrome.
-import { drawText, drawTextShadow } from '../../engine/font.js';
+// (the sign boards, score popups) uses it too now, at 1x scale: canvas
+// fillText anti-aliased into softness the crisp DPR-scaled world made obvious.
+import { drawText, drawTextShadow, measure } from '../../engine/font.js';
 
 const VW = 640, VH = 360;
 
@@ -393,16 +393,17 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       // (3) signs: a post carrying a board sized to its own text. The dark
       // board matters — these read over tiles and over sky depending on where
       // the chunk put them, and bare green text loses against the rock.
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'center';
+      // Text is authored lowercase (doge voice) but the font is caps-only, so
+      // it's upshifted at draw — the glyphs fold caps anyway, this just keeps
+      // measure() and drawText() looking at the same string.
       for (const sg of level.signs) {
-        const bw = Math.round(ctx.measureText(sg.text).width) + 8;
+        const upper = sg.text.toUpperCase();
+        const bw = Math.round(measure(upper)) + 8;
         ctx.fillStyle = '#5b4a3a'; ctx.fillRect(sg.x - 2, sg.y - 20, 4, 20);      // post
         ctx.fillStyle = '#1b1420'; ctx.fillRect(sg.x - bw / 2, sg.y - 32, bw, 13); // board
         ctx.fillStyle = '#8a7358'; ctx.fillRect(sg.x - bw / 2, sg.y - 32, bw, 1);  // lit top edge
-        ctx.fillStyle = '#8fa'; ctx.fillText(sg.text, sg.x, sg.y - 23);
+        ctx.fillStyle = '#8fa'; drawText(ctx, upper, sg.x, sg.y - 29, { align: 'center' });
       }
-      ctx.textAlign = 'left';
 
       // (4) checkpoints
       for (const c of level.checkpoints) {
