@@ -50,8 +50,15 @@ export function makeBullets() {
         atlas.drawCentered(ctx, 'blast_bolt', animFrame(a, b.t), b.x, b.y, rot);
         ctx.restore();
       }
-      for (const p of pops)
-        atlas.drawCentered(ctx, 'blast_pop', animFrame(atlas.anims.blast_pop, p.t), p.x, p.y, 0);
+      for (const p of pops) {
+        // Source art reads oversized/artifact-like at native scale (~30px
+        // saturated red blob) — half scale reads as a quick spark instead.
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(0.5, 0.5);
+        atlas.drawCentered(ctx, 'blast_pop', animFrame(atlas.anims.blast_pop, p.t), 0, 0, 0);
+        ctx.restore();
+      }
     },
   };
 }

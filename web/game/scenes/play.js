@@ -303,6 +303,23 @@ export function makePlay({ atlas, input, save, go }) {
                              tx * TILE + 8, ty * TILE + 8);
         }
 
+      // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
+      // the same flat tile (chunks.js), which reads as a dead purple slab
+      // rather than ground receding into shadow. Three stepped darkening
+      // bands over the tile texture (world coords, drawn OVER the tiles we
+      // just placed) fake depth without new art. floorLineWorldY is the same
+      // horizon restLine anchors to, just left in world space (no camY0
+      // subtraction) since we're inside cam.apply here.
+      const floorLineWorldY = level.h - 8 * TILE;
+      const bandX0 = cam.x, bandX1 = cam.x + VW;
+      const bandStops = [floorLineWorldY + 2 * TILE, floorLineWorldY + 5 * TILE,
+                          floorLineWorldY + 8 * TILE, level.h];
+      const bandAlphas = [0.15, 0.3, 0.45];
+      for (let i = 0; i < bandAlphas.length; i++) {
+        ctx.fillStyle = `rgba(0,0,0,${bandAlphas[i]})`;
+        ctx.fillRect(bandX0, bandStops[i], bandX1 - bandX0, bandStops[i + 1] - bandStops[i]);
+      }
+
       // (3) signs: a post carrying a board sized to its own text. The dark
       // board matters — these read over tiles and over sky depending on where
       // the chunk put them, and bare green text loses against the rock.
