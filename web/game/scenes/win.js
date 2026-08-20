@@ -138,6 +138,15 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
       // No entry sting: the fanfare started at takeoff and is still ringing
       // through this screen. The only sound here are the buttons.
       if (input.pressed('retry')) { sfx?.play('uiclick'); go('title'); }
+      // Touch path: a 44-virtual-px band around the share line is the share
+      // button; a tap anywhere else is the primary action, same as R. Armed
+      // after half a second so a fire thumb still held from the run's last
+      // moment can't skip the screen it just earned.
+      const taps = input.taps?.() ?? [];
+      if (t > 0.5 && taps.length) {
+        if (Math.abs(taps[0].y - 311) <= 22) share.tap();
+        else { sfx?.play('uiclick'); go('title'); }
+      }
     },
 
     render(ctx) {

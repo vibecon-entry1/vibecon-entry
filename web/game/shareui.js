@@ -76,6 +76,13 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
       return false;
     },
 
+    /** The keypress flow, for pointer/touch button paths. Same guard, same sound. */
+    tap() {
+      if (status === 'busy') return;
+      sfx?.play('uiclick');
+      fire();
+    },
+
     /** One line at `y`, plus whatever the last press left behind. */
     render(ctx, y) {
       if (status === 'ok') {

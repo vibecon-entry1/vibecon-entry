@@ -11,7 +11,7 @@ import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
 import { makeWowEnd } from './game/scenes/wowend.js';
-import { drawTextShadow } from './engine/font.js';
+import { drawText, drawTextShadow } from './engine/font.js';
 import { P } from './game/physics.js';
 
 export const VW = 640, VH = 360;
@@ -172,6 +172,82 @@ function drawBanner(ctx) {
   ctx.globalAlpha = 1;
 }
 
+// --- touch shell ------------------------------------------------------------
+// Pause plate, left of the sound plate. Drawn only when the touch UI is live:
+// Escape is the pause key and a phone has no Escape. Same 22x20 plate family
+// as MUTE_BTN so the corner reads as one control cluster.
+const PAUSE_BTN = { x: 586, y: 3, w: 22, h: 20 };
+
+function drawPauseButton(ctx) {
+  ctx.fillStyle = 'rgba(11,11,18,0.55)';
+  ctx.fillRect(PAUSE_BTN.x, PAUSE_BTN.y, PAUSE_BTN.w, PAUSE_BTN.h);
+  ctx.fillStyle = '#e8e0d0';
+  ctx.fillRect(PAUSE_BTN.x + 7, PAUSE_BTN.y + 5, 3, 10);
+  ctx.fillRect(PAUSE_BTN.x + 12, PAUSE_BTN.y + 5, 3, 10);
+}
+
+// A 22-virtual-px plate lands well under a finger: virtual→CSS is scale/dpr,
+// which sits around 0.6–1.1 on phones, so the DRAWN plate can be ~13 CSS px.
+// The HIT box is therefore inflated to a 44 CSS px floor at press time —
+// computed per press because scale and dpr change with every fit().
+function hitExpanded(v, r) {
+  const need = 44 * (devicePixelRatio || 1) / scale;    // 44 CSS px, in virtual px
+  const px = Math.max(0, (need - r.w) / 2), py = Math.max(0, (need - r.h) / 2);
+  return v.x >= r.x - px && v.x < r.x + r.w + px &&
+         v.y >= r.y - py && v.y < r.y + r.h + py;
+}
+const btnDist = (v, r) => Math.hypot(v.x - (r.x + r.w / 2), v.y - (r.y + r.h / 2));
+
+// Zone ghosting + FIRE ring, drawn over the world when the touch UI is live.
+// Faint by design: these are affordances, not chrome. The move ghost tracks a
+// live thumb (origin ring + clamped nub); with no thumb down both zones fall
+// back to resting rings with their doge labels.
+function drawTouchHints(ctx, ts, firing) {
+  ctx.save();
+  ctx.strokeStyle = '#8fa';
+  ctx.lineWidth = 2;
+  let moveLive = false;
+  for (const p of ts.pointers) {
+    if (p.zone !== 'move') continue;
+    moveLive = true;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath(); ctx.arc(p.ox, p.oy, 22, 0, Math.PI * 2); ctx.stroke();
+    const dx = p.x - p.ox, dy = p.y - p.oy, d = Math.hypot(dx, dy) || 1, c = Math.min(d, 22);
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#8fa';
+    ctx.beginPath();
+    ctx.arc(p.ox + dx / d * c, p.oy + dy / d * c, 7, 0, Math.PI * 2); ctx.fill();
+  }
+  if (!moveLive) {
+    ctx.globalAlpha = 0.16;
+    ctx.beginPath(); ctx.arc(74, VH - 70, 26, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#8fa';
+    drawText(ctx, 'MUCH MOVE.', 74, VH - 34, { align: 'center' });
+  }
+  ctx.globalAlpha = firing ? 0.4 : 0.16;
+  ctx.beginPath(); ctx.arc(VW - 74, VH - 70, 26, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#8fa';
+  drawText(ctx, 'VERY FIRE.', VW - 74, VH - 34, { align: 'center' });
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// Portrait veil. 640x360 sideways on a portrait phone is a strip of unreadable
+// game; under this veil the loop's update is skipped entirely (see the
+// portraitBlocked bail there), which is the auto-pause — rotating back is the
+// resume, with no state to unwind because nothing ever advanced.
+function drawRotateOverlay(ctx) {
+  ctx.fillStyle = 'rgba(11,11,18,0.94)';
+  ctx.fillRect(0, 0, VW, VH);
+  ctx.fillStyle = '#3a3350'; ctx.fillRect(VW / 2 - 34, 118, 68, 40);   // landscape phone
+  ctx.fillStyle = '#0b0b12'; ctx.fillRect(VW / 2 - 28, 124, 56, 28);
+  ctx.fillStyle = '#8fa';    ctx.fillRect(VW / 2 + 29, 136, 2, 4);     // side button
+  drawTextShadow(ctx, 'very rotate.', VW / 2, 180, { align: 'center', scale: 4 },
+                 '#eec548', '#2a1c33');
+  ctx.fillStyle = '#8fa';
+  drawText(ctx, 'much landscape.', VW / 2, 222, { align: 'center', scale: 2 });
+}
+
 /** Client coords -> virtual 640x360 coords, or null if the canvas has no box. */
 function toVirtual(clientX, clientY) {
   const r = screen.getBoundingClientRect();
@@ -238,12 +314,48 @@ async function boot() {
   // live element. They are independent, so first-click-on-the-button does the
   // sane thing: music starts AND immediately goes to muted, and a second click
   // brings it back. No special-casing needed.
+  // Canceling pointerdown suppresses the compat mousedown/mouseup but NOT the
+  // click a tap still synthesizes — without this guard a touch on the sound
+  // button toggles twice (claim below, then here) and lands where it started.
+  // The guard is a flag rather than e.pointerType because click is only a
+  // PointerEvent on some engines; its pointerdown always precedes it on all.
+  let lastPointerWasTouch = false;
+  screen.addEventListener('pointerdown', e => { lastPointerWasTouch = e.pointerType === 'touch'; });
   screen.addEventListener('click', e => {
+    if (lastPointerWasTouch) return;        // touch path owns the buttons (claim below)
     const v = toVirtual(e.clientX, e.clientY);
     if (!v) return;
     if (v.x >= MUTE_BTN.x && v.x < MUTE_BTN.x + MUTE_BTN.w &&
         v.y >= MUTE_BTN.y && v.y < MUTE_BTN.y + MUTE_BTN.h) toggleMute();
   });
+
+  // Touch UI gate: coarse-pointer media query, OR a real finger has landed —
+  // the latch covers hybrids whose media queries lie about their glass.
+  const coarse = matchMedia('(pointer: coarse)');
+  const touchUI = () => coarse.matches || input.touchSeen();
+  const portraitBlocked = () => touchUI() && innerHeight > innerWidth;
+
+  // Shell claim: buttons get first refusal on a touch before it becomes a game
+  // action (both plates live inside the fire zone). Overlapping inflated hit
+  // boxes resolve to the nearest plate centre, so two abutting 44px targets
+  // stay two targets. Mute is handled here (the click path never fires for a
+  // touch — pointerdown preventDefaults it away); pause is injected as its
+  // action so play.js's own pressed('pause') handling stays the one pause path.
+  input.attachTouch(screen, {
+    toVirtual,
+    claim(v) {
+      const hits = [];
+      if (hitExpanded(v, MUTE_BTN)) hits.push(['mute', MUTE_BTN]);
+      if (sceneName === 'play' && touchUI() && hitExpanded(v, PAUSE_BTN))
+        hits.push(['pause', PAUSE_BTN]);
+      if (!hits.length) return false;
+      hits.sort((a, b) => btnDist(v, a[1]) - btnDist(v, b[1]));
+      if (hits[0][0] === 'mute') { toggleMute(); return true; }
+      return 'pause';
+    },
+  });
+  // Long-press context menu would drop a live thumb mid-slide.
+  screen.addEventListener('contextmenu', e => e.preventDefault());
   let atlas;
   try {
     atlas = await loadAtlas('assets/');
@@ -352,7 +464,8 @@ async function boot() {
                     display: displayMode, scale,
                     backing: { w: screen.width, h: screen.height },
                     css: { w: screen.style.width, h: screen.style.height },
-                    dpr: devicePixelRatio || 1 }),
+                    dpr: devicePixelRatio || 1,
+                    touchUI: touchUI(), portraitBlocked: portraitBlocked() }),
     playTape(t) { tape = t; tapeI = 0; },
     jukebox: { current: jukebox.current },
     // Same shape as the jukebox hook: the only window onto the WebAudio graph,
@@ -368,6 +481,10 @@ async function boot() {
   const loop = createLoop({
     update(dt, frame) {
       window.__blast.frame = frame;
+      // Portrait veil = the world holds still. Skipped BEFORE the tape reader
+      // so a paused frame can't consume tape entries; e2e tapes always run in
+      // landscape viewports, so the two never actually meet.
+      if (portraitBlocked()) return;
       if (xMode) xPhase += dt;
       if (xBanner >= 0 && xBanner <= BANNER_T) xBanner += dt;
       // Tape entries are frame-quantized STATE CHANGES (not pulses): an entry's
@@ -420,7 +537,12 @@ async function boot() {
         ctx.restore();
       }
       drawSoundButton(ctx, jukebox.isMuted());     // shell: above every scene
+      if (touchUI() && sceneName === 'play') {
+        drawPauseButton(ctx);
+        if (!portraitBlocked()) drawTouchHints(ctx, input.touchState(), input.held('fire'));
+      }
       drawBanner(ctx);
+      if (portraitBlocked()) drawRotateOverlay(ctx);
       sctx.drawImage(off, 0, 0, screen.width, screen.height);
       // Overlay pass: device-resolution draws (brand stickers) go straight onto
       // the FINAL screen canvas here, AFTER the integer/fractional blit, so
@@ -431,7 +553,7 @@ async function boot() {
       // flipped on for exactly this pass and restored after: the blit above and
       // any next frame's buffer draw must stay nearest.
       sctx.imageSmoothingEnabled = true;
-      scene.renderOverlay?.(sctx, scale);
+      if (!portraitBlocked()) scene.renderOverlay?.(sctx, scale);   // veil covers stickers too
       sctx.imageSmoothingEnabled = false;
     },
   });

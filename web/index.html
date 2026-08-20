@@ -30,7 +30,11 @@
 <meta name="description" content="the gun is your legs. much blast. a VibeCon 2026 game.">
 <style>
   html, body { margin: 0; height: 100%; background: #0b0b12; overflow: hidden; }
-  #screen { position: absolute; inset: 0; margin: auto; image-rendering: pixelated; }
+  /* touch-action none: the canvas IS the controller — no scroll, no pinch, no
+     double-tap zoom may ever win a gesture race against a live thumb. */
+  #screen { position: absolute; inset: 0; margin: auto; image-rendering: pixelated;
+            touch-action: none; -webkit-user-select: none; user-select: none;
+            -webkit-touch-callout: none; }
   #err { color: #e8e0d0; font: 16px monospace; text-align: center; margin-top: 20vh;
          display: none; white-space: pre-line; }
 </style>

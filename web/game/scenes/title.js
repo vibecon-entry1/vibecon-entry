@@ -144,7 +144,9 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
         go('play', { mode: 'wow' });    // main.js rolls the seed — see wowSeed there
         return;
       }
-      if (!input.pressed('fire')) return;
+      // A tap ANYWHERE advances, same as fire: the title has no zones — a
+      // phone player's first touch has to work before they know the layout.
+      if (!input.pressed('fire') && !(input.taps?.().length > 0)) return;
       sfx?.play('uiclick');            // the only sound the title makes
       intro++;
       if (intro >= INTRO.length) { go('play'); return; }

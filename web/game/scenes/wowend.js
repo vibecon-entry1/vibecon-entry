@@ -41,6 +41,13 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
       t += dt;
       share.update(dt, input);
       if (input.pressed('retry')) { sfx?.play('uiclick'); go('title'); }
+      // Same touch split as win.js: share band around its line, everything
+      // else is the primary action. Same 0.5s arming beat, same reason.
+      const taps = input.taps?.() ?? [];
+      if (t > 0.5 && taps.length) {
+        if (Math.abs(taps[0].y - 311) <= 22) share.tap();
+        else { sfx?.play('uiclick'); go('title'); }
+      }
     },
 
     render(ctx) {

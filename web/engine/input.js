@@ -104,7 +104,10 @@ export function createInput(target = window) {
       track.set(e.pointerId, { ox: v.x, oy: v.y, x: v.x, y: v.y, moved: 0,
                                claimed: !!claimed,
                                zone: v.x < MOVE_SPLIT ? 'move' : 'fire' });
-      el.setPointerCapture?.(e.pointerId);
+      // Capture keeps a drag alive past the canvas edge. Throws for pointers
+      // the browser no longer holds active (synthetic events, ended taps) —
+      // harmless either way, so it must never abort the handler.
+      try { el.setPointerCapture?.(e.pointerId); } catch { /* not capturable */ }
       recompute();
     });
     el.addEventListener('pointermove', e => {
@@ -156,6 +159,8 @@ export function createInput(target = window) {
     },
     /** Taps that completed THIS frame (virtual coords). Cleared in endFrame. */
     taps() { return uiTaps; },
+    /** Allocation-free "has a finger ever landed" — polled every frame by the shell. */
+    touchSeen() { return touchSeen; },
     beginFrame() { pollGamepad(); },
     endFrame() {
       Object.assign(prev, this.actions());
