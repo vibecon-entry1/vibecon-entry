@@ -7,6 +7,7 @@
 // score. No sticker and no fanfare: this is a death screen, and the ded jingle
 // play.js fired on the corpse frame is still ringing when we arrive.
 import { drawText, drawTextShadow } from '../../engine/font.js';
+import { makeSharePrompt } from '../shareui.js';
 
 const VW = 640, VH = 360;
 
@@ -17,6 +18,13 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
   // second flag threaded through for one case.
   const record = score >= best && score > 0;
   let t = 0;
+
+  // deaths is 1, always: the zone gives one life and the ONLY way onto this
+  // screen is dying on it (play.js routes every other wow exit elsewhere), so
+  // the share card reports the death that ended the run rather than a 0 that
+  // would read as a clean sheet. wowBreakdown() has no deaths field for the
+  // same reason — an endless level never increments player.deaths.
+  const share = makeSharePrompt({ score, kills, deaths: 1, mode: 'wow' }, { sfx });
 
   // Two-column ledger on the same LX/RX rails as win.js, so the two end screens
   // read as the same game rather than two different UIs.
@@ -31,6 +39,7 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
   return {
     update(dt) {
       t += dt;
+      share.update(dt, input);
       if (input.pressed('retry')) { sfx?.play('uiclick'); go('title'); }
     },
 
@@ -80,11 +89,11 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
       // share string will carry (T4), and the number a player screenshots today
       // is the number they can hand someone tomorrow.
       ctx.fillStyle = '#6f6a86';
-      drawText(ctx, `seed ${seed}`, VW / 2, 300, { align: 'center' });
-      drawText(ctx, 'SHARE — very soon', VW / 2, 312, { align: 'center' });
+      drawText(ctx, `seed ${seed}`, VW / 2, 282, { align: 'center' });
+      share.render(ctx, 304);
       drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });
     },
 
-    state: () => ({ finalScore: score, best, chunks, seed }),
+    state: () => ({ finalScore: score, best, chunks, seed, ...share.state() }),
   };
 }

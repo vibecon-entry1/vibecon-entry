@@ -44,44 +44,68 @@ def tiles():
     d.rectangle([62, 0, 63, 15], fill=ROCK_DK)        # edgeR shadow
     im.save(OUT / 'tiles.png')
 
-def parallax():
-    rng = random.Random(42)
-    stars = sheet(640, 360); d = ImageDraw.Draw(stars)
-    for _ in range(90):
-        x, y = rng.randrange(640), rng.randrange(300)
+# --- parallax bands ---------------------------------------------------------
+# The three band painters below are parameterised on the target image and a
+# size scale rather than hard-coded to the game's 640-wide strips, because the
+# share-card generator (tools/gencards.py) paints the SAME Mars at 1200 wide.
+# Called with s=1.0 and the original sizes they consume the seeded rng in the
+# original order, so the shipped par_*.png are byte-identical to before.
+
+def star_field(im, rng, n=90, band=None, big=0.12):
+    """Scatter `n` stars over the top `band` rows (default: all but 60)."""
+    d = ImageDraw.Draw(im)
+    band = band if band is not None else im.height - 60
+    for _ in range(n):
+        x, y = rng.randrange(im.width), rng.randrange(band)
         c = WHITE if rng.random() < 0.2 else ICE
         px(d, x, y, c)
-        if rng.random() < 0.12:                        # a few bigger twinkles
+        if rng.random() < big:                         # a few bigger twinkles
             d.line([x - 1, y, x + 1, y], fill=c); d.line([x, y - 1, x, y + 1], fill=c)
-    stars.save(OUT / 'par_stars.png')
+    return im
 
-    mesas = sheet(640, 120); d = ImageDraw.Draw(mesas)
+def mesa_band(im, rng, s=1.0):
+    """Far butte silhouette: flat-topped, tapered talus, occasional shoulder."""
+    d = ImageDraw.Draw(im); H = im.height
+    r = lambda a, b: rng.randrange(int(a * s), int(b * s))
     xpos = 0
-    while xpos < 640:
-        w, hgt = rng.randrange(50, 120), rng.randrange(40, 100)
-        taper = rng.randrange(4, min(16, w // 3 + 1))    # sloped talus at the base
-        top = 120 - hgt
-        d.polygon([(xpos, 120), (xpos, top + 6), (xpos + taper, top),
-                   (xpos + w - taper, top), (xpos + w, top + 6), (xpos + w, 120)],
+    while xpos < im.width:
+        w, hgt = r(50, 120), r(40, 100)
+        taper = rng.randrange(int(4 * s), min(int(16 * s), w // 3 + 1))
+        top = H - hgt
+        d.polygon([(xpos, H), (xpos, top + 6), (xpos + taper, top),
+                   (xpos + w - taper, top), (xpos + w, top + 6), (xpos + w, H)],
                   fill=NAVY)
         d.rectangle([xpos + taper, top, xpos + w - taper, top + 2], fill='#2c4370')
-        if w > 70:                                        # occasional stepped shoulder
-            step = rng.randrange(10, w - 20)
+        if w > 70 * s:                                    # occasional stepped shoulder
+            step = rng.randrange(int(10 * s), w - int(20 * s))
             d.rectangle([xpos + step, top + 6, xpos + step + w // 4, top + 22], fill='#243a63')
-        xpos += w + rng.randrange(10, 60)
+        xpos += w + r(10, 60)
+    return im
+
+def rock_band(im, rng, s=1.0):
+    """Near rock triangles, one band closer than the mesas."""
+    d = ImageDraw.Draw(im); H = im.height
+    r = lambda a, b: rng.randrange(int(a * s), int(b * s))
+    xpos = 0
+    while xpos < im.width:
+        w, hgt = r(20, 60), r(15, 55)
+        peak = xpos + rng.randrange(w // 3, 2 * w // 3 + 1)
+        d.polygon([(xpos, H), (peak, H - hgt), (xpos + w, H)], fill=ROCK_DK)
+        xpos += w + r(5, 40)
+    return im
+
+def parallax():
+    rng = random.Random(42)
+    star_field(sheet(640, 360), rng, 90, 300).save(OUT / 'par_stars.png')
+
+    mesas = mesa_band(sheet(640, 120), rng)
     # Fixed coordinates, read off the seeded layout above: the wide butte that
     # spans x 409-499 has a flat top at y=25, so a 28px figure parked at y=7
     # clears it by its head and shoulders and keeps the rest behind the rock.
     mesas = under(mesas, 'deco1.png', 452, 7)
     mesas.save(OUT / 'par_mesas.png')
 
-    rocks = sheet(640, 80); d = ImageDraw.Draw(rocks)
-    xpos = 0
-    while xpos < 640:
-        w, hgt = rng.randrange(20, 60), rng.randrange(15, 55)
-        peak = xpos + rng.randrange(w // 3, 2 * w // 3 + 1)
-        d.polygon([(xpos, 80), (peak, 80 - hgt), (xpos + w, 80)], fill=ROCK_DK)
-        xpos += w + rng.randrange(5, 40)
+    rocks = rock_band(sheet(640, 80), rng)
     # Same idea one band nearer: x 317-352 is a clear gap between two rock
     # triangles. The y is set by where this band actually lands on screen — it
     # is drawn with its bottom 10px BELOW the horizon, so the ground slab eats

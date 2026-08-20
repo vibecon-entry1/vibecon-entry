@@ -74,6 +74,10 @@ const G = {
   // Multiplication sign and the interpunct the legend/ledger already use.
   '×': ['.....', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '.....'],
   '·': ['.....', '.....', '.....', '.##..', '.##..', '.....', '.....'],
+  // Ampersand: only the share fallback needs it (it prints a query string on
+  // screen for hand-copying), but a URL with a tofu box where its & should be
+  // is a URL nobody can retype.
+  '&': ['.##..', '#..#.', '#..#.', '.##..', '#.#.#', '#..##', '.##.#'],
   // Em dash, as used by 'MUST START — press X'. Wider than '-' on purpose.
   '—': ['.....', '.....', '.....', '.....', '#####', '.....', '.....'],
 };

@@ -6,6 +6,9 @@ import { getSticker, BRAND } from '../../engine/sticker.js';
 // Ledger + headings go through the 5x7 bitmap font (engine/font.js); y values
 // below are the TOP of each text box, where they used to be baselines.
 import { drawText, drawTextShadow } from '../../engine/font.js';
+// Share is the same flow on both end screens — see shareui.js for the KeyS /
+// 'down' key note and for why the game never touches the network.
+import { makeSharePrompt } from '../shareui.js';
 
 const VW = 640, VH = 360;
 
@@ -79,6 +82,8 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
   // don't, so `confetti` stays null and the whole path costs nothing.
   const confetti = pickName === 'popper' ? makeConfetti() : null;
 
+  const share = makeSharePrompt({ score, kills, deaths, mode: 'gauntlet' }, { sfx });
+
   // Two-column ledger: label left-aligned at LX, value right-aligned at RX, so
   // the numbers stack into a readable column instead of drifting with label
   // length. Kept inside the middle 340px so nothing hugs the frame edge.
@@ -129,8 +134,9 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
   return {
     update(dt) {
       t += dt;
+      share.update(dt, input);
       // No entry sting: the fanfare started at takeoff and is still ringing
-      // through this screen. The only sound here is the button.
+      // through this screen. The only sound here are the buttons.
       if (input.pressed('retry')) { sfx?.play('uiclick'); go('title'); }
     },
 
@@ -177,6 +183,8 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
         ctx.globalAlpha = 1;
       }
 
+      share.render(ctx, 304);
+
       ctx.fillStyle = '#6f6a86';
       drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });
 
@@ -185,6 +193,7 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
 
     renderOverlay(sctx, S) { drawStickerOverlay(sctx, S); },
 
-    state: () => ({ finalScore: breakdown.score, best, sticker: pickName }),
+    state: () => ({ finalScore: breakdown.score, best, sticker: pickName,
+                    ...share.state() }),
   };
 }

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "assets": "python3 tools/build_assets.py",
+    "cards": "python3 tools/gencards.py",
     "serve": "node tools/serve.mjs 8123",
     "test:unit": "node --test",
     "test:e2e": "playwright test",

@@ -141,7 +141,9 @@ def palette(frames):
 
 def main():
     import subprocess
-    for tool in ('genart.py', 'posegen.py'):
+    # gencards.py writes COMMITTED art (web/share/*.png) rather than the
+    # gitignored assets-gen/ tree, so a card change shows up in `git status`.
+    for tool in ('genart.py', 'posegen.py', 'gencards.py'):
         subprocess.run(['python3', str(ROOT / 'tools' / tool)], check=True)
     OUT.mkdir(parents=True, exist_ok=True)
     frames, anims = collect()

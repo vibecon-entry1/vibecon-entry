@@ -14,7 +14,7 @@ function spy() {
 
 // Every character the UI actually puts on screen must have a real glyph, not
 // the tofu box. This is the test that catches "I added a string with a ° in it".
-const UI_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:;!?-_+=/\'()×·—';
+const UI_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:;!?-_+=/\'()&×·—';
 
 test('glyph coverage: every UI character is authored', () => {
   for (const ch of UI_CHARS) assert.equal(hasGlyph(ch), true, `missing glyph: ${ch}`);
