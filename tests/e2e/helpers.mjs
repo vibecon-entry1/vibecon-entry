@@ -16,7 +16,10 @@ export async function boot(page) {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
-  await page.goto('http://localhost:8123/');
+  // '?test' — the test-mode boot: skips the title/intro cards and drops
+  // straight into play, so every calibrated tape below starts on gameplay
+  // frame 0 instead of behind three keypresses. It also arms play.js's cheats.
+  await page.goto('http://localhost:8123/?test');
   await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
   await page.waitForFunction(() => window.__blast.state().pstate === 'idle', null, { timeout: 15000 });
   return errors;

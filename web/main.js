@@ -5,6 +5,8 @@ import { loadAtlas } from './engine/assets.js';
 import { makeSave } from './engine/save.js';
 import { makeViewer } from './game/scenes/viewer.js';
 import { makePlay } from './game/scenes/play.js';
+import { makeTitle } from './game/scenes/title.js';
+import { makeWin } from './game/scenes/win.js';
 
 export const VW = 640, VH = 360;
 
@@ -21,23 +23,6 @@ function fit() {
   sctx.imageSmoothingEnabled = false;
 }
 addEventListener('resize', fit); fit();
-
-// Placeholder results scene: proves the play → win handoff carries the
-// breakdown. Task 4 swaps in the real thing.
-function makeWinStub(breakdown) {
-  return {
-    update() {},
-    render(ctx) {
-      ctx.fillStyle = '#eec548';
-      ctx.font = '24px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('much win. very Task 4.', VW / 2, 140);
-      ctx.font = '10px monospace'; ctx.fillStyle = '#8fa';
-      ctx.fillText(JSON.stringify(breakdown), VW / 2, 180);
-      ctx.textAlign = 'left';
-    },
-    state: () => ({ breakdown }),
-  };
-}
 
 async function boot() {
   const input = createInput();
@@ -58,8 +43,15 @@ async function boot() {
   }
   scenes.viewer = () => makeViewer({ atlas, input });
   scenes.play = () => makePlay({ atlas, input, save, go });
-  // STUB — Task 4 replaces this with the real results screen.
-  scenes.win = (breakdown) => makeWinStub(breakdown);
+  scenes.title = () => makeTitle({ input, go });
+  // The ONLY place a best score is written. The win scene reads two resolved
+  // numbers and never touches save, so replaying the results screen can't
+  // re-bank a score.
+  scenes.win = (breakdown) => {
+    const prevBest = save.data.best.gauntlet;
+    if (breakdown.score > prevBest) save.patch({ best: { gauntlet: breakdown.score } });
+    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go });
+  };
 
   // --- test hook -----------------------------------------------------------
   let tape = null, tapeI = 0;
@@ -97,7 +89,10 @@ async function boot() {
     },
   });
 
-  go('play');
+  // ?test boots straight into play: every e2e tape is calibrated from the first
+  // gameplay frame, and making them all click through the title first would put
+  // an unrelated three-keypress preamble in front of every calibrated tape.
+  go(new URLSearchParams(location.search).has('test') ? 'play' : 'title');
   loop.start();
   window.__blast.ready = true;
 }

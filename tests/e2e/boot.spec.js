@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-// None of these four adopt tests/e2e/helpers.mjs's boot()/runTape() — each one's
+// None of these five adopt tests/e2e/helpers.mjs's boot()/runTape() — each one's
 // setup differs from the shared helper in a way that would change behavior:
+//   - "plain boot lands on title": deliberately goes to '/' WITHOUT '?test',
+//     which is exactly what boot() (and every other e2e) can't do — the title
+//     scene has no player, so boot()'s pstate wait would hang forever.
 //   - "boots clean": only waits ready (checks scene/anims that don't depend on
 //     player pstate); boot() also waits for pstate === 'idle', an extra wait
 //     not present here.
@@ -11,12 +14,28 @@ import { test, expect } from '@playwright/test';
 //     the goto internally, so it can't be interleaved.
 //   - "viewer renders every anim": collects only pageerror (not console errors)
 //     and, like the tape test, waits ready only, no idle wait.
+//
+// Every test that wants GAMEPLAY navigates to '/?test': the plain '/' front
+// door is the title screen now.
+
+test('plain boot lands on title', async ({ page }) => {
+  const errors = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto('http://localhost:8123/');            // no ?test → the real front door
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  const st = await page.evaluate(() => window.__blast.state());
+  expect(st.scene).toBe('title');
+  expect(st.phase).toBe('title');
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: 'tests/artifacts/title.png' });
+});
 
 test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
-  await page.goto('http://localhost:8123/');
+  await page.goto('http://localhost:8123/?test');       // test-mode boot → straight to play
   await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
   await expect(page.locator('canvas#screen')).toBeVisible();
   const st = await page.evaluate(() => window.__blast.state());
@@ -27,7 +46,7 @@ test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
 });
 
 test('tape final entry is observed by the sim (press-and-hold)', async ({ page }) => {
-  await page.goto('http://localhost:8123/');
+  await page.goto('http://localhost:8123/?test');       // needs play: F1 toggles play<->viewer
   await page.waitForFunction(() => window.__blast?.ready === true);
   await page.evaluate(() => window.__blast.playTape([{ f: window.__blast.frame + 5, a: { debug: true } }]));
   await page.waitForFunction(() => window.__blast.state().scene === 'viewer', null, { timeout: 5000 });
@@ -46,7 +65,7 @@ test('boot failure shows doge error screen (throwing localStorage)', async ({ pa
 test('viewer renders every anim without errors', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
-  await page.goto('http://localhost:8123/');
+  await page.goto('http://localhost:8123/?test');       // F1 toggles play<->viewer, so start in play
   await page.waitForFunction(() => window.__blast?.ready === true);
   await page.keyboard.press('F1', { delay: 30 });          // → viewer
   await page.waitForFunction(() => window.__blast.state().scene === 'viewer');

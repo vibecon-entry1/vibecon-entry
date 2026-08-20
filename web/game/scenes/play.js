@@ -43,7 +43,7 @@ export function makePlay({ atlas, input, save, go }) {
   // them under the floor slab.
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
-  let won = false;
+  let paused = false;
   // --- run stats + extraction ------------------------------------------------
   let timeS = 0;                 // run clock, seconds (paused during takeoff)
   let killCount = 0;             // roster kills + the boss
@@ -100,7 +100,9 @@ export function makePlay({ atlas, input, save, go }) {
   // (checkpoint columns: 98, 194, 290, 386.)
 
   // --- test-only cheats. Gated on ?test so a normal player never sees them.
-  if (typeof location !== 'undefined' && location.search.includes('test') &&
+  // has('test'), not search.includes('test'): the loose form armed cheats for any
+  // URL that merely CONTAINS the substring (?contest=1, #latest, a path segment).
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('test') &&
       typeof window !== 'undefined' && window.__blast) {
     window.__blast.cheat = {
       warp(x) {
@@ -168,9 +170,14 @@ export function makePlay({ atlas, input, save, go }) {
 
   return {
     update(dt) {
+      // retry wins over everything, takeoff included: a deliberate choice —
+      // R during the extraction cutscene restarts the run rather than making
+      // the player sit out 2.5s of ship they've already earned.
       if (input.pressed('retry')) { go('play'); return; }
+      if (input.pressed('pause')) paused = !paused;
+      if (paused) return;                                // freeze EVERYTHING, clock included
       if (takeoff >= 0) { updateTakeoff(dt); return; }   // world frozen: input ignored
-      timeS += dt;                                       // Task 4: pause gates this
+      timeS += dt;
       const wasAirborne = player.coyote === 0;
       player.update(dt, input.actions(), level, playerBolts);
       // contact gate: hurt() owns damage authority via iframes; the dummy body
@@ -249,7 +256,6 @@ export function makePlay({ atlas, input, save, go }) {
         enemies.reviveAll();
       }
       prevHp = player.hp; prevState = player.state;
-      if (player.coyote > 0 && player.body.x > level.w - 48) won = true;   // grounded on the end pad
       // Extraction: stand on the pad with the gate carved open and the ship goes.
       if (takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
           Math.abs(player.body.x - level.shipPad.x) < 24) takeoff = 0;
@@ -400,9 +406,22 @@ export function makePlay({ atlas, input, save, go }) {
       ctx.fillStyle = '#eec548';
       ctx.fillText(`wow ${score.value()}`, 630, 18);
       ctx.textAlign = 'left';
-      if (won) {
-        ctx.font = '24px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('much gauntlet. very win.', VW / 2, 100);
+
+      // (12) pause veil, over the HUD and everything else.
+      if (paused) {
+        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, VW, VH);
+        // Plate behind the text: a 55% dim alone isn't enough to keep 'such
+        // pause.' legible over the player sprite and a lit sign board, which
+        // is exactly where the camera tends to be when you hit Escape.
+        ctx.fillStyle = 'rgba(11,11,18,.88)'; ctx.fillRect(160, 138, 320, 74);
+        ctx.fillStyle = '#3a3350';
+        ctx.fillRect(160, 138, 320, 1); ctx.fillRect(160, 211, 320, 1);   // top+bottom rule
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 26px monospace';
+        ctx.fillStyle = '#2a1c33'; ctx.fillText('such pause.', VW / 2 + 2, 176 + 2);
+        ctx.fillStyle = '#eec548'; ctx.fillText('such pause.', VW / 2, 176);
+        ctx.font = '10px monospace'; ctx.fillStyle = '#8fa';
+        ctx.fillText('Esc resume  ·  R restart', VW / 2, 200);
         ctx.textAlign = 'left';
       }
     },
@@ -411,7 +430,7 @@ export function makePlay({ atlas, input, save, go }) {
       x: player.body.x, y: player.body.y, vx: player.body.vx, vy: player.body.vy,
       pstate: player.state, charges: player.airCharges, deaths: player.deaths,
       hp: player.hp, iframes: player.iframes,
-      won, bullets: playerBolts.count(),
+      paused, bullets: playerBolts.count(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),
       bossOn: !!(boss && boss.on), bossHp: boss ? boss.hp : -1, bossSpawned,
       gateOpen: gateIsOpen(),
