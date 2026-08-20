@@ -6,6 +6,13 @@
 <h1 align="center">SUCH BLAST</h1>
 <p align="center"><b>a VibeCon 2026 game. one verb. the gun is your legs. much blast.</b></p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/made%20for-VibeCon%202026-ff3a3a" alt="vibecon">
+  <img src="https://img.shields.io/badge/dependencies-0-eec548" alt="zero deps">
+  <img src="https://img.shields.io/badge/tests-171%20passing-2c8" alt="tests">
+  <img src="https://img.shields.io/badge/wow-100%25-a5c3ff" alt="wow">
+</p>
+
 <p align="center">🎮 <b>PLAY:</b> <i>very link soon — GitHub Pages incoming</i> 🎮</p>
 
 ---
@@ -52,6 +59,14 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 - levels are ASCII art. the atlas is built by a Python pipeline that recovers native pixels losslessly from the official sheets. every gap in every level is machine-verified clearable before a human ever plays it
 - music streams progressively (Range/206) — nothing preloads, just like the big games do it
 
+## run it yourself
+
+```bash
+npm install        # dev deps only (test runner) — the game itself has zero dependencies
+npm run serve      # → http://localhost:8123
+npm test           # 137 unit + 34 e2e browser tests, much green
+```
+
 ## built with much AI
 
 this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans made the calls; the models made the commits:
@@ -71,3 +86,9 @@ every feature ran a two-stage review (spec compliance → code quality) with adv
 - **Dogelon Mars** — the official character sprites, ship, enemies and effects are from the [VibeCon asset pack](https://dogelonmars.com/blog/announcing-vibecon-2026-build-a-game-on-mars/), and the logo + stickers are from the official [dogelon-assets](https://github.com/DogelonMars/dogelon-assets) repo. wow. thank you.
 - everything else (tileset, parallax Mars, coins, hearts, UI, fonts) — generated pixel art, palette-locked to the official sprites
 - made for the Dogelon Mars community. much love. very mars. 🚀
+
+## license
+
+code + generated pixel art: **MIT**. the Dogelon Mars character sprites, ship, enemies,
+logo and stickers remain **© Dogelon Mars**, used under the VibeCon 2026 jam terms — see
+[LICENSE](LICENSE). such lawyer.
