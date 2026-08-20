@@ -108,6 +108,31 @@ export function makeSticker(url) {
       }
       ctx.imageSmoothingEnabled = prev;
     },
+    // Device-resolution counterpart to draw(): same virtual-space (x, y, size)
+    // args, but the caller passes S (device pixels per virtual pixel) and this
+    // draws straight onto the FINAL screen canvas at x*S/y*S/size*S. This is
+    // what keeps the 512px source crisp instead of being squashed into the
+    // 640x360 buffer and re-stretched by the integer blit — the soft-sticker
+    // bug this method exists to fix.
+    //
+    // Smoothing is handled IN-METHOD, same as draw(): the caller (main.js)
+    // still flips imageSmoothingEnabled around the whole overlay pass (so a
+    // scene that draws several stickers only pays the state-flip cost once),
+    // but drawScaled sets/restores it itself too, so it is also safe to call
+    // standalone or interleaved with non-smoothed overlay drawing.
+    drawScaled(sctx, S, x, y, size) {
+      if (!ready()) return;
+      const w = size * S;
+      const h = w * (el.videoHeight / el.videoWidth);
+      const prev = sctx.imageSmoothingEnabled;
+      sctx.imageSmoothingEnabled = true;
+      try {
+        sctx.drawImage(el, Math.round(x * S), Math.round(y * S), Math.round(w), Math.round(h));
+      } catch {
+        // see draw(): a bad frame here is not fatal, same non-dead policy.
+      }
+      sctx.imageSmoothingEnabled = prev;
+    },
   };
 }
 

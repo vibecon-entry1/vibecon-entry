@@ -274,6 +274,17 @@ async function boot() {
       scene.render(ctx);
       drawSoundButton(ctx, jukebox.isMuted());     // shell: above every scene
       sctx.drawImage(off, 0, 0, screen.width, screen.height);
+      // Overlay pass: device-resolution draws (brand stickers) go straight onto
+      // the FINAL screen canvas here, AFTER the integer/fractional blit, so
+      // their 512px source is scaled ONCE (virtual -> device) instead of twice
+      // (virtual -> 640x360 buffer -> device), which is what was squashing them
+      // soft. `scale` is device pixels per virtual pixel — fractional in FILL
+      // mode, so scenes must use it, not assume an integer. Smoothing is
+      // flipped on for exactly this pass and restored after: the blit above and
+      // any next frame's buffer draw must stay nearest.
+      sctx.imageSmoothingEnabled = true;
+      scene.renderOverlay?.(sctx, scale);
+      sctx.imageSmoothingEnabled = false;
     },
   });
 

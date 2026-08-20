@@ -89,10 +89,12 @@ export function makeWin({ breakdown, best, input, go }) {
     [`time ${timeS}s`, 'bonus', `${timeBonus}`],
   ];
 
-  // Vignette → art → sparkles → confetti.
+  // In-buffer layers: vignette → sparkles → confetti. The sticker art itself
+  // is drawn in drawStickerOverlay below, at device resolution post-blit — see
+  // main.js's render() for why (squash-then-stretch through the 640x360
+  // buffer was what made these soft).
   function drawSticker(ctx) {
     softPlate(ctx, ST_CX, ST_CY, ST.size * 0.72);
-    sticker.draw(ctx, ST.x, ST.y, ST.size);
 
     for (const s of SPARKS) {
       const a = s.ph + t * s.rate;
@@ -117,6 +119,11 @@ export function makeWin({ breakdown, best, input, go }) {
       }
       ctx.globalAlpha = 1;
     }
+  }
+
+  // Overlay: the sticker itself, drawn at device resolution post-blit.
+  function drawStickerOverlay(sctx, S) {
+    sticker.drawScaled(sctx, S, ST.x, ST.y, ST.size);
   }
 
   return {
@@ -173,6 +180,8 @@ export function makeWin({ breakdown, best, input, go }) {
 
       drawSticker(ctx);
     },
+
+    renderOverlay(sctx, S) { drawStickerOverlay(sctx, S); },
 
     state: () => ({ finalScore: breakdown.score, best, sticker: pickName }),
   };

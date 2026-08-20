@@ -74,12 +74,17 @@ export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
   // open a second decoder for the same 512px cartoon.
   const rocket = getSticker(BRAND.rocketride);
 
-  // The corner mascot. Vignette first (so the cartoon's dark linework doesn't
-  // dissolve into the starfield), then the art, then the embers on top.
-  function drawRocket(ctx, t) {
+  // The corner mascot's IN-BUFFER layers: vignette first (so the cartoon's
+  // dark linework doesn't dissolve into the starfield), then the embers on
+  // top. The video draw itself lives in drawRocketOverlay below — it has to
+  // run on the final screen canvas at device resolution, post-blit, or the
+  // 512px art gets squashed into this 640x360 buffer and re-stretched soft.
+  // Same bob/t math in both halves keeps the plate/embers (buffer) and the
+  // art (overlay) aligned under each other despite drawing in two different
+  // passes.
+  function drawRocketBuffer(ctx, t) {
     const bob = Math.round(Math.sin(t * 1.1) * RR.bob);
     softPlate(ctx, RR.x + RR.size / 2, RR.y + RR.size / 2 + bob, RR.size * 0.66);
-    rocket.draw(ctx, RR.x, RR.y + bob, RR.size);
 
     // Embers. Each rides a 0..1 sawtooth down its own `len`-pixel track and
     // fades out over the last third, so respawn is a fade-in, not a pop.
@@ -91,6 +96,13 @@ export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
       ctx.fillRect(RR.x + s.dx, Math.round(y), 2, 2);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Overlay: the sticker itself, drawn at device resolution post-blit. See
+  // main.js's render() for the S (device-px-per-virtual-px) contract.
+  function drawRocketOverlay(sctx, S, t) {
+    const bob = Math.round(Math.sin(t * 1.1) * RR.bob);
+    rocket.drawScaled(sctx, S, RR.x, RR.y + bob, RR.size);
   }
 
   // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
@@ -173,7 +185,7 @@ export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
         ctx.fillStyle = '#6f6a86';
         LEGEND.forEach((l, i) => drawText(ctx, l, VW / 2, 316 + i * 11, C));
 
-        drawRocket(ctx, t);
+        drawRocketBuffer(ctx, t);
       } else {
         // intro card: one line, doge-paced, with a quiet advance hint.
         drawTextShadow(ctx, INTRO[intro], VW / 2, 160, { ...C, scale: 3 }, '#e8e0d0', '#2a1c33');
@@ -182,6 +194,13 @@ export function makeTitle({ input, go, save, jukebox, toggleDisplay }) {
         drawText(ctx, 'press X', VW / 2, 294, C);
         ctx.globalAlpha = 1;
       }
+    },
+
+    // Overlay: sticker video only, at device resolution. Only drawn during the
+    // 'title' phase, matching the buffer half's guard in render() above — the
+    // intro cards show no rocket.
+    renderOverlay(sctx, S) {
+      if (phase === 'title') drawRocketOverlay(sctx, S, t);
     },
 
     state: () => ({ phase }),   // display is reported by main.js, its owner
