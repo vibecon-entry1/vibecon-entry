@@ -296,3 +296,22 @@ test('hurt is a no-op during spawn beam', () => {
   assert.equal(pl.hp, 3);
   assert.equal(pl.state, 'spawn');
 });
+
+test('hit state itself blocks hurt even if iframes were zeroed', () => {
+  const pl = makePlayer(FLAT.spawn); drive(pl, FLAT, 150, () => ({}));
+  pl.hurt(pl.body.x + 30);
+  pl.iframes = 0;                                    // simulate future tuning
+  pl.hurt(pl.body.x + 30);
+  assert.equal(pl.hp, 2);                            // state guard held
+});
+
+test('corpse falling into a pit respawns promptly, single death', () => {
+  const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
+  const pl = makePlayer(PIT.spawn); drive(pl, PIT, 150, () => ({}));
+  drive(pl, PIT, 20, () => ({ right: true }));
+  pl.hp = 1; pl.hurt(pl.body.x - 30);                // knocked right, dies over the pit
+  assert.equal(pl.state, 'ded');
+  drive(pl, PIT, 60, () => ({}));                    // pit shortcut beats the 1.5s timer
+  assert.equal(pl.state, 'spawn');
+  assert.equal(pl.deaths, 1);
+});

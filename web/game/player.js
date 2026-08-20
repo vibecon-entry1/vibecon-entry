@@ -17,7 +17,7 @@ export function makePlayer(spawnFeet) {
     state: 'spawn', stateT: 0, facing: 1,
     airCharges: P.AIR_CHARGES, coyote: 0, fireCd: 0, slideT: 0,
     checkpoint: { ...spawnFeet }, deaths: 0, muzzle: null,
-    hp: 3, iframes: 0,
+    hp: P.HP_MAX, iframes: 0,
     update, setState, hurt,
   };
 
@@ -48,19 +48,19 @@ export function makePlayer(spawnFeet) {
                        h: bodyFits(level, cp.x, cp.y, W, STAND_H) ? STAND_H : SLIDE_H });
     pl.airCharges = P.AIR_CHARGES;
     pl.muzzle = null;
-    pl.hp = 3;
+    pl.hp = P.HP_MAX;
     pl.iframes = 0;
     setState('spawn');
   }
 
   // Damage from the world (enemy contact, bolts). fromX drives the knockback
-  // direction. Invulnerable during iframes, and while already dead or beaming in.
+  // direction. Invulnerable during iframes, and while already dead, staggered, or beaming in.
   function hurt(fromX) {
-    if (pl.iframes > 0 || pl.state === 'ded' || pl.state === 'spawn') return;
+    if (pl.iframes > 0 || pl.state === 'hit' || pl.state === 'ded' || pl.state === 'spawn') return;
     pl.hp--;
-    pl.iframes = 1.2;
-    pl.body.vx = (Math.sign(pl.body.x - fromX) || 1) * 180;
-    pl.body.vy = -160;
+    pl.iframes = P.IFRAMES;
+    pl.body.vx = (Math.sign(pl.body.x - fromX) || 1) * P.KNOCK_VX;
+    pl.body.vy = P.KNOCK_VY;
     setState(pl.hp <= 0 ? 'ded' : 'hit');
   }
 
@@ -81,13 +81,16 @@ export function makePlayer(spawnFeet) {
     if (pl.state === 'ded') {                         // corpse: 18f @ 12fps, then beam
       b.vy = Math.min(b.vy + P.GRAV * dt, P.MAX_FALL);
       moveAndCollide(b, level, dt);
-      // no pit check here on purpose: a corpse sliding into a pit just falls
-      // until the timer runs out, so it can only be counted (and respawned) once.
-      if (pl.stateT > 18 / 12) { pl.deaths++; respawn(level); }
+      // pit-out shortcut: a corpse that falls past the level bottom respawns
+      // immediately instead of waiting out the corpse timer. This is still a
+      // single-count fast-path — respawn() sets state 'spawn', so this block
+      // can't re-enter and double up the deaths++ / respawn() call.
+      if (pl.stateT > 18 / 12 || b.y > level.h + 64) { pl.deaths++; respawn(level); }
       return;
     }
     if (pl.state === 'hit') {                         // stagger: brief, physics-only
-      if (pl.stateT > 0.35) {
+      // HIT_T truncates the 8f hit anim (~0.5s) on purpose — feel beats anim length.
+      if (pl.stateT > P.HIT_T) {
         setState(!bodyFits(level, b.x, b.y + 1, b.w, 1) ? 'idle' : 'air');
         // fall through: this frame gets normal handling (and its own physics step)
       } else {

@@ -9,6 +9,7 @@ export const P = {
   HOP_VY: -290, BOOST_VY: -320, BURST_VX: 130, BURST_MAX: 420,
   COYOTE: 0.09, AIR_CHARGES: 3, FIRE_CD: 0.12,
   SLIDE_MIN: 0.25, SLIDE_SPEED: 200, SLIDE_DECAY: 260, AIR_DRAG: 260,
+  HP_MAX: 3, IFRAMES: 1.2, HIT_T: 0.35, KNOCK_VX: 180, KNOCK_VY: -160,  // IFRAMES > HIT_T (else re-stagger loops)
 };
 
 const EPS = 0.001;

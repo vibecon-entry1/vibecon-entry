@@ -9,6 +9,7 @@ import { P } from '../physics.js';
 const ANIM_FOR = {                       // state → atlas anim
   spawn: 'spawn', idle: 'stand', walk: 'run', air: 'run',
   slide: 'slide', duck: 'duck',
+  hit: 'hit', ded: 'dead',
 };
 
 export function makePlay({ atlas, input, save, go }) {
@@ -69,6 +70,7 @@ export function makePlay({ atlas, input, save, go }) {
     state: () => ({
       x: player.body.x, y: player.body.y, vx: player.body.vx, vy: player.body.vy,
       pstate: player.state, charges: player.airCharges, deaths: player.deaths,
+      hp: player.hp, iframes: player.iframes,
       won, bullets: bullets.count(),
     }),
   };
