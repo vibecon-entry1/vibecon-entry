@@ -61,6 +61,9 @@ export function makePlay({ atlas, input, save, go }) {
       }
       ctx.fillStyle = '#e8e0d0'; ctx.font = '10px monospace';
       ctx.fillText(`${player.state} deaths:${player.deaths}`, 10, 36);
+      ctx.fillStyle = '#8fa';
+      ctx.fillText('HOLD \u2193 + TAP X = shoot ground = HOP  \u00b7  \u2193+X in air = BOOST', 10, 350);
+      ctx.fillText('\u2193 + \u2192 = slide  \u00b7  X while sliding (release \u2193) = BURST  \u00b7  R = restart', 10, 338);
       if (won) { ctx.font = '24px monospace'; ctx.fillText('much graybox. very win.', 200, 100); }
     },
     state: () => ({
