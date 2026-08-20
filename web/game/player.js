@@ -91,7 +91,12 @@ export function makePlayer(spawnFeet) {
       // immediately instead of waiting out the corpse timer. This is still a
       // single-count fast-path — respawn() sets state 'spawn', so this block
       // can't re-enter and double up the deaths++ / respawn() call.
-      if (pl.stateT > 18 / 12 || b.y > level.h + 64) { pl.deaths++; respawn(level, true); }
+      // Endless: nothing to respawn TO. The corpse is left to lie (or keep
+      // falling) and the scene, which is the only thing that knows what a
+      // finished run means, switches to the run-end screen on its own clock.
+      if (!level.endless && (pl.stateT > 18 / 12 || b.y > level.h + 64)) {
+        pl.deaths++; respawn(level, true);
+      }
       return;
     }
     if (pl.state === 'hit') {                         // stagger: brief, physics-only
@@ -207,10 +212,16 @@ export function makePlayer(spawnFeet) {
     // body is still below the level, so next frame the ded block's pit-out
     // shortcut fires with its own single deaths++ and a full-hp respawn. That
     // respawn sets state 'spawn', so neither branch can re-enter.
+    // ENDLESS levels (the wow zone) opt out of the whole economy: they have no
+    // checkpoints, so a soft respawn would teleport you to the run's start and
+    // make you walk the entire zone again. A pit is simply the end of the run.
     if (b.y > level.h + 64) {
-      pl.hp--;
-      if (pl.hp > 0) { pl.deaths++; respawn(level, false); }
-      else setState('ded');
+      if (level.endless) { pl.hp = 0; setState('ded'); }
+      else {
+        pl.hp--;
+        if (pl.hp > 0) { pl.deaths++; respawn(level, false); }
+        else setState('ded');
+      }
     }
     // checkpoint capture
     for (const c of level.checkpoints)

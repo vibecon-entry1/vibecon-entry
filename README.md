@@ -10,11 +10,12 @@
 <p align="center">
   <img src="https://img.shields.io/badge/made%20for-VibeCon%202026-ff3a3a" alt="vibecon">
   <img src="https://img.shields.io/badge/dependencies-0-eec548" alt="zero deps">
-  <img src="https://img.shields.io/badge/tests-171%20passing-2c8" alt="tests">
+  <img src="https://img.shields.io/badge/tests-195%20passing-2c8" alt="tests">
   <img src="https://img.shields.io/badge/wow-100%25-a5c3ff" alt="wow">
   <br>
   <img src="https://img.shields.io/badge/level-1488%20tiles-532e6d" alt="level">
   <img src="https://img.shields.io/badge/boss-MEGA%20SAUCER-982c2c" alt="boss">
+  <img src="https://img.shields.io/badge/endless-WOW%20ZONE-eec548" alt="wow zone">
   <img src="https://img.shields.io/badge/license-MIT%20%2B%20doge%20carve--out-1e2f51" alt="license">
   <img src="https://img.shields.io/badge/playable-1%E2%80%935%20min-ffa900" alt="playable">
 </p>
@@ -35,6 +36,8 @@
 
 31 chunks of hand-built Mars gauntlet with ramping difficulty, 39 rude aliens, 151 $ELON coins, a MEGA SAUCER boss that summons very minions, a ship extraction finale, and a soundtrack that streams like real games do it.
 
+beat it once and **WOW ZONE** unlocks: an endless mode that re-deals the same hand-authored chunks in a seeded order that ramps from teaching-floor to tier-3 canyon. one life, no checkpoints, a pit is the end of the run. same seed = same 40 chunks, every time.
+
 ## much screenshots
 
 | title | gauntlet |
@@ -53,6 +56,7 @@ X / Z / ␣   blast (the only verb)
 ↓ + X       shoot ground = hop
 ↓+X in air  boost (watch the pips)
 ↓ + move    slide · keep holding + X = zoom zoom
+W           WOW ZONE (endless — unlocks when you beat the gauntlet)
 Esc         such pause.    R  very restart    M  mute    D  display mode
 ```
 
@@ -61,7 +65,8 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 ## very tech
 
 - **zero-dependency vanilla JS** — no engine, no framework, no build step. fixed 60Hz sim, deterministic input tapes, pixel-perfect DPR-aware rendering with a hand-authored 5×7 bitmap font
-- **~130 unit tests + 31 end-to-end browser tests** drive the actual game with frame-indexed input tapes and screenshot every milestone
+- **157 unit tests + 38 end-to-end browser tests** drive the actual game with frame-indexed input tapes and screenshot every milestone
+- **no `Math.random` anywhere in the sim** — WOW ZONE deals its level from a seeded mulberry32 stream, so a run is a pure function of one integer and an input tape replays it exactly
 - levels are ASCII art. the atlas is built by a Python pipeline that recovers native pixels losslessly from the official sheets. every gap in every level is machine-verified clearable before a human ever plays it
 - music streams progressively (Range/206) — nothing preloads, just like the big games do it
 
@@ -70,7 +75,7 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 ```bash
 npm install        # dev deps only (test runner) — the game itself has zero dependencies
 npm run serve      # → http://localhost:8123
-npm test           # 137 unit + 34 e2e browser tests, much green
+npm test           # 157 unit + 38 e2e browser tests, much green
 ```
 
 ## built with much AI

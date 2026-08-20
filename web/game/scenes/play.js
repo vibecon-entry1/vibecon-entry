@@ -4,7 +4,7 @@
 // Render order is load-bearing and reads bottom-up:
 //   parallax (screen space, OUTSIDE the camera) → tiles → signs → checkpoints
 //   → coins → enemies → player → muzzle → bolts → popups → [restore] → HUD.
-import { buildGauntlet, TILE } from '../chunks.js';
+import { buildGauntlet, buildWowZone, WOW_LEN, CHUNK_W, TILE } from '../chunks.js';
 import { makePlayer } from '../player.js';
 import { makeBullets } from '../bullets.js';
 import { makeEnemies } from '../enemies.js';
@@ -38,9 +38,19 @@ const AIR_FRAME = 6;
 
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
-export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
-  jukebox?.playPool('run');      // no-op if we're already on the run pool (R-restart)
-  const level = buildGauntlet();   // fresh per scene: R-restart re-seals any carved gate
+// One scene serves both modes. The split is deliberately narrow: WOW ZONE
+// changes the LEVEL (seeded chunk order), the MUSIC pool, what a death means
+// (run over, not respawn) and the HUD's progress readout. Everything else —
+// the verb, the enemies, the scoring, the camera, the parallax — is the same
+// game, which is the whole point of an endless mode built out of the campaign's
+// own chunks. `mode` is the only branch key; `seed` is meaningless in gauntlet.
+export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
+                           mode = 'gauntlet', seed = 0 }) {
+  const wow = mode === 'wow';
+  jukebox?.playPool(wow ? 'wow' : 'run');   // no-op if we're already on that pool (R-restart)
+  // fresh per scene: R-restart re-seals any carved gate. In wow the same seed
+  // is re-dealt, so R is "run that one again", not "roll a new one".
+  const level = wow ? buildWowZone(seed) : buildGauntlet();
   const player = makePlayer(level.spawn);
   const enemies = makeEnemies(level.entities, level);
   const coins = makeCoins(level.entities);
@@ -81,6 +91,13 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
   // gundown pose regardless of what state he is actually in.
   let gunDownT = 0;
   const GUN_DOWN_T = 0.15;
+  // --- wow-zone state --------------------------------------------------------
+  // chunkIndex is the chunk the player is standing in; maxChunk is the farthest
+  // one the run ever reached (the number the run-end screen brags about).
+  // WSTART is chunk 0, so both read as "chunks of the dealt 40 cleared".
+  let chunkIndex = 0, maxChunk = 0;
+  let dedT = 0;                  // seconds spent dead — the run-end fuse
+  const DED_OUT = 1.2;           // corpse anim is 1.5s; cut before it finishes
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
   // through a mid-fight real death, so the arena can never re-arm a second saucer.
@@ -94,7 +111,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
   // Floor top at the trigger column, scanned out of the level rather than
   // hardcoded: the arena's authored row count is a chunks.js detail, and the
   // FLOOR_PAD repeat rows below it make an arithmetic guess easy to get wrong.
-  const bossFloorY = (() => {
+  const bossFloorY = wow ? 0 : (() => {
     const tx = Math.floor(level.bossTrigger / TILE);
     for (let ty = 0; ty < level.hTiles; ty++) if (level.solidAt(tx, ty)) return ty * TILE;
     return level.h;
@@ -178,6 +195,13 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
         if (!boss || !boss.on) return;
         while (boss.on) if (boss.hurt()) bossDeath();
       },
+      // Drops the body straight through the level floor, which is what a pit
+      // does. Used by the wow e2e to exercise the REAL pit path (level.endless
+      // in player.js) rather than poking hp from outside it.
+      pit() {
+        player.body.y = level.h + 200;
+        player.body.vy = 0;
+      },
       warpPad() {
         player.body.x = level.shipPad.x - 40;
         player.body.y = level.shipPad.y;
@@ -213,8 +237,24 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
     if (takeoff >= 2.5) go('win', breakdown());
   }
 
-  // The run's final tally. timeBonus is added to the score exactly ONCE, here —
-  // score.value() never learns about it, so calling breakdown() twice is safe.
+  // The wow run's tally. Deliberately NOT breakdown(): a wow run has no time
+  // bonus (there is no finish line to be fast to — you die when you die, and a
+  // long run is a GOOD run), no deaths column (there is exactly one), and it
+  // carries the seed and chunk count instead.
+  function wowBreakdown() {
+    return {
+      score: score.value(),
+      kills: killCount,
+      coins: coins.total() - coins.remaining(),
+      timeS: Math.floor(timeS),
+      chunks: maxChunk,
+      seed,
+    };
+  }
+
+  // The gauntlet run's final tally. timeBonus is added to the score exactly
+  // ONCE, here — score.value() never learns about it, so calling breakdown()
+  // twice is safe.
   function breakdown() {
     const t = Math.floor(timeS);
     // Retuned for the 31-chunk campaign: a bigger pot that decays twice as fast,
@@ -240,7 +280,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       // retry wins over everything, takeoff included: a deliberate choice —
       // R during the extraction cutscene restarts the run rather than making
       // the player sit out 2.5s of ship they've already earned.
-      if (input.pressed('retry')) { go('play'); return; }
+      if (input.pressed('retry')) { go('play', { mode, seed }); return; }
       // Mute is checked BEFORE the pause bail: silencing the game while it's
       // paused is exactly when you want to reach for it.
       // One switch for both engines — main.js owns it (see toggleMute there).
@@ -282,7 +322,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       enemyBolts.update(dt, level);
 
       // Boss trigger: crossing 8 tiles into C8 arms the fight, once and forever.
-      if (!bossSpawned && player.body.x > level.bossTrigger) {
+      if (!wow && !bossSpawned && player.body.x > level.bossTrigger) {
         bossSpawned = true;
         boss = makeBoss(level.bossTrigger + 200, bossFloorY);
         // Offset left/low of the boss center on purpose: at the trigger the camera
@@ -361,12 +401,29 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       if (player.state === 'ded' && prevState !== 'ded') {
         sfx?.play('ded');
         cam.shake(8, 0.3);
-        score.dock(100);
-        enemies.reviveAll();
+        // Only the gauntlet has a board to reset and a run left to charge for
+        // it. In wow this death IS the run: docking 100 wow off the final tally
+        // would be charging a fee on the way out the door.
+        if (!wow) { score.dock(100); enemies.reviveAll(); }
       }
       prevHp = player.hp; prevState = player.state;
+      if (wow) {
+        // chunkIndex is where you ARE (the HUD counter, which may go down if
+        // you walk back left); maxChunk is the high-water mark the run-end
+        // screen reports, so backtracking can never un-earn a chunk.
+        chunkIndex = Math.max(0, Math.min(WOW_LEN,
+          Math.floor(player.body.x / (CHUNK_W * TILE))));
+        maxChunk = Math.max(maxChunk, chunkIndex);
+        // Run over. The corpse beat is watched HERE rather than hooked off
+        // player.js's respawn timer because in an endless level player.js has
+        // no respawn to fire (level.endless) — the scene owns the ending.
+        // DED_OUT is a touch under the 1.5s corpse anim so the cut lands while
+        // the body is still on its last frame, not after it starts idling.
+        if (player.state === 'ded') dedT += dt;
+        if (dedT >= DED_OUT) { go('wowend', wowBreakdown()); return; }
+      }
       // Extraction: stand on the pad with the gate carved open and the ship goes.
-      if (takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
+      if (!wow && takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
           Math.abs(player.body.x - level.shipPad.x) < 24) {
         takeoff = 0;
         jukebox?.stopMusic();
@@ -492,9 +549,12 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
 
       // (6d) the ship. Always drawn on its pad — before the gate opens it is
       // simply hundreds of tiles off to the right, so no gating is needed.
-      atlas.drawFeet(ctx, 'ship', takeoff >= 0 ? animFrame(atlas.anims.ship, takeoff)
-                                               : atlas.anims.ship.frames[0],
-                     level.shipPad.x, level.shipPad.y - liftY);
+      // No ship in wow — there is no extraction to earn, and level.shipPad is
+      // null because no wow chunk carries a 'T'.
+      if (level.shipPad)
+        atlas.drawFeet(ctx, 'ship', takeoff >= 0 ? animFrame(atlas.anims.ship, takeoff)
+                                                 : atlas.anims.ship.frames[0],
+                       level.shipPad.x, level.shipPad.y - liftY);
 
       // (7) player — blink through iframes, but a corpse always stays visible.
       // NO separate rider during takeoff: the 'ship' art already carries a dog
@@ -578,6 +638,13 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       // the speaker glyph. Caught in the branding pass's visual check.
       // y is now the TOP of the 14px-tall text box (scale 2), not a baseline.
       drawText(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' });
+      // Wow's progress readout, under the score. The gauntlet has signs, a boss
+      // and a ship to tell you where you are; wow is 40 anonymous chunks, so the
+      // counter IS the sense of progress.
+      if (wow) {
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, `CHUNK ${chunkIndex}/${WOW_LEN}`, 608, 26, { scale: 2, align: 'right' });
+      }
 
       // (12) pause veil, over the HUD and everything else.
       if (paused) {
@@ -609,6 +676,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute }) {
       minions: (() => { let n = 0; enemies.forEach(e => { if (e.summoned) n++; }); return n; })(),
       gateOpen: gateIsOpen(),
       timeS: Math.floor(timeS), killCount, takeoff: takeoff >= 0,
+      mode, seed, chunkIndex, maxChunk,
     }),
   };
 }

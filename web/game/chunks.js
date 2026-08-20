@@ -2,6 +2,9 @@
 // 'C' checkpoint · 'h' hopper · 'H' red hopper · 'u' saucer · '$' coin ·
 // 'S' sign · 'G' gate tile (solid, recorded) · 'T' ship pad marker (not
 // solid, recorded). Spawn/checkpoint y = feet = top of the tile they stand on.
+// The wow zone's chunk order is seeded, never Math.random: see engine/rng.js.
+import { mulberry32, randInt } from '../engine/rng.js';
+
 export const TILE = 16;
 
 const ENT = { h: 'hopper', H: 'redhopper', u: 'saucer', $: 'coin' };
@@ -657,5 +660,120 @@ export function buildGauntlet() {
   ], SIGN_TEXTS);
   // C8 is chunk index 28 now (7 originals + 21 escalation chunks).
   L.bossTrigger = (28 * 48 + 8) * TILE;
+  return L;
+}
+
+// ---- WOW ZONE ---------------------------------------------------------------
+// The endless mode: the SAME authored chunks, dealt in a seeded order that
+// escalates. Nothing here is generated tile-by-tile — every metre of floor a
+// player runs in wow was hand-authored and shipped in the gauntlet, so the
+// geometry invariants (hop distances, corridor clearances, knockback traps)
+// hold for free. The only thing the seed decides is the ORDER.
+//
+// The pool is C2..C7 + E1..E21 (27 chunks). Excluded on purpose:
+//   C1  — the tutorial. Its two signs teach fire/hop and it has no threats.
+//   C8..C10 — boss arena, victory stretch, ship pad. Wow has no boss and no
+//         extraction, and the gate 'G' wall would be an unopenable dead end.
+//
+// SIGNS AND CHECKPOINTS ARE STRIPPED. Both are gauntlet furniture that would
+// lie in wow: a sign teaching DOWN+X shows up 30 chunks into an endless run
+// out of context, and a checkpoint flag promises a respawn that wow never
+// grants (death ends the run; see play.js's wow rules). Stripping the markers
+// at the ROW level — rather than passing empty signTexts and guarding the
+// renderer — keeps the level object honest: L.signs and L.checkpoints come out
+// genuinely empty, so nothing downstream has to know about a special case.
+const stripFurniture = rows => rows.map(r => r.replace(/[SC]/g, '.'));
+
+// WSTART — the run-in. Pool chunks have no 'P' (the gauntlet's only spawn is
+// C1's), so wow needs one chunk of its own: flat floor, no threats, no coins,
+// spawn at the same column C1 uses. It is deliberately boring — the first thing
+// a wow run should be is a clean beam-in with room to get moving.
+const WSTART = ch([
+  R, R, R, R, R, R, R, R, R, R, R, R, R,
+  '...P............................................',
+  '################################################',
+  '################################################',
+  '################################################',
+]);
+
+// Difficulty tiers. EASY is the teaching half of the campaign plus the tier-2
+// opener; MID is the tier-2 body; HARD is the tier-3 run to the boss.
+const WOW_EASY = [C2, C3, C4, C5, C6, C7, E1, E2, E3, E4];
+const WOW_MID = [E5, E6, E7, E8, E9, E10, E11, E12, E13];
+const WOW_HARD = [E14, E15, E16, E17, E18, E19, E20, E21];
+// The gentle openers: whatever the seed, chunk 1 is one of these two. Both are
+// threat-free pure-traversal chunks, so a run never opens on a saucer.
+const WOW_OPENERS = [C2, E1];
+const WOW_OPENER_NAMES = ['C2', 'E1'];
+
+// Name tables, parallel to the tier arrays above. They exist purely so a run
+// can be described (tests, debug HUD, a future share string) without shipping
+// the chunk rows themselves — the arrays hold anonymous row data.
+const WOW_NAMES_EASY = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'E1', 'E2', 'E3', 'E4'];
+const WOW_NAMES_MID = ['E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12', 'E13'];
+const WOW_NAMES_HARD = ['E14', 'E15', 'E16', 'E17', 'E18', 'E19', 'E20', 'E21'];
+
+export const WOW_LEN = 40;                  // chunks dealt after WSTART
+export const CHUNK_W = 48;                  // authored chunk width, tiles
+
+// Tier weights as a function of progress p (0 at the first dealt chunk, 1 at
+// the last). Tuned so that:
+//   p=0.0 → easy 1.00 / mid 0.10 / hard 0.00   (basically pure easy)
+//   p=0.5 → easy 0.20 / mid 0.90 / hard 0.40
+//   p=1.0 → easy 0.00 / mid 0.10 / hard 1.20   (basically pure hard)
+// MID never falls to zero: a single breather chunk deep in a run is worth more
+// than a perfectly monotonic ramp, and the floor is what provides it.
+function tierWeights(p) {
+  return [
+    Math.max(0, 1 - 1.6 * p),
+    Math.max(0.1, 1 - Math.abs(p - 0.45) * 2),
+    Math.max(0, (p - 0.25) * 1.6),
+  ];
+}
+
+/**
+ * Deal a wow-zone level from a seed. Same seed → byte-identical level.
+ * @param {number} seed
+ * @returns {object} the stitched level, plus `chunkNames` for observability.
+ */
+export function buildWowZone(seed) {
+  const rng = mulberry32(seed);
+  const tiers = [WOW_EASY, WOW_MID, WOW_HARD];
+  const names = [WOW_NAMES_EASY, WOW_NAMES_MID, WOW_NAMES_HARD];
+  const picked = [];
+  const pickedNames = [];
+
+  // Chunk 1 is always an opener, but WHICH opener is the seed's call.
+  const o = randInt(rng, WOW_OPENERS.length);
+  picked.push(WOW_OPENERS[o]);
+  pickedNames.push(WOW_OPENER_NAMES[o]);
+
+  for (let i = 1; i < WOW_LEN; i++) {
+    const w = tierWeights(i / (WOW_LEN - 1));
+    const total = w[0] + w[1] + w[2];
+    // No-repeat rule: a chunk may not follow itself. Re-roll the whole pick
+    // (tier included, so a one-chunk tier can't deadlock), and if eight rolls
+    // all land on the same chunk — vanishingly unlikely, but a loop with no
+    // bound is a hang waiting to happen — step one slot along that tier.
+    let t = 0, k = 0;
+    for (let tries = 0; tries < 8; tries++) {
+      const r = rng() * total;
+      t = r < w[0] ? 0 : (r < w[0] + w[1] ? 1 : 2);
+      k = randInt(rng, tiers[t].length);
+      if (tiers[t][k] !== picked.at(-1)) break;
+      if (tries === 7) k = (k + 1) % tiers[t].length;
+    }
+    picked.push(tiers[t][k]);
+    pickedNames.push(names[t][k]);
+  }
+
+  const rows = [WSTART, ...picked.map(stripFurniture)];
+  const L = stitchChunks(rows, []);          // furniture stripped → zero signs
+  L.chunkNames = ['WSTART', ...pickedNames];
+  // Read by player.js: no checkpoints means a pit can only end the run (see the
+  // endless branches there). The flag lives on the LEVEL rather than being
+  // threaded through player.update() as a mode argument because it IS a
+  // property of this level — it has nowhere to respawn you to.
+  L.endless = true;
   return L;
 }

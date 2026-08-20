@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChunk, stitchChunks, TILE, buildGauntlet } from '../../web/game/chunks.js';
+import { parseChunk, stitchChunks, TILE, buildGauntlet, buildWowZone, WOW_LEN, CHUNK_W }
+  from '../../web/game/chunks.js';
 
 const GAUNTLET = buildGauntlet();   // read-only in this file; one shared instance is fine
 
@@ -174,4 +175,102 @@ test('buildGauntlet returns independent instances (carve does not leak)', () => 
   assert.equal(a.solidAt(tx, ty), false);
   const b = buildGauntlet();
   assert.equal(b.solidAt(tx, ty), true);
+});
+
+// ---- WOW ZONE ---------------------------------------------------------------
+
+test('buildWowZone is a pure function of its seed', () => {
+  const a = buildWowZone(4242), b = buildWowZone(4242);
+  assert.deepEqual(a.chunkNames, b.chunkNames);
+  assert.equal(a.entities.length, b.entities.length);
+  assert.deepEqual(a.spawn, b.spawn);
+});
+
+test('different seeds deal different zones', () => {
+  const seeds = [1, 2, 3, 99, 12345, 2 ** 31];
+  const dealt = seeds.map(s => buildWowZone(s).chunkNames.join(','));
+  assert.equal(new Set(dealt).size, seeds.length);
+});
+
+test('a zone is WSTART plus WOW_LEN dealt chunks', () => {
+  const L = buildWowZone(7);
+  assert.equal(L.chunkNames.length, WOW_LEN + 1);
+  assert.equal(L.chunkNames[0], 'WSTART');
+  assert.equal(L.wTiles, (WOW_LEN + 1) * CHUNK_W);
+  assert.equal(L.hTiles, GAUNTLET.hTiles);      // same authored height as the campaign
+});
+
+test('the zone spawns in WSTART and carries the endless flag', () => {
+  const L = buildWowZone(7);
+  assert.ok(L.spawn.x < CHUNK_W * TILE, 'spawn must be inside the starter chunk');
+  assert.equal(L.endless, true);
+});
+
+test('furniture is stripped: no signs, no checkpoints, no gate, no ship pad', () => {
+  for (const seed of [1, 55, 909, 123456]) {
+    const L = buildWowZone(seed);
+    assert.deepEqual(L.signs, []);
+    assert.deepEqual(L.checkpoints, []);
+    assert.deepEqual(L.gate, []);
+    assert.equal(L.shipPad, null);
+    assert.equal(L.bossTrigger, undefined);
+  }
+});
+
+test('never deals the same chunk twice in a row', () => {
+  for (let seed = 0; seed < 400; seed++) {
+    const names = buildWowZone(seed).chunkNames;
+    for (let i = 1; i < names.length; i++)
+      assert.notEqual(names[i], names[i - 1], `seed ${seed} repeated ${names[i]} at ${i}`);
+  }
+});
+
+test('the first dealt chunk is always a threat-free opener', () => {
+  for (let seed = 0; seed < 200; seed++)
+    assert.ok(['C2', 'E1'].includes(buildWowZone(seed).chunkNames[1]),
+              `seed ${seed} opened on ${buildWowZone(seed).chunkNames[1]}`);
+});
+
+test('never deals the tutorial or the endgame chunks', () => {
+  const banned = new Set(['C1', 'C8', 'C9', 'C10']);
+  for (let seed = 0; seed < 200; seed++)
+    for (const n of buildWowZone(seed).chunkNames)
+      assert.ok(!banned.has(n), `seed ${seed} dealt ${n}`);
+});
+
+test('difficulty escalates: the back half is harder than the front half', () => {
+  // Scored across 300 seeds rather than asserted per-run: the mix is weighted,
+  // not scripted, so an individual seed is allowed a hard chunk early or an
+  // easy breather late. What must hold is the TREND.
+  const HARD = new Set(['E14', 'E15', 'E16', 'E17', 'E18', 'E19', 'E20', 'E21']);
+  const EASY = new Set(['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'E1', 'E2', 'E3', 'E4']);
+  let frontHard = 0, backHard = 0, frontEasy = 0, backEasy = 0;
+  for (let seed = 0; seed < 300; seed++) {
+    const dealt = buildWowZone(seed).chunkNames.slice(1);    // drop WSTART
+    const half = dealt.length / 2;
+    dealt.forEach((n, i) => {
+      if (i < half) { if (HARD.has(n)) frontHard++; if (EASY.has(n)) frontEasy++; }
+      else { if (HARD.has(n)) backHard++; if (EASY.has(n)) backEasy++; }
+    });
+  }
+  assert.ok(backHard > frontHard * 4, `hard chunks: front ${frontHard}, back ${backHard}`);
+  assert.ok(frontEasy > backEasy * 4, `easy chunks: front ${frontEasy}, back ${backEasy}`);
+});
+
+test('every dealt zone is populated and walkable off the spawn', () => {
+  for (const seed of [3, 77, 1010, 555555]) {
+    const L = buildWowZone(seed);
+    assert.ok(L.entities.length > 100, `seed ${seed} only had ${L.entities.length} entities`);
+    // The spawn tile's floor is solid and the two tiles ahead of it are too:
+    // WSTART is flat, so a run can never open mid-air or over a pit.
+    const ty = L.spawn.y / TILE, tx = (L.spawn.x - TILE / 2) / TILE;
+    for (let d = 0; d <= 2; d++) assert.equal(L.solidAt(tx + d, ty), true);
+  }
+});
+
+test('buildWowZone returns independent instances (carve does not leak)', () => {
+  const a = buildWowZone(31);
+  const b = buildWowZone(31);
+  a.carve(3, 33);
+  assert.equal(b.solidAt(3, 33), true);
 });

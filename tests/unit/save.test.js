@@ -34,6 +34,18 @@ test('throwing storage is survived', () => {
   assert.equal(s.data.muted, true);       // in-memory still works
 });
 
+test('wowUnlocked is a flat top-level flag that survives a reload', () => {
+  const store = fakeStorage();
+  const s = makeSave(store);
+  assert.equal(s.data.wowUnlocked, false);      // locked on a fresh save
+  s.patch({ wowUnlocked: true });
+  s.patch({ best: { gauntlet: 900 } });         // a later patch must not clear it
+  assert.equal(s.data.wowUnlocked, true);
+  const reloaded = makeSave(store);
+  assert.equal(reloaded.data.wowUnlocked, true);
+  assert.equal(reloaded.data.best.gauntlet, 900);
+});
+
 test('partial best patches merge, not replace', () => {
   const store = fakeStorage();
   const s = makeSave(store);

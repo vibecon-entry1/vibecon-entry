@@ -403,3 +403,34 @@ test('corpse falling into a pit respawns promptly, single death', () => {
   assert.equal(pl.state, 'spawn');
   assert.equal(pl.deaths, 1);
 });
+
+// WOW ZONE rule: an endless level has no checkpoints, so a pit cannot be a
+// soft respawn — it is the end of the run. Both endless branches are asserted
+// here: the pit zeroes hp straight to 'ded', and the corpse then STAYS dead
+// (no respawn, no deaths++) because only the scene knows what to do next.
+test('endless level: a pit is an instant death and nothing respawns', () => {
+  const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
+  PIT.endless = true;
+  const pl = makePlayer(PIT.spawn);
+  drive(pl, PIT, 150, () => ({}));                 // beam-in finishes
+  assert.equal(pl.hp, 3);                          // full hearts walking in
+  for (let i = 0; i < 400 && pl.state !== 'ded'; i++) drive(pl, PIT, 1, () => ({ right: true }));
+  assert.equal(pl.state, 'ded');
+  assert.equal(pl.hp, 0);                          // all hearts, not one
+  // Well past both the 1.5s corpse timer and the pit-out shortcut.
+  drive(pl, PIT, 300, () => ({}));
+  assert.equal(pl.state, 'ded');                   // still dead
+  assert.equal(pl.deaths, 0);                      // the scene counts the run, not this
+});
+
+test('endless level: an hp-0 death is not respawned either', () => {
+  const L = parseChunk(['.......', '.......', '.......', '..P....', '#######']);
+  L.endless = true;
+  const pl = makePlayer(L.spawn);
+  drive(pl, L, 150, () => ({}));
+  pl.hp = 1; pl.hurt(pl.body.x - 30);              // fatal hit on solid ground
+  assert.equal(pl.state, 'ded');
+  drive(pl, L, 300, () => ({}));
+  assert.equal(pl.state, 'ded');
+  assert.equal(pl.deaths, 0);
+});

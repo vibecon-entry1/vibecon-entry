@@ -110,6 +110,9 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
   // Mirrors main.js's display mode purely so the settings line has something to
   // print; main.js stays the owner of both fit() and the save write.
   let display = save?.data?.display ?? 'crisp';
+  // Read ONCE at scene construction, like every other save read here: nothing
+  // can unlock wow while the title is on screen.
+  const unlocked = !!save?.data?.wowUnlocked;
   let t = 0;
   let intro = -1;
 
@@ -132,6 +135,15 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
       // scene reads 'display', so walking right in play can never re-fit the
       // canvas mid-jump.
       if (input.pressed('display')) display = toggleDisplay?.() ?? display;
+      // W = WOW ZONE, and only once the gauntlet has been finished (the win
+      // scene banks the flag). Checked before the fire edge so a player who
+      // mashes both gets the mode they asked for; unlocked or not, this is the
+      // ONLY scene that reads 'wowzone'.
+      if (unlocked && input.pressed('wowzone')) {
+        sfx?.play('uiclick');
+        go('play', { mode: 'wow' });    // main.js rolls the seed — see wowSeed there
+        return;
+      }
       if (!input.pressed('fire')) return;
       sfx?.play('uiclick');            // the only sound the title makes
       intro++;
@@ -174,6 +186,34 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
           drawText(ctx, `BEST WOW: ${best}`, VW / 2, 230, { ...C, scale: 2 });
         }
 
+        // WOW ZONE, under the best score. Gold and pulsing on its own beat
+        // (offset from the start prompt's, so the two don't strobe in unison
+        // and turn the lower half of the screen into a metronome). Absent
+        // entirely until the gauntlet is finished — an unlocked-later line
+        // would just be a locked box teasing content.
+        if (unlocked) {
+          // Flat gold on a SHALLOW pulse (0.82..1.0), decided by looking at it.
+          // A drop shadow was tried first, to give the line more weight than the
+          // flat gold BEST WOW row above it — it made things worse: at any alpha
+          // below 1 the shadow dulls the gold toward brown, which is what a
+          // pulse spends most of its cycle at. A 0.7 floor without the shadow
+          // was still muddy at the trough. What the two golds are actually told
+          // apart by is the shimmer and the fact that this one names a key.
+          ctx.globalAlpha = 0.82 + 0.18 * Math.sin(t * 4 + 1.6);
+          ctx.fillStyle = '#eec548';
+          drawText(ctx, 'WOW ZONE — press W', VW / 2, best > 0 ? 254 : 230,
+                   { ...C, scale: 2 });
+          ctx.globalAlpha = 1;
+          // The zone's own banked best, on its own line and dimmer. 'BEST WOW'
+          // above is the CAMPAIGN score ('wow' being the currency); this one
+          // says ZONE so the two records can't be read as the same number.
+          const bz = save?.data?.best?.wow ?? 0;
+          if (bz > 0) {
+            ctx.fillStyle = '#8a7db0';
+            drawText(ctx, `BEST ZONE: ${bz}`, VW / 2, best > 0 ? 272 : 248, C);
+          }
+        }
+
         // Settings line, above the control legend and set apart from it by
         // colour: the key name is lit like the other prompts, the current value
         // is not, so the eye lands on the thing you can press.
@@ -205,6 +245,6 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
       if (phase === 'title') drawRocketOverlay(sctx, S, t);
     },
 
-    state: () => ({ phase }),   // display is reported by main.js, its owner
+    state: () => ({ phase, wowUnlocked: unlocked }),   // display is reported by main.js, its owner
   };
 }

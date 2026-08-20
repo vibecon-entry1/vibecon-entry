@@ -10,6 +10,7 @@ import { makeViewer } from './game/scenes/viewer.js';
 import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
+import { makeWowEnd } from './game/scenes/wowend.js';
 
 export const VW = 640, VH = 360;
 
@@ -159,6 +160,13 @@ async function boot() {
   // player should be able to trip from the title screen.
   const params = new URLSearchParams(location.search);
   const testMode = params.has('test');
+  // WOW ZONE seeding. Seed GENERATION is meta, not sim: the sim itself never
+  // calls Date.now() or Math.random — it is handed one integer at scene
+  // construction and everything downstream is a pure function of it. '?wowseed='
+  // pins that integer so an e2e can replay the same dealt level twice; without
+  // it the wall clock rolls a fresh run. Number('') is 0 and 0 is falsy, so a
+  // missing or junk param falls through to the clock.
+  const wowSeed = () => Number(params.get('wowseed')) || Date.now();
   const input = createInput();
   const save = makeSave(localStorage);
   // The save is only readable once boot() runs, so fit() has already laid the
@@ -220,7 +228,10 @@ async function boot() {
     scene = scenes[name](...args); sceneName = name;
   }
   scenes.viewer = () => makeViewer({ atlas, input });
-  scenes.play = () => makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute });
+  // opts carries the WOW ZONE entry ({ mode: 'wow', seed }); gauntlet passes
+  // nothing and makePlay's defaults handle it.
+  scenes.play = (opts = {}) => makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
+                                          ...opts, seed: opts.seed ?? wowSeed() });
   // toggleDisplay is handed to the title scene rather than read from a global:
   // the title is the only place the setting is offered, and this keeps main.js
   // the single owner of both fit() and the save write.
@@ -236,9 +247,24 @@ async function boot() {
   scenes.win = (breakdown) => {
     const prevBest = save.data.best.gauntlet;
     if (breakdown.score > prevBest) save.patch({ best: { gauntlet: breakdown.score } });
+    // Finishing the gauntlet is what unlocks WOW ZONE, and this is the only
+    // place the game knows that happened. Top-level key, so patch()'s plain
+    // spread handles it — no merge rule needed.
+    if (!save.data.wowUnlocked) save.patch({ wowUnlocked: true });
     // Fanfare lives here rather than in win.js for the same reason the best
     // score does: the win scene stays a pure layout of numbers it was handed.
     return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx });
+  };
+
+  // The wow best is banked here for the same reason the gauntlet's is: ONE
+  // writer, outside the scene, so replaying the results screen can't re-bank.
+  // best is a nested object with a one-level merge in save.patch(), so writing
+  // just { wow } leaves { gauntlet } alone.
+  scenes.wowend = (breakdown) => {
+    const prevBest = save.data.best.wow;
+    if (breakdown.score > prevBest) save.patch({ best: { wow: breakdown.score } });
+    return makeWowEnd({ breakdown, best: Math.max(prevBest, breakdown.score),
+                        input, go, sfx });
   };
 
   // --- test hook -----------------------------------------------------------
@@ -307,7 +333,13 @@ async function boot() {
   // ?test boots straight into play: every e2e tape is calibrated from the first
   // gameplay frame, and making them all click through the title first would put
   // an unrelated three-keypress preamble in front of every calibrated tape.
-  go(testMode ? 'play' : 'title');
+  // '?test&wow' drops straight into a wow run, the same way '?test' drops into
+  // the gauntlet: the wow e2e's tapes are calibrated from the first gameplay
+  // frame too, and routing them through title + the unlock would put an
+  // unrelated preamble in front of every one. The UNLOCK path itself is
+  // exercised separately, through the real title screen.
+  if (testMode && params.has('wow')) go('play', { mode: 'wow' });
+  else go(testMode ? 'play' : 'title');
   loop.start();
   window.__blast.ready = true;
 }

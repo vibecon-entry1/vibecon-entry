@@ -15,8 +15,14 @@ const KEYMAP = {
   ArrowDown: 'down', KeyS: 'down',
   KeyX: 'fire', KeyZ: 'fire', Space: 'fire',
   Escape: 'pause', KeyR: 'retry', KeyM: 'mute', F1: 'debug',
+  // W is the one WASD key with no movement meaning (there is no 'up' action —
+  // the verb goes UP by shooting DOWN), which makes it the natural free key for
+  // the title screen's WOW ZONE entry. Unlike KeyD it needs no array form: only
+  // one action ever claims it.
+  KeyW: 'wowzone',
 };
-const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug', 'display'];
+const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug',
+                 'display', 'wowzone'];
 const actionsFor = (code) => {
   const a = KEYMAP[code];
   return a == null ? null : (Array.isArray(a) ? a : [a]);
