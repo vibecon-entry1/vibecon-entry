@@ -81,26 +81,46 @@ test('slam phase: descends to floorY-40, contact-hurts overlapping player, then 
   assert.equal(b.phase, 'slam');
 
   const overlapPlayer = { x: SPAWN_X, y: FLOOR_Y - 40, w: 20, h: 40 };
-  let hitFrom = null;
+  let hitFromDuringSlam = null;
   let yAtSlamEnd = null;
   for (let i = 0; i < Math.round(1.61 / DT); i++) {
     const wasSlam = b.phase === 'slam';
-    b.update(DT, overlapPlayer, B, x => hitFrom = x);
+    b.update(DT, overlapPlayer, B, x => { if (wasSlam) hitFromDuringSlam = x; });
     if (wasSlam && b.phase === 'sweep' && yAtSlamEnd === null) yAtSlamEnd = b.y;
   }
 
-  assert.ok(hitFrom !== null, 'contact damage never fired during slam');
-  assert.equal(hitFrom, SPAWN_X);
+  assert.ok(hitFromDuringSlam !== null, 'contact damage never fired during slam');
+  assert.equal(hitFromDuringSlam, SPAWN_X);
   assert.equal(b.phase, 'sweep');   // slam finished, cycle repeats
   assert.ok(Math.abs(yAtSlamEnd - HOME_Y) < 1, `boss did not rise back home: y=${yAtSlamEnd}`);
 });
 
-test('no contact-hurt during sweep at hover height even when player overlaps x', () => {
+test('contact-hurts during sweep at hover height when player body overlaps', () => {
   const b = makeBoss(SPAWN_X, FLOOR_Y);
   const B = stubBullets();
   const overlapPlayer = { x: SPAWN_X, y: FLOOR_Y - 40, w: 20, h: 40 };
   let hitFrom = null;
   for (let i = 0; i < 60; i++) b.update(DT, overlapPlayer, B, x => hitFrom = x);
+  assert.equal(b.phase, 'sweep');
+  assert.ok(hitFrom !== null, 'contact damage never fired during sweep despite body overlap');
+});
+
+test('no contact-hurt during sweep for a far-away body', () => {
+  const b = makeBoss(SPAWN_X, FLOOR_Y);
+  const B = stubBullets();
+  const farBody = { x: SPAWN_X - 9999, y: FLOOR_Y - 40, w: 20, h: 40 };
+  let hitFrom = null;
+  for (let i = 0; i < 60; i++) b.update(DT, farBody, B, x => hitFrom = x);
+  assert.equal(b.phase, 'sweep');
+  assert.equal(hitFrom, null);
+});
+
+test('no contact-hurt during sweep for a w:0 dummy body even when co-located', () => {
+  const b = makeBoss(SPAWN_X, FLOOR_Y);
+  const B = stubBullets();
+  const dummy = { x: SPAWN_X, y: FLOOR_Y - 40, w: 0, h: 40 };
+  let hitFrom = null;
+  for (let i = 0; i < 60; i++) b.update(DT, dummy, B, x => hitFrom = x);
   assert.equal(b.phase, 'sweep');
   assert.equal(hitFrom, null);
 });

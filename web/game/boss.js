@@ -75,7 +75,7 @@ export function makeBoss(x, floorY) {
 
   function contactCheck(pb, onHurtPlayer) {
     if (!pb || !pb.w) return;
-    const w = 200, h = 140;   // boss contact box, matches the rendered footprint
+    const w = 190, h = 120;   // boss contact box, tightened to the visible sprite
     if (Math.abs(pb.x - b.x) < (pb.w + w) / 2 &&
         pb.y > b.y - h / 2 - pb.h && pb.y - pb.h < b.y + h / 2)
       onHurtPlayer(b.x);
@@ -92,7 +92,8 @@ export function makeBoss(x, floorY) {
       if (!b.on) return;
       if (b.phase === 'sweep') updateSweep(dt);
       else if (b.phase === 'spread') updateSpread(dt, enemyBullets);
-      else if (b.phase === 'slam') { updateSlam(dt); contactCheck(playerBody, onHurtPlayer); }
+      else if (b.phase === 'slam') updateSlam(dt);
+      contactCheck(playerBody, onHurtPlayer);
     },
 
     hitTest(pt) {

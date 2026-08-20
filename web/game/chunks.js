@@ -221,7 +221,7 @@ const C7 = ch([
 
 const SIGN_TEXTS = [
   'press X. very pew.',
-  'hold DOWN + X. shoot ground. trust me.',
+  'hold DOWN + X. shoot ground. trust me bro.',
   'DOWN+X in air = boost. 3 pips. kills refill.',
   'DOWN+move = slide. X while sliding = zoom.',
   'rude saucers drop bolts. keep moving or blast.',

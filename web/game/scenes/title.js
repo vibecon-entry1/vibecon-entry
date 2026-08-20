@@ -76,7 +76,7 @@ export function makeTitle({ input, go, save }) {
 
         ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4);
         ctx.font = '12px monospace'; ctx.fillStyle = '#8fa';
-        ctx.fillText('MUCH START — press X', VW / 2, 214);
+        ctx.fillText('MUST START — press X', VW / 2, 214);
         ctx.globalAlpha = 1;
 
         // Banked best, under the start prompt. Hidden entirely on a fresh save:
