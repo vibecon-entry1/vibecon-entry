@@ -14,6 +14,7 @@ const SAUCER_RANGE = 180, SAUCER_CD = 1.6, SAUCER_BOB = 10;
 export function makeEnemies(defs, level) {
   const list = defs.filter(d => KIND[d.type]).map(d => ({
     type: d.type, ...KIND[d.type],
+    // hopper y is a hard floor-alignment invariant from chunk data — never corrected at runtime
     x: d.x, y: d.y, homeY: d.y - (d.type === 'saucer' ? 40 : 0),
     vx: KIND[d.type].speed, t: (d.x * 7919) % 6, fireCd: 0, on: true,
   }));

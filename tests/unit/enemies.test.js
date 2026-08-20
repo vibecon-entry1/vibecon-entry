@@ -53,3 +53,14 @@ test('hitTest finds an overlapping bolt and kill removes with callback', () => {
   assert.equal(killed, h);
   assert.equal(E.count(), 0);
 });
+
+test('contact damage fires with enemy x on overlap; silent without', () => {
+  const E = makeEnemies(L.entities.filter(e => e.type === 'hopper'), L);
+  let h; E.forEach(e => h = e);
+  let hitFrom = null;
+  E.update(DT, { x: h.x, y: h.y, w: 20, h: 44 }, stubBullets(), x => hitFrom = x);
+  assert.equal(hitFrom, h.x);
+  hitFrom = null;
+  E.update(DT, { x: h.x + 100, y: h.y, w: 20, h: 44 }, stubBullets(), x => hitFrom = x);
+  assert.equal(hitFrom, null);
+});
