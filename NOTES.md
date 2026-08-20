@@ -67,4 +67,4 @@ black bg / cream + tan fur / navy / red-orange accents.
 - Live tuning: open devtools console, edit `__blast.P` (e.g. `__blast.P.HOP_VY = -320`)
 - Chunk authoring: ≥3 empty rows above any standing surface (44px player + OOB ceiling)
 - Gameplay: 3 hearts; kills refill boost pips; signs teach the verbs; R = full restart
-Plan 2 delivers: combat gauntlet chunks 1-7 (M3) — enemies, hp, kill-refill, coins, score, Mars art. M3 gate: user plays before Plan 3 (boss/ship/screens).
+Plan 3 delivers: full arc (M4) — title/intro, MEGA SAUCER boss + gate, ship extraction, win screen with best-score persistence, pause. M4 gate: user plays start → win before Plan 4 (WOW ZONE, audio, share card).
