@@ -1,0 +1,549 @@
+#!/usr/bin/env python3
+"""Environment art candidates for the much-premium overhaul (assets-wow/).
+
+Generates 2-3 candidates per art family (sky, far mesas, near rocks, terrain
+tileset, props, title backdrop) plus 640x360 in-context composite mocks that
+mirror the real render stack in web/game/scenes/play.js (layer order, horizon
+line, haze fill, floor depth bands), with the official hero/enemy sprites
+pasted in UNMODIFIED from the shipped atlas so palette harmony is judged
+against the real cast.
+
+Not imported by anything; the shipped pipeline (genart.py / build_assets.py)
+is untouched. Deterministic: every candidate runs on its own seeded RNG,
+seeds recorded in the emitted MANIFEST.json.
+
+Rules implemented here are the numbered rules in assets-wow/ART_DIRECTION.md.
+"""
+from PIL import Image, ImageDraw
+from pathlib import Path
+import json
+import random
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / 'assets-wow'
+CAND = OUT / 'candidates'
+MOCKS = OUT / 'mocks'
+
+VW, VH = 640, 360
+HORIZON = 232                # restLine at rest camera (play.js)
+MESA_BOT = HORIZON + 4       # band('par_mesas', ..., bias=4)
+ROCK_BOT = HORIZON + 10      # band('par_rocks', ..., bias=10)
+TILE = 16
+
+# --- expanded curated palette (ART_DIRECTION.md R4) -------------------------
+SKY_TOP, SKY_MID, SKY_GLOW = '#0b0914', '#161224', '#261c3a'
+MESA_RIM, MESA_BASE, MESA_SHADOW = '#3a2e5d', '#251d3a', '#161224'
+ROCK_HI, ROCK_BASE, ROCK_SH = '#633e6b', '#42274a', '#2a1635'
+CRUST, SUBSOIL, FILL_DEEP, UNDERLIP = '#b85b66', '#8b3e54', '#5a2640', '#3a1a30'
+GOLD, ICE = '#eec548', '#aee6ff'
+HAZE = '#2a1c33'             # play.js far-ground haze, kept as the floor of the rock band
+
+def hx(c):
+    c = c.lstrip('#'); return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+def lerp(a, b, t):
+    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+def sheet(w, h, bg=(0, 0, 0, 0)):
+    return Image.new('RGBA', (w, h), bg)
+
+BAYER2 = [[0, 2], [3, 1]]    # 2x2 ordered dither thresholds /4
+
+# ===========================================================================
+# FAMILY A — SKY (640x360, opaque)
+# ===========================================================================
+
+def sky_gradient(im, stops):
+    """Vertical banded gradient with 2x2 Bayer dither at transitions (R5).
+    stops: [(y_frac, color), ...] top→bottom."""
+    px = im.load()
+    cols = [(int(f * im.height), hx(c)) for f, c in stops]
+    for y in range(im.height):
+        # find surrounding stops
+        for i in range(len(cols) - 1):
+            y0, c0 = cols[i]; y1, c1 = cols[i + 1]
+            if y0 <= y <= y1 or (i == len(cols) - 2 and y > y1):
+                t = 0 if y1 == y0 else min(1, max(0, (y - y0) / (y1 - y0)))
+                break
+        # ordered dither between the two band colors instead of true-color blend
+        for x in range(im.width):
+            th = (BAYER2[y % 2][x % 2] + 0.5) / 4
+            px[x, y] = (c1 if t > th else c0) + (255,)
+    return im
+
+def stars3(im, rng, dim, mid, bright, band_frac=0.86):
+    """R6 star hierarchy: dense dim 1px, medium mid 1px, sparse 2x2 crosses."""
+    d = ImageDraw.Draw(im)
+    H = int(im.height * band_frac)
+    for _ in range(dim):
+        d.point((rng.randrange(im.width), rng.randrange(H)), fill=SKY_GLOW)
+    for _ in range(mid):
+        d.point((rng.randrange(im.width), int(rng.randrange(H) * 0.9)), fill=ROCK_HI)
+    for _ in range(bright):
+        x, y = rng.randrange(im.width), int(rng.randrange(H) * 0.8)
+        c = GOLD if rng.random() < 0.25 else '#e8e4f0'
+        d.line([x - 1, y, x + 1, y], fill=c)
+        d.line([x, y - 1, x, y + 1], fill=c)
+        if rng.random() < 0.3:
+            d.point((x, y), fill='#ffffff')
+    return im
+
+def nebula(im, rng, n, c_core, c_edge):
+    """Dithered soft wisps: stacked shrinking blobs, Bayer-broken edges."""
+    px = im.load(); W, H = im.size
+    core, edge = hx(c_core), hx(c_edge)
+    for _ in range(n):
+        cx, cy = rng.randrange(W), rng.randrange(int(H * 0.55))
+        rx, ry = rng.randrange(40, 110), rng.randrange(12, 30)
+        for y in range(max(0, cy - ry), min(H, cy + ry)):
+            for x in range(max(0, cx - rx), min(W, cx + rx)):
+                dx, dy = (x - cx) / rx, (y - cy) / ry
+                r = dx * dx + dy * dy
+                if r > 1: continue
+                th = (BAYER2[y % 2][x % 2] + 0.5) / 4
+                if r < 0.35 and 0.45 > th * r * 3:
+                    px[x, y] = edge + (255,) if th < 0.5 else px[x, y]
+                    if r < 0.18 and th < 0.4:
+                        px[x, y] = core + (255,)
+                elif r < 1 and (1 - r) * 0.6 > th:
+                    px[x, y] = edge + (255,)
+    return im
+
+def sky_a(seed):
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.30, SKY_TOP),
+                                      (0.52, SKY_MID), (0.64, SKY_GLOW)])
+    return stars3(im, rng, 90, 55, 16)
+
+def sky_b(seed):
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.28, SKY_TOP),
+                                      (0.50, SKY_MID), (0.63, SKY_GLOW)])
+    nebula(im, rng, 4, MESA_RIM, '#1d1830')
+    return stars3(im, rng, 80, 50, 14)
+
+def sky_c(seed):
+    """Diagonal galaxy band: a dense dust lane crossing the upper sky."""
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.30, SKY_TOP),
+                                      (0.53, SKY_MID), (0.64, SKY_GLOW)])
+    d = ImageDraw.Draw(im)
+    for _ in range(900):                       # dust lane particles
+        t = rng.random()
+        x = int(t * VW)
+        yc = 40 + t * 90                       # slope of the band
+        y = int(rng.gauss(yc, 14))
+        if 0 <= y < VH:
+            d.point((x, y), fill='#1d1830' if rng.random() < 0.6 else SKY_MID)
+    for _ in range(220):                       # brighter lane core
+        t = rng.random()
+        y = int(rng.gauss(40 + t * 90, 6))
+        if 0 <= y < VH:
+            d.point((int(t * VW), y), fill=MESA_RIM)
+    return stars3(im, rng, 70, 60, 18)
+
+# ===========================================================================
+# FAMILY B — FAR MESAS (640x120 strip, transparent bg, tiles at 640)
+# ===========================================================================
+
+def terraced_mesa(d, rng, x0, w, top, H, rim=MESA_RIM, base=MESA_BASE):
+    """R7: stepped silhouette. Flat plateau, terraced steps down both sides."""
+    steps = []
+    x, y = x0, H
+    # left ascent
+    while y > top and x < x0 + w // 2:
+        sw = rng.randrange(6, 22)
+        sh = rng.randrange(8, 26)
+        y = max(top, y - sh)
+        steps.append((x, y)); x += sw
+    plateau_r = x0 + w - rng.randrange(6, max(8, w // 4))
+    # polygon: base left → up steps → plateau → down mirrored-ish steps
+    pts = [(x0, H)]
+    for sx, sy in steps: pts += [(sx, pts[-1][1]), (sx, sy)]
+    pts += [(plateau_r, top)]
+    xr, yr = plateau_r, top
+    while yr < H:
+        sw = rng.randrange(4, 16); sh = rng.randrange(8, 26)
+        pts += [(xr + sw, yr)]
+        yr = min(H, yr + sh); xr += sw
+        pts += [(xr, yr)]
+    pts += [(xr, H)]
+    d.polygon(pts, fill=base)
+    # 1px rim light on every horizontal run near its left edge (R7)
+    prev = pts[0]
+    for p in pts[1:]:
+        if p[1] == prev[1] and p[0] > prev[0] and p[1] < H:
+            d.line([prev[0], p[1] - 1, p[0] - 1, p[1] - 1], fill=rim)
+        prev = p
+
+def mesa_a(seed):
+    rng = random.Random(seed)
+    im = sheet(VW, 120); d = ImageDraw.Draw(im)
+    x = -rng.randrange(0, 30)
+    while x < VW + 40:
+        w = rng.randrange(70, 150)
+        top = rng.randrange(18, 62)
+        terraced_mesa(d, rng, x, w, top, 120)
+        x += w + rng.randrange(14, 50)
+    return im
+
+def mesa_b(seed):
+    """Two distance rows: a dimmer back row half-merged into the sky."""
+    rng = random.Random(seed)
+    im = sheet(VW, 120); d = ImageDraw.Draw(im)
+    x = -20
+    while x < VW + 40:                      # back row, shadow tone, no rim
+        w = rng.randrange(90, 180); top = rng.randrange(6, 30)
+        terraced_mesa(d, rng, x, w, top, 120, rim='#241d3c', base=MESA_SHADOW)
+        x += w + rng.randrange(6, 30)
+    x = -rng.randrange(0, 40)
+    while x < VW + 40:                      # front row
+        w = rng.randrange(60, 130); top = rng.randrange(30, 70)
+        terraced_mesa(d, rng, x, w, top, 120)
+        x += w + rng.randrange(24, 70)
+    return im
+
+def mesa_c(seed):
+    """Low, long plateaus — quieter horizon, more sky."""
+    rng = random.Random(seed)
+    im = sheet(VW, 120); d = ImageDraw.Draw(im)
+    x = -rng.randrange(0, 30)
+    while x < VW + 60:
+        w = rng.randrange(140, 260)
+        top = rng.randrange(52, 84)
+        terraced_mesa(d, rng, x, w, top, 120)
+        x += w + rng.randrange(10, 40)
+    return im
+
+# ===========================================================================
+# FAMILY C — NEAR ROCKS (640x80 strip)
+# ===========================================================================
+
+def jagged_rock(d, rng, x0, w, hgt, H):
+    """R7: stair-stepped peak with a lit left face and shadowed right face."""
+    peak_x = x0 + rng.randrange(w // 3, 2 * w // 3 + 1)
+    top = H - hgt
+    # build stepped left edge
+    left = [(x0, H)]
+    x, y = x0, H
+    while x < peak_x and y > top:
+        sw = rng.randrange(2, 6); sh = rng.randrange(2, 7)
+        x = min(peak_x, x + sw); y = max(top, y - sh)
+        left.append((x, left[-1][1])); left.append((x, y))
+    right = [(peak_x, top)]
+    x, y = peak_x, top
+    while x < x0 + w and y < H:
+        sw = rng.randrange(2, 6); sh = rng.randrange(3, 8)
+        x = min(x0 + w, x + sw); y = min(H, y + sh)
+        right.append((x, right[-1][1])); right.append((x, y))
+    pts = left + [(peak_x, top)] + right + [(x0 + w, H)]
+    d.polygon(pts, fill=ROCK_BASE)
+    # lit facet: thin bright wedge down the left face
+    d.polygon([(peak_x, top), (peak_x - max(2, w // 6), H),
+               (peak_x - max(4, w // 3), H)], fill=ROCK_HI)
+    # shadow facet on the right
+    d.polygon([(peak_x, top), (x0 + w, H), (x0 + w - max(2, w // 5), H)],
+              fill=ROCK_SH)
+
+def rocks_strip(seed, density, pebbles=False, tall=False):
+    rng = random.Random(seed)
+    im = sheet(VW, 80); d = ImageDraw.Draw(im)
+    x = -rng.randrange(0, 20)
+    while x < VW + 30:
+        w = rng.randrange(18, 52)
+        hgt = rng.randrange(30, 74) if tall else rng.randrange(14, 52)
+        jagged_rock(d, rng, x, w, hgt, 80)
+        x += w + rng.randrange(*density)
+    if pebbles:
+        for _ in range(46):
+            px_, py = rng.randrange(VW), rng.randrange(72, 79)
+            pw = rng.randrange(2, 5)
+            d.rectangle([px_, py, px_ + pw, py + 1], fill=ROCK_BASE)
+            d.point((px_, py), fill=ROCK_HI)
+    # R8: 2px AO line where the band meets the ground fill
+    d.rectangle([0, 78, VW - 1, 79], fill=ROCK_SH)
+    return im
+
+def rock_a(seed): return rocks_strip(seed, (6, 34))
+def rock_b(seed): return rocks_strip(seed, (2, 18), pebbles=True)
+def rock_c(seed): return rocks_strip(seed, (10, 44), tall=True)
+
+# ===========================================================================
+# FAMILY D — TERRAIN TILESET (8 frames 16x16: surface, fill, edgeL, edgeR,
+#            underside, surface_v1, surface_v2, fill_v1)
+# ===========================================================================
+
+def tile_fill(d, rng, x0, crust=None, cool=0):
+    """R9 fill anatomy: deep fill + sparse 2px sediment lines."""
+    d.rectangle([x0, 0, x0 + 15, 15], fill=FILL_DEEP)
+    for _ in range(3):
+        y = rng.randrange(2, 15)
+        x = rng.randrange(0, 12)
+        w = rng.randrange(2, 5)
+        d.line([x0 + x, y, x0 + x + w, y], fill=SUBSOIL)
+    for _ in range(2):
+        d.point((x0 + rng.randrange(16), rng.randrange(16)), fill=UNDERLIP)
+
+def tile_surface(d, rng, x0, crust=CRUST, sub=SUBSOIL):
+    tile_fill(d, rng, x0)
+    # rows 2-3: streak mix; row 0: solid crust light
+    d.rectangle([x0, 0, x0 + 15, 0], fill=crust)
+    for y in (1, 2):
+        x = 0
+        while x < 16:
+            w = rng.randrange(2, 6)
+            d.line([x0 + x, y, x0 + min(15, x + w - 1), y],
+                   fill=crust if rng.random() < (0.55 if y == 1 else 0.25) else sub)
+            x += w
+    d.rectangle([x0, 3, x0 + 15, 3], fill=sub)
+
+def tileset(seed, crust=CRUST, pebbly=False):
+    rng = random.Random(seed)
+    im = sheet(8 * 16, 16); d = ImageDraw.Draw(im)
+    tile_surface(d, rng, 0, crust=crust)              # 0 surface
+    tile_fill(d, rng, 16)                             # 1 fill
+    tile_fill(d, rng, 32)                             # 2 edgeL (pit leading edge)
+    d.rectangle([32, 0, 32, 15], fill=SUBSOIL)
+    tile_fill(d, rng, 48)                             # 3 edgeR
+    d.rectangle([63, 0, 63, 15], fill=SUBSOIL)
+    tile_fill(d, rng, 64)                             # 4 underside: 1px lip (R9)
+    d.rectangle([64, 15, 79, 15], fill=UNDERLIP)
+    tile_surface(d, rng, 80, crust=crust)             # 5 surface variant 1
+    d.point((80 + rng.randrange(3, 13), 0), fill='#d78a83')   # warm fleck
+    tile_surface(d, rng, 96, crust=crust)             # 6 surface variant 2
+    d.rectangle([96 + 5, 1, 96 + 7, 1], fill='#d78a83')
+    tile_fill(d, rng, 112)                            # 7 fill variant
+    if pebbly:
+        for fx in (16, 112):
+            for _ in range(3):
+                x, y = fx + rng.randrange(2, 14), rng.randrange(4, 14)
+                d.rectangle([x, y, x + 1, y], fill=SUBSOIL)
+                d.point((x, y - 1), fill='#a05064')
+    return im
+
+def tiles_a(seed): return tileset(seed)
+def tiles_b(seed): return tileset(seed, pebbly=True)
+def tiles_c(seed): return tileset(seed, crust='#a45b7d')   # cooler mauve crust
+
+# ===========================================================================
+# FAMILY E — PROPS (spire, arch, wreck) — one sheet per set, cells 48x64
+# ===========================================================================
+
+def prop_spire(d, rng, x0, H=64):
+    base_w = rng.randrange(14, 20)
+    cx = x0 + 24
+    x, y, w = cx - base_w // 2, H, base_w
+    while w > 2 and y > 8:
+        sh = rng.randrange(4, 9)
+        d.rectangle([x, y - sh, x + w - 1, y - 1], fill=ROCK_BASE)
+        d.line([x, y - sh, x, y - 1], fill=ROCK_HI)
+        d.line([x + w - 1, y - sh, x + w - 1, y - 1], fill=ROCK_SH)
+        y -= sh; shrink = rng.randrange(1, 3)
+        x += shrink; w -= shrink * 2 - rng.randrange(0, 2)
+    d.point((x + max(0, w // 2), y - 1), fill=ROCK_HI)
+
+def prop_arch(d, rng, x0, H=64):
+    l, r = x0 + 6, x0 + 42
+    top = rng.randrange(18, 26)
+    for px_, lit in ((l, True), (r - 5, False)):
+        d.rectangle([px_, top + 8, px_ + 5, H - 1], fill=ROCK_BASE)
+        d.line([px_ if lit else px_ + 5, top + 8, px_ if lit else px_ + 5, H - 1],
+               fill=ROCK_HI if lit else ROCK_SH)
+    # stepped lintel
+    d.rectangle([l, top, r, top + 5], fill=ROCK_BASE)
+    d.rectangle([l + 4, top + 5, r - 4, top + 8], fill=ROCK_BASE)
+    d.line([l, top, r, top], fill=ROCK_HI)
+    d.line([l + 4, top + 8, r - 4, top + 8], fill=ROCK_SH)
+
+def prop_wreck(d, rng, x0, H=64):
+    """Half-buried hull section: tilted ring + snapped strut, no black lines."""
+    hull = '#4a4256'; hull_hi = '#6b6180'; hull_sh = '#332c40'
+    cy = H - 14
+    d.ellipse([x0 + 8, cy - 16, x0 + 40, cy + 8], fill=hull)
+    d.ellipse([x0 + 13, cy - 12, x0 + 35, cy + 4], fill=hull_sh)
+    d.arc([x0 + 8, cy - 16, x0 + 40, cy + 8], 200, 340, fill=hull_hi)
+    d.rectangle([x0 + 6, cy + 2, x0 + 42, H - 1], fill=FILL_DEEP)   # buried line
+    d.line([x0 + 30, cy - 22, x0 + 36, cy - 4], fill=hull_hi)       # strut
+    d.line([x0 + 31, cy - 22, x0 + 37, cy - 4], fill=hull)
+    if rng.random() < 0.8:
+        d.point((x0 + 33, cy - 24), fill=ICE)                       # dead light
+    for _ in range(5):
+        d.point((x0 + rng.randrange(10, 38), cy - rng.randrange(0, 12)),
+                fill=hull_sh)
+
+def props_set(seed):
+    rng = random.Random(seed)
+    im = sheet(3 * 48, 64); d = ImageDraw.Draw(im)
+    prop_spire(d, rng, 0)
+    prop_arch(d, rng, 48)
+    prop_wreck(d, rng, 96)
+    return im
+
+def props_a(seed): return props_set(seed)
+def props_b(seed): return props_set(seed)      # same grammar, different roll
+
+# ===========================================================================
+# FAMILY F — TITLE BACKDROP (640x360, opaque)
+# ===========================================================================
+
+def title_a(seed):
+    """Planet-curve vista: big warm planet rim low in frame over a mesa line."""
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.4, SKY_TOP),
+                                      (0.7, SKY_MID), (0.95, SKY_GLOW)])
+    stars3(im, rng, 100, 60, 18, band_frac=0.7)
+    d = ImageDraw.Draw(im)
+    # planet: huge circle mostly below frame, warm rim light
+    cx, cy, r = 480, 700, 430
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill='#1d1428')
+    for i, c in enumerate(('#b85b66', '#8b3e54', '#5a2640')):
+        d.arc([cx - r + i, cy - r + i, cx + r - i, cy + r - i], 195, 345, fill=c)
+    # dust band across the planet face
+    for _ in range(300):
+        a = rng.uniform(200, 340)
+        import math
+        rr = r - rng.randrange(4, 60)
+        x = cx + rr * math.cos(math.radians(a))
+        y = cy + rr * math.sin(math.radians(a))
+        if 0 <= x < VW and 0 <= y < VH:
+            d.point((int(x), int(y)), fill='#42274a' if rng.random() < 0.7 else ROCK_HI)
+    # far mesa line at the base
+    x = -10
+    while x < VW + 40:
+        w = rng.randrange(90, 190); top = rng.randrange(300, 336)
+        terraced_mesa(d, rng, x, w, top, VH)
+        x += w + rng.randrange(8, 40)
+    return im
+
+def title_b(seed):
+    """Sweeping canyon vista: three receding mesa rows + galaxy band."""
+    rng = random.Random(seed)
+    im = sky_gradient(sheet(VW, VH), [(0.0, SKY_TOP), (0.45, SKY_TOP),
+                                      (0.72, SKY_MID), (0.95, SKY_GLOW)])
+    d = ImageDraw.Draw(im)
+    for _ in range(700):
+        t = rng.random()
+        y = int(rng.gauss(60 + t * 70, 12))
+        if 0 <= y < VH:
+            d.point((int(t * VW), y), fill='#1d1830' if rng.random() < 0.65 else MESA_RIM)
+    stars3(im, rng, 90, 55, 16, band_frac=0.72)
+    rows = [(MESA_SHADOW, '#241d3c', 190, 250), ('#1f1834', '#2e2650', 230, 290),
+            (MESA_BASE, MESA_RIM, 268, 320)]
+    for base, rim, tlo, thi in rows:
+        x = -rng.randrange(0, 40)
+        while x < VW + 40:
+            w = rng.randrange(80, 170); top = rng.randrange(tlo, thi)
+            terraced_mesa(d, rng, x, w, top, VH, rim=rim, base=base)
+            x += w + rng.randrange(10, 60)
+    # foreground floor sliver
+    d.rectangle([0, VH - 22, VW, VH], fill=FILL_DEEP)
+    d.rectangle([0, VH - 22, VW, VH - 22], fill=CRUST)
+    d.rectangle([0, VH - 21, VW, VH - 21], fill=SUBSOIL)
+    return im
+
+# ===========================================================================
+# COMPOSITE MOCKS — mirror play.js render order at rest camera
+# ===========================================================================
+
+def load_atlas_sprites():
+    meta = json.loads((ROOT / 'web/assets/atlas.json').read_text())
+    atlas = Image.open(ROOT / 'web/assets/atlas.png')
+    out = {}
+    for name in ('run', 'enemywalk', 'enemyfly', 'coin'):
+        an = meta['anims'][name]
+        f = meta['frames'][an['frames'][0]]
+        img = atlas.crop((f['x'], f['y'], f['x'] + f['w'], f['y'] + f['h']))
+        out[name] = (img, f, an)
+    return out
+
+def paste_feet(comp, sprite, x, feet_y):
+    img, f, an = sprite
+    # drawFeet centers on cw and anchors the anim's feetY line
+    px_ = x - an['cw'] // 2 + f['ox']
+    py = feet_y - an['feetY'] + f['oy']
+    comp.alpha_composite(img.convert('RGBA'), (px_, py))
+
+def compose_scene(sky, mesas, rocks, tiles, props, sprites, with_pit=True):
+    comp = sky.convert('RGBA').copy()
+    comp.alpha_composite(mesas, (0, MESA_BOT - mesas.height))
+    d = ImageDraw.Draw(comp)
+    d.rectangle([0, ROCK_BOT - 20, VW, VH], fill=HAZE)          # far-ground haze
+    comp.alpha_composite(rocks, (0, ROCK_BOT - rocks.height))
+    # props behind the rock band, feet on the haze line
+    if props:
+        for i, sx in enumerate((60, 300, 500)):
+            cell = props.crop((i * 48, 0, i * 48 + 48, 64))
+            comp.alpha_composite(cell, (sx, ROCK_BOT - 64))
+    # ground: 8 tile rows from HORIZON down; a pit gap for edge reading
+    surf = tiles.crop((0, 0, 16, 16))
+    surf_v = [tiles.crop((80, 0, 96, 16)), tiles.crop((96, 0, 112, 16))]
+    fill = tiles.crop((16, 0, 32, 16))
+    fill_v = tiles.crop((112, 0, 128, 16))
+    edgeL = tiles.crop((32, 0, 48, 16)); edgeR = tiles.crop((48, 0, 64, 16))
+    rngv = random.Random(9)
+    pit = range(26, 29) if with_pit else range(0, 0)
+    for ty in range(8):
+        for tx in range(VW // 16):
+            if tx in pit: continue
+            if ty == 0:
+                t = surf if rngv.random() < 0.7 else rngv.choice(surf_v)
+            elif tx + 1 in pit and with_pit:
+                t = edgeR
+            elif tx - 1 in pit and with_pit:
+                t = edgeL
+            else:
+                t = fill if rngv.random() < 0.8 else fill_v
+            comp.alpha_composite(t, (tx * 16, HORIZON + ty * 16))
+    # floor depth bands (play.js 2b)
+    for (r0, r1, a) in ((2, 5, 0.15), (5, 8, 0.3)):
+        band = Image.new('RGBA', (VW, (r1 - r0) * 16), (0, 0, 0, int(a * 255)))
+        comp.alpha_composite(band, (0, HORIZON + r0 * 16))
+    # cast: hero + one of each enemy + coins (official art, untouched)
+    paste_feet(comp, sprites['run'], 180, HORIZON)
+    paste_feet(comp, sprites['enemywalk'], 430, HORIZON)
+    paste_feet(comp, sprites['enemyfly'], 520, HORIZON - 70)
+    cimg = sprites['coin'][0].convert('RGBA')
+    for cx in (240, 260, 280):
+        comp.alpha_composite(cimg, (cx, HORIZON - 40))
+    return comp
+
+def up2(im):
+    return im.resize((im.width * 2, im.height * 2), Image.NEAREST)
+
+# ===========================================================================
+
+FAMILIES = {
+    'sky':   {'a': (sky_a, 101), 'b': (sky_b, 102), 'c': (sky_c, 103)},
+    'mesa':  {'a': (mesa_a, 201), 'b': (mesa_b, 202), 'c': (mesa_c, 203)},
+    'rock':  {'a': (rock_a, 301), 'b': (rock_b, 302), 'c': (rock_c, 303)},
+    'tiles': {'a': (tiles_a, 401), 'b': (tiles_b, 402), 'c': (tiles_c, 403)},
+    'props': {'a': (props_a, 501), 'b': (props_b, 502)},
+    'title': {'a': (title_a, 601), 'b': (title_b, 602)},
+}
+
+def main():
+    CAND.mkdir(parents=True, exist_ok=True)
+    MOCKS.mkdir(parents=True, exist_ok=True)
+    sprites = load_atlas_sprites()
+    imgs, manifest = {}, {}
+    for fam, cands in FAMILIES.items():
+        for cid, (fn, seed) in cands.items():
+            im = fn(seed)
+            imgs[(fam, cid)] = im
+            im.save(CAND / f'{fam}_{cid}.png')
+            manifest[f'{fam}_{cid}'] = {'seed': seed, 'file': f'candidates/{fam}_{cid}.png'}
+    # defaults for the non-varying layers of each mock
+    base = {f: imgs[(f, 'a')] for f in ('sky', 'mesa', 'rock', 'tiles', 'props')}
+    for fam in ('sky', 'mesa', 'rock', 'tiles', 'props'):
+        for cid in FAMILIES[fam]:
+            layers = dict(base); layers[fam] = imgs[(fam, cid)]
+            comp = compose_scene(layers['sky'], layers['mesa'], layers['rock'],
+                                 layers['tiles'], layers['props'], sprites)
+            up2(comp).save(MOCKS / f'{fam}_{cid}.png')
+    for cid in FAMILIES['title']:
+        up2(imgs[('title', cid)].convert('RGBA')).save(MOCKS / f'title_{cid}.png')
+    (OUT / 'MANIFEST.json').write_text(json.dumps(manifest, indent=1))
+    print('candidates:', len(manifest), '| mocks written to', MOCKS)
+
+if __name__ == '__main__':
+    main()
