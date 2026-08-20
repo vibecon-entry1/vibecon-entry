@@ -224,7 +224,6 @@ async function boot() {
     if (breakdown.score > prevBest) save.patch({ best: { gauntlet: breakdown.score } });
     // Fanfare lives here rather than in win.js for the same reason the best
     // score does: the win scene stays a pure layout of numbers it was handed.
-    jukebox.playOneShot('fanfare');
     return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go });
   };
 

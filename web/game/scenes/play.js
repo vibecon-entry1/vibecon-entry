@@ -327,7 +327,8 @@ export function makePlay({ atlas, input, save, go, jukebox }) {
       if (takeoff < 0 && gateIsOpen() && player.coyote > 0 &&
           Math.abs(player.body.x - level.shipPad.x) < 24) {
         takeoff = 0;
-        jukebox?.stopMusic();          // quiet ride: the extraction plays dry
+        jukebox?.stopMusic();
+        jukebox?.playOneShot('fanfare');   // fanfare rings through the takeoff into the win screen
       }
     },
 
