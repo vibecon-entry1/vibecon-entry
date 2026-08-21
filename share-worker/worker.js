@@ -56,7 +56,7 @@ function page({ s, k, d, m }) {
   const title = `i got ${s} WOW in SUCH BLAST`;
   const desc = `${k} kills · ${d} deaths · ${m === 'w' ? 'WOW ZONE' : 'gauntlet'} · ` +
                `the gun is your legs.`;
-  const img = `${PAGES}/share/card-${tierFor(s)}.png`;
+  const img = `${PAGES}/share/card-${tierFor(s)}.png?v=2`;  // bump to bust scraper og caches on art changes
   const self = `${PAGES}/`;
   return `<!doctype html>
 <html lang="en">
