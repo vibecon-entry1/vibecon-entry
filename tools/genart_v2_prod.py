@@ -572,7 +572,7 @@ def build_masonry():
         if w >= 22 and z['detail'] >= 2 and r.random() < 0.45:
             # find a column inside the stone
             cols = [x for x in range(P) if 0 <= cy < H and find(idm[cy][x] or 0) == rid] \
-                if True else []
+               
             if not cols:
                 continue
             x = r.choice(cols)

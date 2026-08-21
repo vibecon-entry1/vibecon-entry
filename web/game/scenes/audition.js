@@ -38,7 +38,7 @@ const cellRect = (i, j) =>
 export function makeAudition({ input, save, sfx, go, touchUI, tapNeed }) {
   const names = Object.keys(SOUNDS);
   // Variant ids per row: 'a' is always the default; b/c only where a candidate
-  // exists (pew and hurt run two-wide — see the CANDIDATES note in sfx.js).
+  // exists (some sounds run two-wide — see the CANDIDATES note in sfx.js).
   const variants = names.map(n => ['a', ...Object.keys(CANDIDATES[n] ?? {})]);
 
   let row = 0, col = 0, t = 0;
@@ -74,7 +74,7 @@ export function makeAudition({ input, save, sfx, go, touchUI, tapNeed }) {
     update(dt) {
       t += dt;
       if (input.pressed('pause')) { go('title'); return; }
-      // up/down walk the list (wrapping — twelve rows is a long way back up);
+      // up/down walk the list (wrapping — fourteen rows is a long way back up);
       // the cursor lands on the row's CURRENT pick so left/right always starts
       // from what you'd actually hear.
       if (input.pressed('up') || input.pressed('down')) {
