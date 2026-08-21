@@ -41,6 +41,8 @@ beat it once and **WOW ZONE** unlocks: an endless mode that re-deals the same ha
 
 ## much screenshots
 
+<p align="center"><img src="media/gameplay.gif" width="800" alt="hop pits, zoom zoom, blast a saucer out of the sky"><br><i>the gun is the jump button. the saucer learns this the hard way.</i></p>
+
 | title | gauntlet |
 |---|---|
 | ![title](media/title.png) | ![gameplay](media/gameplay.png) |
