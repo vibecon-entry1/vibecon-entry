@@ -666,6 +666,14 @@ def main():
     A['tiles_wow'] = ember_shift(A['tiles'], palimg)
     props = build_objects('prod_props', [64, 56, 40], palimg)
     A['props'] = {'spire': props[0], 'arch': props[1], 'wreck': props[2]}
+    # Ancient landmarks (fix round, user request): four ruined monuments
+    # joining the spire/arch/wreck family — half-buried colossal statue head,
+    # weathered obelisk, megalithic gate, colossal fossil ribcage. Same
+    # pipeline (chroma-key → objects → quantize into the LOCKED master, which
+    # deliberately does not learn any new entries from this raw).
+    lands = build_objects('prod_landmarks', [44, 58, 52, 34], palimg)
+    A['landmarks'] = {'head': lands[0], 'obelisk': lands[1],
+                      'mgate': lands[2], 'ribs': lands[3]}
     A['flora'] = build_objects('prod_flora', [34, 44, 22, 16, 12, 32, 7, 7], palimg)
     A['title'] = quantize_to(
         Image.open(RAW / 'prod_title' / 'raw_0.jpg').convert('RGB')
@@ -678,6 +686,8 @@ def main():
               'tiles_wow', 'title', 'prop1', 'prop2'):
         A[k].save(PROD / f'{k}.png')
     for k, v in A['props'].items():
+        v.save(PROD / f'prop_{k}.png')
+    for k, v in A['landmarks'].items():
         v.save(PROD / f'prop_{k}.png')
     for i, f in enumerate(A['flora']):
         f.save(PROD / f'flora_{i}.png')

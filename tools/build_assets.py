@@ -69,6 +69,12 @@ PROD = [
     ('prop_spire', 'prop_spire.png', 40,  64, 1, False),
     ('prop_arch',  'prop_arch.png',  79,  56, 1, False),
     ('prop_wreck', 'prop_wreck.png', 50,  40, 1, False),
+    # Ancient landmarks (fix round): sparse deterministic background pieces,
+    # placed by the scene's LANDMARKS pass (see play.js).
+    ('prop_head',    'prop_head.png',    41, 44, 1, False),
+    ('prop_obelisk', 'prop_obelisk.png', 29, 58, 1, False),
+    ('prop_mgate',   'prop_mgate.png',   44, 52, 1, False),
+    ('prop_ribs',    'prop_ribs.png',    48, 34, 1, False),
     ('flora_0',    'flora_0.png',    29,  34, 1, False),
     ('flora_1',    'flora_1.png',    15,  44, 1, False),
     ('flora_2',    'flora_2.png',    15,  22, 1, False),
@@ -191,8 +197,8 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 227, len(frames)
-    assert len(anims) == 47, len(anims)
+    assert len(frames) == 231, len(frames)
+    assert len(anims) == 51, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':

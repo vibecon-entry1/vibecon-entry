@@ -50,7 +50,7 @@ test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
   await expect(page.locator('canvas#screen')).toBeVisible();
   const st = await page.evaluate(() => window.__blast.state());
   expect(st.scene).toBe('play');
-  expect(st.anims).toBe(47);
+  expect(st.anims).toBe(51);
   expect(atlasReqs.length).toBe(2);                     // atlas.json + atlas.png
   for (const v of atlasReqs) expect(v).toMatch(/^.+$/); // both stamped, non-empty
   expect(errors).toEqual([]);

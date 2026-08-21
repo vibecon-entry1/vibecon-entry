@@ -503,6 +503,16 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   const ROCK_PROPS = PROPS.filter(p => p.fx === 0.60 && !p.front);
   const SHELF_PROPS = PROPS.filter(p => p.front);
 
+  // LANDMARK-RARE (fix round, user request): the ancient-monument family —
+  // half-buried statue head, weathered obelisk, megalithic gate, fossil
+  // ribcage. Unlike the one-of-each PROPS above these repeat across the
+  // whole run (gauntlet AND wow), but SPARSELY: a coordinate hash gates
+  // roughly one 512px shelf strip in four, so one drifts past every few
+  // screens. Pure function of the strip index — the same ruins every
+  // session, per the determinism rule. All four are soft, clearly inanimate
+  // silhouettes on the far shelf; they never overlap the playfield.
+  const LANDMARKS = ['prop_head', 'prop_obelisk', 'prop_mgate', 'prop_ribs'];
+
   function drawProp(ctx, p, drift) {
     const sx = Math.round(p.x - cam.x * p.fx);
     if (sx > VW || sx + atlas.anims[p.name].cw < 0) return;   // off-screen: skip
@@ -814,6 +824,23 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
                    Math.min(VH, level.h - 8 * TILE - cam.y + 1) - rocksBottom + 20);
       for (const p of ROCK_PROPS) drawProp(ctx, p, drift);
       band('par_rocks', 0.60, 0.20, 10);
+      // Ancient landmarks: feet on the haze shelf, drawn BEFORE the
+      // single-placement shelf props so those keep the front of the stage —
+      // and skipped anywhere near one (the layer-space guard), so a repeating
+      // ruin can never crowd a landmark that exists exactly once.
+      // One ruin per 2048px super-strip of the shelf layer (~every 3-4
+      // screens of world travel), at a hashed offset inside it — a plain
+      // per-strip hash gate clumped badly (an 8-screen empty gap, then three
+      // of the same monument in a row at the pad; measured before shipping).
+      for (let k = Math.max(0, Math.floor(cam.x * 0.60 / 2048) - 1), n = 0; n < 3; k++, n++) {
+        const h = hash2(k, 7877);
+        const lx = k * 2048 + h % 1600;
+        if (SHELF_PROPS.some(p => Math.abs(lx - p.x) < 170)) continue;
+        const sx = Math.round(lx - cam.x * 0.60);
+        if (sx < -60 || sx > VW + 60) continue;
+        const name = LANDMARKS[(h >>> 11) % LANDMARKS.length];
+        atlas.drawFeet(ctx, name, atlas.anims[name].frames[0], sx, rocksBottom - 4);
+      }
       for (const p of SHELF_PROPS) drawProp(ctx, p, drift);
       // Mid-band flora: sparse silhouettes rooted on the haze shelf between
       // the rock band and the playfield, riding the rocks' parallax. Pure
