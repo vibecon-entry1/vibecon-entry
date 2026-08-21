@@ -119,6 +119,7 @@ all of it ran on a Claude Pro subscription at medium effort level. every feature
 ## very credits
 
 - **Dogelon Mars** — the official character sprites, ship, enemies and effects are from the [VibeCon asset pack](https://dogelonmars.com/blog/announcing-vibecon-2026-build-a-game-on-mars/), and the logo + stickers are from the official [dogelon-assets](https://github.com/DogelonMars/dogelon-assets) repo. wow. thank you.
+- one small tailoring job on the hero frames so the verb reads right: a gun-points-down pose and rocket-boot flames for when Dogelon blasts the floor — careful pixel-surgery on the official sprite, fully in its style. nothing else was touched. such respect.
 - **every other asset is self-created for this game** — tileset, parallax Mars, skies, props, flora, coins, hearts, UI, fonts, share cards: all generated pixel art made for SUCH BLAST. only the official Dogelon sprites (above) and the soundtrack came from outside. much homemade.
 - made for the Dogelon Mars community. much love. very mars. 🚀
 
