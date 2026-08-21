@@ -199,8 +199,14 @@ export function makeWin({ breakdown, best, input, go, sfx, tapNeed }) {
 
       share.render(ctx, SHARE_Y);
 
+      // The WOW ZONE hint rides the same line as R. Reaching this screen IS
+      // what unlocks the zone (main.js banks wowUnlocked before building this
+      // scene), so the hint is unconditional here — and it exists because
+      // playtesters pressed W right HERE and concluded the unlock was broken:
+      // W is a title-screen key, correctly, and nothing said so.
       ctx.fillStyle = '#6f6a86';
-      drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });
+      drawText(ctx, 'R = very again  ·  W on title = WOW ZONE', VW / 2, 328,
+               { ...T2, align: 'center' });
 
       drawSticker(ctx);
     },
