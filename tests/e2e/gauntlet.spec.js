@@ -170,19 +170,37 @@ test('scenery props are landmarks: each one exists at exactly one place', async 
   // and this is the test that keeps them that way: a colour that only that
   // prop's art uses is counted over the whole finished frame at camera
   // positions spread across the level. Exactly one position may see it.
+  // The production palette is LOCKED across every environment asset — no
+  // single colour is unique to a prop any more. The signature is therefore a
+  // horizontal 3-pixel colour RUN out of each prop's own art, verified unique
+  // against every shipped production asset and the official atlas (a specific
+  // adjacency of three palette entries occurs nowhere else).
   const counts = await page.evaluate(async (spots) => {
-    const SIG = { prop1: [113, 86, 69], prop2: [156, 82, 55] };
+    const SIG = {
+      prop1: [[36, 28, 15], [249, 210, 129], [56, 56, 28]],
+      prop2: [[234, 159, 58], [240, 181, 74], [220, 76, 18]],
+    };
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const out = [];
     for (const x of spots) {
       window.__blast.cheat.warp(x);
       await sleep(700);                       // let the camera catch up and redraw
       const c = document.getElementById('screen');
+      // Sample at GAME resolution: crisp mode at 1280x720 is an integer 2x
+      // blit, so game pixel (gx, gy) lives at (gx*S, gy*S) exactly.
+      const S = Math.round(c.width / 640);
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const at = (gx, gy) => {
+        const i = (gy * S * c.width + gx * S) * 4;
+        return [d[i], d[i + 1], d[i + 2]];
+      };
+      const eq = (p, s) => p[0] === s[0] && p[1] === s[1] && p[2] === s[2];
       const n = { warp: x, prop1: 0, prop2: 0 };
-      for (let i = 0; i < d.length; i += 4)
-        for (const k in SIG)
-          if (d[i] === SIG[k][0] && d[i + 1] === SIG[k][1] && d[i + 2] === SIG[k][2]) n[k]++;
+      for (let gy = 0; gy < 360; gy++)
+        for (let gx = 0; gx < 638; gx++)
+          for (const k in SIG)
+            if (eq(at(gx, gy), SIG[k][0]) && eq(at(gx + 1, gy), SIG[k][1]) &&
+                eq(at(gx + 2, gy), SIG[k][2])) n[k]++;
       out.push(n);
     }
     return out;

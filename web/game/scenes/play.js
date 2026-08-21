@@ -475,19 +475,26 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // stops being polite. The y is the same offset inside the band each one had
   // when it was painted into the strip, so the composition — how much of it the
   // rock swallows — is unchanged.
-  // The production landmarks ride the same two bands: spire and arch on the
-  // far mesas (either side of prop1's stretch), the wreck half-buried on the
-  // near rocks well before prop2's neighbourhood. y sinks each base a few px
-  // into its band so nothing floats.
+  // The production landmarks ride the same two bands. Placement had to adapt
+  // to the new strips: the painted rock ridge is opaque nearly to its top
+  // edge (the old one was sparse triangles), so anything drawn behind it
+  // simply ceased to exist. Split by `front`:
+  //   back  — behind its band, occluded by it (prop1 peeking over a mesa
+  //           gap, the spire's tip over the far ridge);
+  //   front — after its band, feet on the haze shelf between the rocks and
+  //           the playfield (arch, wreck, and prop2 — which keeps its exact
+  //           world x and in-band y offset; only the draw order moved, or
+  //           the new opaque ridge would have swallowed it whole).
   const PROPS = [
-    { name: 'prop_spire', x: 1750, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 46 },
+    { name: 'prop_spire', x: 1504, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 46 },
     { name: 'prop1',      x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
-    { name: 'prop_arch',  x: 4650, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 58 },
-    { name: 'prop_wreck', x: 6200, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 36 },
-    { name: 'prop2',      x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56 },
+    { name: 'prop_arch',  x: 4650, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 22, front: true },
+    { name: 'prop_wreck', x: 6200, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 38, front: true },
+    { name: 'prop2',      x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56, front: true },
   ];
   const MESA_PROPS = PROPS.filter(p => p.fx === 0.30);
-  const ROCK_PROPS = PROPS.filter(p => p.fx === 0.60);
+  const ROCK_PROPS = PROPS.filter(p => p.fx === 0.60 && !p.front);
+  const SHELF_PROPS = PROPS.filter(p => p.front);
 
   function drawProp(ctx, p, drift) {
     const sx = Math.round(p.x - cam.x * p.fx);
@@ -771,6 +778,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       ctx.fillRect(0, rocksBottom - 20, VW, VH - rocksBottom + 20);
       for (const p of ROCK_PROPS) drawProp(ctx, p, drift);
       band('par_rocks', 0.60, 0.20, 10);
+      for (const p of SHELF_PROPS) drawProp(ctx, p, drift);
       // Mid-band flora: sparse silhouettes rooted on the haze shelf between
       // the rock band and the playfield, riding the rocks' parallax. Pure
       // function of the strip index k — the same desert every session.
