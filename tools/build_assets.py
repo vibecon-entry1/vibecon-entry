@@ -78,15 +78,12 @@ PROD = [
     ('flora_6',    'flora_6.png',     4,   7, 1, False),
     ('flora_7',    'flora_7.png',     4,   7, 1, False),
     ('title',      'title.png',     640, 360, 1, False),   # title backdrop
-]
-
-EXTRA_DIR = ROOT / 'assets-extra'
-# Single-cell props. Same shape as GEN, different source tree: the scene places
-# each one at exactly one spot in the world instead of tiling it. Sources moved
-# to the production re-composites (same cell sizes, same atlas names).
-EXTRA = [
-    ('prop1',     PROD_DIR / 'prop1.png',      19,  28,  1, False),
-    ('prop2',     PROD_DIR / 'prop2.png',      27,  28,  1, False),
+    # Single-cell props the scene places at exactly one world spot each. The
+    # production re-composites live in PROD_DIR like the rest of the set, so
+    # they ride the same table (they used to sit in a separate EXTRA table
+    # whose absolute PROD_DIR paths silently overrode its assets-extra join).
+    ('prop1',      'prop1.png',      19,  28, 1, False),
+    ('prop2',      'prop2.png',      27,  28, 1, False),
 ]
 
 def slice_sheet(path, cw, ch, factor):
@@ -129,7 +126,7 @@ def collect():
     anims[name] = dict(frames=list(range(base, base + len(ship_files))),
                        fps=fps, loop=loop, feetY=feet, cw=256, ch=200)
 
-    for src_dir, table in ((GEN_DIR, GEN), (PROD_DIR, PROD), (EXTRA_DIR, EXTRA)):
+    for src_dir, table in ((GEN_DIR, GEN), (PROD_DIR, PROD)):
         for name, fname, fw, fh, fps, loop in table:
             im = Image.open(src_dir / fname).convert('RGBA')
             base = len(frames)

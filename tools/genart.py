@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Generate palette-locked pixel art the official pack lacks: Mars tileset,
-parallax strips, coin spin, hearts, charge pips. Output: assets-gen/*.png
-sheets consumed by build_assets.py's GEN manifest. Deterministic (seeded)."""
+"""Generate palette-locked pixel art the official pack lacks: coin spin,
+hearts, charge pips. Output: assets-gen/*.png sheets consumed by
+build_assets.py's GEN manifest. Deterministic (seeded).
+
+The Mars terrain/parallax generation that used to live here shipped until the
+assets-wow production set (tools/genart_v2_prod.py) superseded it; the band
+painters below survive only as a library for tools/gencards.py, which paints
+the share-card Mars with them at 1200 wide."""
 from PIL import Image, ImageDraw
 from pathlib import Path
 import random
@@ -11,29 +16,13 @@ OUT = ROOT / 'assets-gen'
 
 # Palette anchors (from web/assets/palette.json — art choices, not derived)
 ROCK, ROCK_DK, ROCK_LT = '#532e6d', '#3a2049', '#7a4b96'   # purple mars rock
-DIRT, DIRT_DK = '#982c2c', '#6b1f1f'                        # red-rock accents
+DIRT = '#982c2c'                                            # red-rock accent
 GOLD, GOLD_DK = '#eec548', '#b8912e'                        # coin
 RED, WHITE, ICE, NAVY = '#ff3a3a', '#ffffff', '#aee6ff', '#1e2f51'
 
 def sheet(w, h): return Image.new('RGBA', (w, h), (0, 0, 0, 0))
 
 def px(d, x, y, c): d.point((x, y), fill=c)
-
-def tiles():
-    """4 tiles 16x16: 0 surface (top edge lit), 1 fill, 2 edgeL, 3 edgeR."""
-    im = sheet(64, 16); d = ImageDraw.Draw(im); rng = random.Random(7)
-    for i in range(4):
-        x0 = i * 16
-        d.rectangle([x0, 0, x0 + 15, 15], fill=ROCK)
-        for _ in range(9):
-            px(d, x0 + rng.randrange(16), rng.randrange(16), ROCK_DK)
-        for _ in range(4):
-            px(d, x0 + rng.randrange(16), rng.randrange(16), DIRT_DK)
-    d.rectangle([0, 0, 15, 1], fill=ROCK_LT)          # surface: lit top lip
-    d.rectangle([0, 2, 15, 2], fill=DIRT)             # thin oxide seam
-    d.rectangle([32, 0, 33, 15], fill=ROCK_LT)        # edgeL lit
-    d.rectangle([62, 0, 63, 15], fill=ROCK_DK)        # edgeR shadow
-    im.save(OUT / 'tiles.png')
 
 # --- parallax bands ---------------------------------------------------------
 # The three band painters below are parameterised on the target image and a
@@ -84,16 +73,6 @@ def rock_band(im, rng, s=1.0):
         d.polygon([(xpos, H), (peak, H - hgt), (xpos + w, H)], fill=ROCK_DK)
         xpos += w + r(5, 40)
     return im
-
-def parallax():
-    rng = random.Random(42)
-    star_field(sheet(640, 360), rng, 90, 300).save(OUT / 'par_stars.png')
-
-    # The strips are pure terrain and TILE every 640px. Anything that should
-    # exist once in the level cannot live in here — see the scene's parallax
-    # pass, which places single props against these same bands.
-    mesa_band(sheet(640, 120), rng).save(OUT / 'par_mesas.png')
-    rock_band(sheet(640, 80), rng).save(OUT / 'par_rocks.png')
 
 def coin():
     """6-frame 12x12 spin: wide→narrow→wide ellipse with $ hint."""
@@ -150,9 +129,13 @@ def hud():
 
 def main():
     OUT.mkdir(exist_ok=True)
-    tiles(); parallax(); coin(); hud()
-    made = ['coin.png', 'hearts.png', 'par_mesas.png', 'par_rocks.png',
-            'par_stars.png', 'pips.png', 'tiles.png']
+    # ONLY the still-ingested sheets are generated: coin + HUD (hearts/pips).
+    # The old terrain/parallax outputs (tiles/par_*) were superseded by the
+    # assets-wow production set (tools/genart_v2_prod.py) and build_assets.py
+    # no longer reads them; the band painters above stay because
+    # tools/gencards.py paints the share-card Mars with them at 1200 wide.
+    coin(); hud()
+    made = ['coin.png', 'hearts.png', 'pips.png']
     print('generated:', ', '.join(made))
     # Subset check, not an exact listing: assets-gen/ also holds art from OTHER
     # generators (tools/posegen.py's pose_gundown.png), and an equality assert
