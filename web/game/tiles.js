@@ -1,6 +1,6 @@
 // Terrain dressing math, kept pure so the unit suite can reach it without a
 // canvas. Two jobs:
-//   * pickTileFrame — which of the 10 tileset frames a solid cell wears. A
+//   * pickTileFrame — which of the 133 tileset frames a solid cell wears. A
 //     pure function of the cell's neighbourhood plus a coordinate hash, so the
 //     tile render cache stays valid: the same (tx, ty) always answers the same
 //     frame, and only a carve (which bumps the cache epoch) can change the
@@ -19,25 +19,38 @@ export function hash2(x, y) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-// Tileset frame map (assets-wow production tiles.png, 10 frames of 16x16):
-//   0 surface · 1 fill · 2 surface w/ lit LEFT edge (pit on the left) ·
-//   3 surface w/ lit RIGHT edge · 4 underside lip · 5/6 surface variants ·
-//   7 fill variant (ember fleck) · 8 pit wall, pit on the LEFT · 9 pit wall,
-//   pit on the RIGHT.
+// Tileset frame map (assets-wow production tiles.png, 133 frames of 16x16).
+// The set encodes a CONTINUOUS 256x128 organic masonry band — irregular
+// stones of mixed sizes, wandering courses, ember seams flowing along the
+// joints, depth fade baked into the stonework (the approved hybrid_b floor):
+//   0..15    surface course (walked crust), x phase tx mod 16
+//   16..127  fill: 16 + (depth-1)*16 + phase, depth = solid rows above,
+//            capped at 7 (the slab is 8 rows; deeper reuses the darkest)
+//   128/129  surface pit edge, pit on the LEFT / RIGHT
+//   130      underside lip (floating platforms)
+//   131/132  pit wall, pit on the LEFT / RIGHT
+// Phase + depth index adjacent windows of the same band, so any frame meshes
+// with its neighbours and the super-pattern repeats every 16 tiles (256 px)
+// with per-cell decal variation on top (play.js). Still a pure function of
+// (tx, ty, neighbourhood) — the cache contract is unchanged.
+export const TILE_PERIOD = 16;
+export const FILL_DEPTH = 7;
 export function pickTileFrame(level, tx, ty) {
+  const ph = tx & 15;                                  // x phase, negatives safe
   if (!level.solidAt(tx, ty - 1)) {                    // surface row
-    if (!level.solidAt(tx - 1, ty)) return 2;          // pit opens to the left
-    if (!level.solidAt(tx + 1, ty)) return 3;          // pit opens to the right
-    const h = hash2(tx, ty);
-    return h % 4 === 0 ? 5 + ((h >>> 8) & 1) : 0;      // ~25% worn variants
+    if (!level.solidAt(tx - 1, ty)) return 128;        // pit opens to the left
+    if (!level.solidAt(tx + 1, ty)) return 129;        // pit opens to the right
+    return ph;
   }
   // Fill rows. The level's bottom edge reads non-solid (open bottom = pits
   // kill), so the lip test is bounds-guarded or the whole last slab row would
   // wear the floating-platform underside.
-  if (ty + 1 < level.hTiles && !level.solidAt(tx, ty + 1)) return 4;   // underside lip
-  if (!level.solidAt(tx - 1, ty)) return 8;            // pit wall, pit on the left
-  if (!level.solidAt(tx + 1, ty)) return 9;
-  return hash2(tx, ty) % 7 === 0 ? 7 : 1;              // ~14% ember fleck
+  if (ty + 1 < level.hTiles && !level.solidAt(tx, ty + 1)) return 130; // underside lip
+  if (!level.solidAt(tx - 1, ty)) return 131;          // pit wall, pit on the left
+  if (!level.solidAt(tx + 1, ty)) return 132;
+  let d = 1;                                           // depth below the surface
+  while (d < FILL_DEPTH && level.solidAt(tx, ty - d - 1)) d++;
+  return 16 + (d - 1) * 16 + ph;
 }
 
 // Flora family weights: the tiny sprouts (6/7) and low shrubs carry the

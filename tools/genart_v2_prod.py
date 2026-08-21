@@ -302,149 +302,467 @@ def build_strip(name, size, palimg):
     im = wrap_blend(im)
     return quantize_to(im, palimg)
 
-def build_tiles(palimg, base_sheet):
-    """10-frame 16px tileset — TRUE MASONRY, rebuilt to the APPROVED direction
-    sheet (hybrid_b): chunky stone-block courses with dark mortar seams, ember
-    cracks glowing in the joints, and a strong lit crust edge. The first
-    production build silently simplified this to a calmed near-flat fill (the
-    mock passed review, the sheet's material didn't ship) — caught in the
-    user playtest round. Block/mortar/crack colors are the sheet's own floor
-    band colors (sampled + verified against the native re-render), and every
-    tile is drawn on one fixed joint grid so any frame meshes with any
-    neighbour: courses are 8px, vertical joints sit at the same x per course
-    across all frames, so the bond runs unbroken across tile boundaries.
-    frames: 0 surface, 1 fill, 2 edgeL (pit on the LEFT), 3 edgeR, 4
-    underside, 5/6 surface variants, 7 fill variant, 8 pitwallL, 9 pitwallR."""
-    # Sheet floor colors (from the native re-render's floor band, see the fix
-    # round's sampling): block bodies, lit block tops, mortar darks, embers.
-    BLOCKS = [(118, 6, 19), (100, 4, 22), (109, 10, 21), (125, 49, 24)]
-    MORTAR = (46, 9, 19)
-    EMBER = [(225, 97, 26), (188, 80, 24), (234, 159, 58)]
-    CRUST_HI = (251, 214, 128)
-    lit = lambda c, k: tuple(min(255, int(v * k + 10)) for v in c)
-    drk = lambda c, k: tuple(max(0, int(v * k)) for v in c)
+# frame map v2 (organic masonry): the tileset encodes a 16-tile-wide,
+# 8-course-deep continuous stone band (256x128 px) plus 5 shaped frames.
+#   0..15         surface course, x phase 0..15
+#   16..127       fill, depth d=1..7: frame 16 + (d-1)*16 + phase
+#   128/129       surface pit edge, pit on the LEFT / RIGHT
+#   130           underside lip
+#   131/132       pit wall, pit on the LEFT / RIGHT
+TILE_P = 16
+FILL_D = 7
+MAS_W, MAS_H = TILE_P * 16, (FILL_D + 1) * 16
+TILE_FRAMES = TILE_P + FILL_D * TILE_P + 5      # 133
 
-    # Lit block tops, sampled straight off the sheet's stones rather than
-    # derived: the sheet lights its crimson blocks with an ORANGE-brown edge,
-    # and multiplying the base red never lands there.
-    TOPLIT = [(156, 57, 23), (134, 42, 20), (122, 39, 23)]
+# Locked-palette entries only (assets-wow/production/PALETTE.json), chosen
+# from a per-depth census of the approved sheet's own floor band.
+CRUST_HI  = (249, 210, 129)   # f9d281
+CRUST_GLO = (234, 159, 58)    # ea9f3a
+CRUST_MID = (227, 139, 48)    # e38b30
+CRUST_LOW = (212, 113, 33)    # d47121
+CRUST_SET = (148, 73, 35)     # 944923
+CRUST_DRK = (89, 14, 12)      # 590e0c
 
-    def block(d, rng, x0, x1, y0, y1, dim):
-        """One chunky stone block: mottled crimson body, orange-lit top,
-        shadowed bottom, 2px-notched (rounded) corners like the sheet's."""
-        base = drk(BLOCKS[rng.randrange(len(BLOCKS))], dim)
-        top = drk(TOPLIT[rng.randrange(len(TOPLIT))], dim)
-        d.rectangle([x0, y0, x1, y1], fill=base)
-        d.rectangle([x0, y0, x1, y0], fill=top)
-        d.rectangle([x0 + 2, y0 + 1, x1 - 2, y0 + 1], fill=lit(base, 1.16))
-        d.rectangle([x0, y1, x1, y1], fill=drk(base, 0.66))
-        for cx, cy, dx2, dy2 in ((x0, y0, 1, 0), (x1, y0, -1, 0),
-                                 (x0, y1, 1, 0), (x1, y1, -1, 0)):
-            d.point((cx, cy), fill=drk(base, 0.6))             # 2px round corner
-            d.point((cx + dx2, cy + dy2), fill=drk(base, 0.82))
-        for _ in range(5):                                     # body mottle
-            nx = rng.randint(x0 + 1, max(x0 + 1, x1 - 2))
-            ny = rng.randint(y0 + 2, max(y0 + 2, y1 - 1))
-            d.rectangle([nx, ny, nx + 1, ny], fill=drk(base, 0.85))
-        if rng.random() < 0.6:
-            d.point((rng.randint(x0 + 1, x1 - 1), rng.randint(y0 + 2, y1 - 1)),
-                    fill=lit(base, 1.2))
+def _h2(x, y):
+    h = (x * 374761393 + y * 668265263) & 0xffffffff
+    h ^= h >> 13
+    h = (h * 1274126177) & 0xffffffff
+    return (h ^ (h >> 16)) & 0xffffffff
 
-    def crack(d, rng, x, y0, y1):
-        """Ember crack glowing in a joint: bright gold core, ember ends,
-        a jink or two on the way down — the sheet's signature detail."""
-        y = y0
-        while y <= y1:
-            e = EMBER[2] if y0 < y < y1 and rng.random() < 0.45 else \
-                EMBER[rng.randrange(2)]
-            d.point((x % 16, y), fill=e)
-            if rng.random() < 0.35:
-                x += rng.choice([-1, 1])
-            y += 1
+def _zone(y):
+    """Paint tables per depth, from the sheet band census: bright warm reds
+    right under the crust, boulder crimson, then darker + less detailed until
+    the field is near-flat dark maroon."""
+    if y < 15:
+        # clean bright slab bricks right under the crust — the ember seams
+        # around them carry the texture, the bodies stay crisp
+        return dict(body=[(112, 20, 13)],
+                    top=[(188, 80, 24), (156, 57, 23)], shade=(89, 14, 12),
+                    mortar=(39, 3, 11), mott=None, fleck=None,
+                    detail=3)
+    if y < 27:
+        return dict(body=[(100, 4, 22), (100, 4, 22), (100, 4, 22), (112, 20, 13)],
+                    top=[(156, 57, 23), (125, 49, 24)], shade=(56, 6, 15),
+                    mortar=(56, 6, 15), mott=(56, 6, 15), fleck=(125, 49, 24),
+                    detail=3)
+    if y < 38:
+        return dict(body=[(100, 4, 22), (100, 4, 22), (100, 4, 22), (79, 18, 18)],
+                    top=[(125, 49, 24)], shade=(56, 6, 15),
+                    mortar=(22, 4, 15), mott=(56, 6, 15), fleck=None,
+                    detail=2)
+    if y < 50:
+        return dict(body=[(56, 6, 15), (56, 6, 15), (56, 6, 15), (79, 18, 18)],
+                    top=[(90, 35, 15)], shade=(22, 4, 15),
+                    mortar=(22, 4, 15), mott=(39, 3, 11), fleck=None,
+                    detail=1)
+    if y < 64:
+        return dict(body=[(56, 6, 15), (56, 6, 15), (56, 6, 15), (22, 4, 15)],
+                    top=[], shade=(22, 4, 15),
+                    mortar=(22, 4, 15), mott=(39, 3, 11), fleck=None,
+                    detail=1)
+    # near the bottom the sheet goes 95% flat dark maroon: stones dissolve
+    return dict(body=[(22, 4, 15)], top=[], shade=(22, 4, 15),
+                mortar=(22, 4, 15), mott=(1, 8, 0), fleck=(56, 6, 15),
+                detail=0)
 
-    def masonry(seed, dim=1.0, cracks=0, top=0, bot=15, split=False):
-        """One 16px course: a single chunky stone per tile (mortar seam on
-        the right column + bottom row, so neighbours share 1px joints), or a
-        split pair on the variant frames — block widths then read 8..16px
-        against the hash-scattered variants, like the sheet's mixed sizes."""
-        t = Image.new('RGB', (16, 16))
-        d = ImageDraw.Draw(t)
-        rng = random.Random(seed)
-        d.rectangle([0, top, 15, bot], fill=MORTAR)
-        if split:
-            mid = (top + bot) // 2
-            block(d, rng, 0, 14, top, mid - 1, dim)
-            block(d, rng, 0, 14, mid + 1, bot - 1, dim)
+def _ember(y, rng):
+    """Vein core color by depth: molten gold at the crust, dying coals deep."""
+    if y < 10:  return (245, 170, 70) if rng.random() < 0.5 else (228, 96, 22)
+    if y < 20:  return (228, 96, 22) if rng.random() < 0.7 else (220, 76, 18)
+    if y < 34:  return (228, 96, 22) if rng.random() < 0.45 else (203, 83, 22)
+    if y < 48:  return (203, 83, 22) if rng.random() < 0.6 else (171, 64, 16)
+    if y < 62:  return (171, 64, 16)
+    return (111, 42, 13)
+
+
+def build_masonry():
+    import math
+    """Draws the continuous 256x128 organic masonry band: wandering courses,
+    mixed stone sizes (some spanning two courses), rounded eroded outlines,
+    near-black mortar gaps, ember veins flowing along the joints."""
+    P, H = MAS_W, MAS_H
+    R = random.Random(0xB1A57)
+
+    def wobble(base, amp, seed):
+        r = random.Random(seed)
+        k1, k2 = r.randint(1, 3), r.randint(4, 7)
+        p1, p2 = r.uniform(0, 6.283), r.uniform(0, 6.283)
+        a1, a2 = amp * r.uniform(0.6, 1.0), amp * r.uniform(0.3, 0.6)
+        return [base + a1 * math.sin(2 * math.pi * k1 * x / P + p1)
+                     + a2 * math.sin(2 * math.pi * k2 * x / P + p2)
+                for x in range(P)]
+
+    # course boundary curves: crust bottom first, then courses of natural
+    # height — a shallow course under the crust, the big boulder course, then
+    # cobbles growing coarser and darker
+    HGT = [9, 13, 11, 10, 9, 9, 10, 10, 11, 12, 12]
+    bounds = [wobble(5.0, 1.0, 11)]
+    nominal = [5.0]
+    y = 5.0
+    for i, h in enumerate(HGT):
+        y += h
+        if y >= H - 4:
+            break
+        bounds.append(wobble(y, 1.7, 23 + i))
+        nominal.append(y)
+    bounds.append([float(H)] * P)
+    nominal.append(float(H))
+    C = len(bounds) - 1
+
+    # stones per course: cut positions on the 256px circle; forced cuts carry
+    # two-course boulders (the child interval unions with its parent)
+    stone_seq = [1]
+    def next_id():
+        stone_seq[0] += 1
+        return stone_seq[0]
+    root = {}
+    def find(i):
+        while root.get(i, i) != i:
+            i = root[i]
+        return i
+
+    courses = []          # per course: list of (x0, x1, cut, stone_id)
+    forced = [[] for _ in range(C + 1)]   # (x0, x1, parent_id, cutl, cutr)
+    for c in range(C):
+        ztop = _zone(int(nominal[c]))
+        segs = []
+        taken = sorted((f[0], f[1]) for f in forced[c])
+        # free arcs of the circle
+        arcs = []
+        if not taken:
+            ph = R.randrange(256)
+            arcs = [(ph, ph + P)]
         else:
-            block(d, rng, 0, 14, top, bot - 1, dim)
-        joint = 15
-        for _ in range(cracks):
-            cx = joint if rng.random() < 0.7 else 15
-            cy = rng.randint(top, max(top, bot - 6))
-            crack(d, rng, cx, cy, min(bot - 1, cy + rng.randint(3, 6)))
-        return t
+            for i, (a, b) in enumerate(taken):
+                nxt = taken[(i + 1) % len(taken)][0] + (P if i + 1 == len(taken) else 0)
+                if nxt - b >= 4:
+                    arcs.append((b, nxt))
+        for f in forced[c]:
+            iid = next_id()
+            root[iid] = find(f[2])
+            segs.append((f[0], f[1], f[3], f[4], iid))
+        for (a0, a1) in arcs:
+            x = a0
+            while x < a1:
+                if c == 0:                   # wide flat slab bricks under the crust
+                    w = R.randint(14, 26)
+                elif c == 1:                 # the boulder course: the sheet's stars
+                    w = R.randint(32, 42) if R.random() < 0.25 else R.randint(18, 32)
+                elif ztop['detail'] >= 2:
+                    big = R.random() < 0.15
+                    w = R.randint(26, 38) if big else \
+                        R.randint(10, 15) if R.random() < 0.25 else R.randint(15, 25)
+                else:                        # deeper: smaller, rounder cobbles
+                    big = R.random() < 0.08
+                    w = R.randint(24, 32) if big else \
+                        R.randint(8, 13) if R.random() < 0.45 else R.randint(13, 20)
+                if a1 - (x + w) < 8:
+                    w = a1 - x
+                iid = next_id()
+                cutl = dict(x=x, s=R.randint(-2, 2), seed=R.randrange(1 << 30))
+                cutr = dict(x=x + w, s=R.randint(-2, 2), seed=R.randrange(1 << 30))
+                segs.append((x, x + w, cutl, cutr, iid))
+                # boulder: claim the same arc one course down, same edge cuts
+                if c + 1 < C and w >= 20 and R.random() < 0.14 and ztop['detail'] >= 1:
+                    forced[c + 1].append((x, x + w, iid, cutl, cutr))
+                x += w
+        courses.append(segs)
 
-    def surface(seed, cracks=1, embers=2):
-        """Surface tile: the sheet's strong lit crust — a bumpy bright-gold
-        lip, an ember row broken by dark cracks — over a shortened course."""
-        t = masonry(seed, 1.05, cracks, top=4, bot=15, split=seed == 17)
-        d = ImageDraw.Draw(t)
-        rng = random.Random(seed ^ 0x5eed)
-        d.rectangle([0, 0, 15, 0], fill=CRUST_HI)
-        d.rectangle([0, 1, 15, 1], fill=(240, 176, 74))
-        d.rectangle([0, 2, 15, 2], fill=(224, 129, 38))
-        d.rectangle([0, 3, 15, 3], fill=(148, 73, 35))
-        for _ in range(2):                                     # bumpy lip
-            bx = rng.randrange(16)
-            d.point((bx, 1), fill=CRUST_HI)
-        for _ in range(3):                                     # crust cracks
-            cx = rng.randrange(16)
-            d.point((cx, 2), fill=(61, 10, 18))
-            if rng.random() < 0.6:
-                d.point((cx, 3), fill=(33, 5, 16))
-        for _ in range(embers):                                # crust embers
-            d.point((rng.randrange(16), 3), fill=EMBER[rng.randrange(3)])
-        return t
+    # rasterize: per pixel, which stone (root id); 0 = crust zone
+    idm = [[0] * P for _ in range(H)]
+    meta = {}      # root id -> (center y, width, seed)
+    for c in range(C):
+        h_c = max(4.0, nominal[c + 1] - nominal[c])
+        for (x0, x1, cutl, cutr, iid) in courses[c]:
+            rid = find(iid)
+            if rid not in meta:
+                meta[rid] = [int((nominal[c] + nominal[c + 1]) / 2), x1 - x0,
+                             R.randrange(1 << 30)]
+            else:
+                meta[rid][0] = (meta[rid][0] + int((nominal[c] + nominal[c + 1]) / 2)) // 2
+            for xx in range(x0, x1):
+                x = xx % P
+                yt, yb = bounds[c][x], bounds[c + 1][x]
+                for yy in range(int(yt), min(H, int(yb))):
+                    # slanted + wiggled joint edges
+                    t = (yy - nominal[c]) / h_c
+                    el = cutl['x'] + cutl['s'] * t + (_h2(cutl['seed'], yy >> 1) % 3) - 1
+                    er = cutr['x'] + cutr['s'] * t + (_h2(cutr['seed'], yy >> 1) % 3) - 1
+                    if el <= xx < er:
+                        idm[yy][x] = rid
+    # pixels no interval claimed (slant gaps) stay 0 -> mortar
 
-    im = Image.new('RGBA', (160, 16), (0, 0, 0, 0))
-    def put(i, tile): im.paste(tile.convert('RGBA'), (i * 16, 0))
+    # paint
+    im = Image.new('RGB', (P, H), (1, 8, 0))
+    px = im.load()
+    mortar_mask = [[False] * P for _ in range(H)]
 
-    put(0, surface(3, cracks=2, embers=2))
-    put(5, surface(17, cracks=2, embers=3))                    # worn: more ember
-    v6 = surface(29, cracks=1, embers=2)                       # worn: cracked block
-    d6 = ImageDraw.Draw(v6)
-    d6.line([4, 6, 6, 9], fill=MORTAR)
-    d6.point((5, 7), fill=EMBER[0])
-    put(6, v6)
-    put(1, masonry(7, 0.92))                                   # quiet fill
-    put(7, masonry(23, 0.92, cracks=2, split=True))            # split + ember fill
+    def rdist(x, y, s, dx, dy, cap=7):
+        """steps along (dx,dy) until a pixel outside stone s (cap'd)."""
+        for i in range(1, cap + 1):
+            yy = y + dy * i
+            if yy < 0:
+                return i                       # crust above counts as outside
+            if yy >= H:
+                return cap + 1                 # canvas bottom continues
+            o = idm[yy][(x + dx * i) % P]
+            if o != 0:
+                o = find(o)
+            if o != s:
+                return i
+        return cap + 1
+
+    for y in range(H):
+        z = _zone(y)
+        for x in range(P):
+            if y < bounds[0][x]:
+                continue                       # crust painted after
+            s = idm[y][x]
+            if s == 0:
+                px[x, y] = z['mortar']
+                mortar_mask[y][x] = True
+                continue
+            sm = meta[s]
+            srng = sm[2]
+            zc = _zone(sm[0])
+            body = zc['body'][srng % len(zc['body'])]
+            hb = _h2(x, y * 977 + srng)
+            # rounded boulder outline: cardinal distances to the stone's edge;
+            # a corner radius proportional to the stone's size melts the
+            # rectangle into a pill shape, plus hash-eroded bites
+            dl = rdist(x, y, s, -1, 0); dr = rdist(x, y, s, 1, 0)
+            du = rdist(x, y, s, 0, -1); dd = rdist(x, y, s, 0, 1)
+            dh, dv = min(dl, dr), min(du, dd)
+            big = sm[1] >= 24
+            rc = 3 + (srng >> 4) % 2 if big else 2 + (srng >> 4) % 2
+            gh = 2 if (srng >> 8) % 3 == 0 else 1
+            if dh <= gh or dv <= 1 or dh + dv <= rc \
+                    or (dh + dv <= rc + 2 and hb % 11 == 0):
+                px[x, y] = z['mortar']
+                mortar_mask[y][x] = True
+                continue
+            # edge shading: a thin lit rim on top, shadowed bottom, quiet
+            # sides — the sheet lights its crimson stones with a 1-2px
+            # orange-brown crest, never a flooded top
+            rim = 1 + (1 if zc['detail'] >= 3 and srng % 3 == 0 else 0)
+            if du <= dd and du <= rim + 1 \
+                    and zc['top'] and (zc['detail'] >= 3 or hb % 2 == 0):
+                px[x, y] = zc['top'][srng % len(zc['top'])]
+            elif dd < du and dd <= 2:
+                px[x, y] = zc['shade']
+            elif dh <= gh + 1 and hb % 3 == 0:
+                px[x, y] = zc['shade']
+            # body with sparse mottle (2px blobs where detail is high)
+            elif zc['mott'] and zc['detail'] >= 2 and \
+                    (hb % 37 == 0 or _h2(x - 1, y * 977 + srng) % 37 == 0):
+                px[x, y] = zc['mott']
+            elif zc['mott'] and zc['detail'] < 2 and hb % 31 == 0:
+                px[x, y] = zc['mott']
+            elif zc['fleck'] and zc['detail'] >= 3 and hb % 41 == 0:
+                px[x, y] = zc['fleck']
+            elif zc['fleck'] and zc['detail'] == 0 and hb % 173 == 0:
+                px[x, y] = zc['fleck']
+            else:
+                px[x, y] = body
+
+    # cracks across the bigger stones
+    for rid, (cy, w, seed) in meta.items():
+        r = random.Random(seed ^ 0xC4AC)
+        z = _zone(cy)
+        if w >= 22 and z['detail'] >= 2 and r.random() < 0.45:
+            # find a column inside the stone
+            cols = [x for x in range(P) if 0 <= cy < H and find(idm[cy][x] or 0) == rid] \
+                if True else []
+            if not cols:
+                continue
+            x = r.choice(cols)
+            y = cy
+            while y > 0 and find(idm[y - 1][x] or 0) == rid:
+                y -= 1
+            n = 0
+            while y < H and find(idm[y][x % P] or 0) == rid and n < 14:
+                px[x % P, y] = z['mortar'] if r.random() < 0.8 else z['shade']
+                if r.random() < 0.4:
+                    x += r.choice((-1, 1))
+                y += 1
+                n += 1
+            if cy < 40 and r.random() < 0.5 and y - 1 > 0:
+                px[x % P, y - 1] = (203, 83, 22)
+
+    # ember veins: random walks along the mortar graph, molten at the crust,
+    # dying out with depth — connected flows, not speckle
+    vr = random.Random(0xEA5EED)
+    def walk(x, y, budget, allow_dig=True):
+        lastdx = 0
+        run = 0
+        while budget > 0 and y < 66:         # coals die out; the deep rows stay dark
+            px[x % P, y] = _ember(y, vr)
+            # molten pooling: the vein widens where the joint has room,
+            # brighter than its own core — reads as glow, not speckle
+            if budget % 3 == 0 and mortar_mask[y][(x + 1) % P]:
+                px[(x + 1) % P, y] = _ember(max(0, y - 8), vr)
+            if y < 26 and budget % 4 == 1 and mortar_mask[y][(x - 1) % P]:
+                px[(x - 1) % P, y] = _ember(y, vr)
+            budget -= 1
+            cands = []
+            for dx, dy, wgt in ((0, 1, 7), (1, 1, 4), (-1, 1, 4), (1, 0, 2), (-1, 0, 2)):
+                if dy == 0 and (dx == -lastdx and lastdx != 0 or run > 5):
+                    continue
+                yy = y + dy
+                if yy >= H:
+                    continue
+                if mortar_mask[yy][(x + dx) % P]:
+                    cands.append((dx, dy, wgt))
+            if not cands:
+                if allow_dig and vr.random() < 0.65 and y + 1 < H:
+                    x, y = x, y + 1        # burn through a thin stone lip
+                    run = 0
+                    continue
+                break
+            tot = sum(c[2] for c in cands)
+            pick = vr.random() * tot
+            for dx, dy, wgt in cands:
+                pick -= wgt
+                if pick <= 0:
+                    break
+            run = run + 1 if dy == 0 else 0
+            lastdx = dx if dy == 0 else 0
+            x, y = x + dx, y + dy
+
+    # crust-fed veins: sparse, spaced, gated on a joint actually being there
+    starts = []
+    for x in range(0, P, 4):
+        ys = int(bounds[0][x]) + 1
+        if any(mortar_mask[yy][x] for yy in range(ys, ys + 4) if yy < H):
+            starts.append(x)
+    vr.shuffle(starts)
+    kept = []
+    for x in starts:
+        if all(min(abs(x - k), P - abs(x - k)) >= 20 for k in kept):
+            kept.append(x)
+    kept = kept[:8]
+    for i, x in enumerate(sorted(kept)):
+        y = int(bounds[0][x]) + 1
+        budget = (46, 22, 34, 14, 55, 18, 28, 12)[i % 8]
+        # molten throat where the vein leaves the crust
+        px[x, y - 1] = CRUST_LOW
+        px[x, max(0, y - 2)] = CRUST_MID
+        walk(x, y, budget)
+    # a few mid-depth glows on their own
+    for i in range(4):
+        x = vr.randrange(P)
+        ys = [yy for yy in range(24, 48) if mortar_mask[yy][x]]
+        if ys:
+            walk(x, ys[0], vr.randrange(8, 18), allow_dig=False)
+
+    # the hot seam: right under the crust the sheet's joints GLOW — fill most
+    # of the first course's mortar with ember so the crust visibly feeds the
+    # vein network instead of sitting on a black gap
+    for x in range(P):
+        hj = _h2(x >> 1, 0x407)              # 2px-run scale, connected blobs
+        for y in range(int(bounds[0][x]), 15):
+            if mortar_mask[y][x] and hj % 5 != 0 and _h2(x >> 1, (y >> 1) + 0x77) % 6 != 0:
+                px[x, y] = ((220, 76, 18), (228, 96, 22), (212, 113, 33),
+                            (188, 80, 24))[_h2(x >> 1, y >> 1) % 4] \
+                    if y < 11 else (171, 64, 16)
+
+    # crust: chunky molten top band — bright blobs, dark crack notches, drips
+    for x in range(P):
+        b0 = max(4, int(bounds[0][x] + 0.5))
+        hx = _h2(x, 0xC0)
+        hx3 = _h2(x >> 2, 0xC1)              # 4px-blob scale
+        px[x, 0] = CRUST_HI
+        px[x, 1] = CRUST_HI if hx3 % 3 == 0 else CRUST_GLO
+        px[x, 2] = CRUST_GLO if hx3 % 5 == 0 else CRUST_MID
+        for yy in range(3, b0):
+            px[x, yy] = (CRUST_MID if hx3 % 7 == 0 and yy == 3 else
+                         CRUST_LOW if yy == 3 else CRUST_SET)
+        if b0 >= 5 and hx3 % 4 == 0:         # shadow pocket under the overhang
+            px[x, b0 - 1] = (56, 6, 15)
+        if hx % 7 == 0:                      # dark crack notches break the band
+            px[x, 2] = CRUST_LOW
+            for yy in range(3, b0):
+                px[x, yy] = (56, 6, 15)
+        if hx % 13 == 0:                     # deep crack up into the bright lip
+            for yy in range(1, b0):
+                px[x, yy] = (CRUST_SET if yy == 1 else CRUST_DRK)
+        if hx % 19 == 0 and b0 + 1 < H:      # drip hanging into the stones
+            px[x, b0] = CRUST_LOW
+            if idm[b0 + 1][x] == 0 or _h2(x, 5) % 2:
+                px[x, b0 + 1] = (188, 80, 24)
+    return im
+
+
+def build_tiles(palimg, base_sheet):
+    """133-frame 16px tileset — ORGANIC MASONRY, reworked to the APPROVED
+    direction sheet (hybrid_b) after the fix round's uniform block grid was
+    rejected against it: the strip now encodes a continuous 256x128 organic
+    stone band (16-tile x period, 8 courses deep) — irregular stones of mixed
+    sizes (some spanning two courses), wandering course lines, rounded eroded
+    outlines, near-black mortar gaps, ember veins flowing ALONG the joints,
+    and a depth fade baked into the stonework itself. Paint colors are exact
+    locked-palette entries chosen from a per-depth census of the sheet's own
+    floor band (see the zone tables). Frame map:
+      0..15    surface course (walked crust), x phase 0..15
+      16..127  fill, depth d=1..7 below the surface: 16 + (d-1)*16 + phase
+      128/129  surface pit edge, pit on the LEFT / RIGHT
+      130      underside lip (floating platforms)
+      131/132  pit wall, pit on the LEFT / RIGHT
+    web/game/tiles.js pickTileFrame mirrors this map; any frame meshes with
+    its neighbours because adjacent frames are adjacent windows of the same
+    continuous band."""
+    m = build_masonry()
+    im = Image.new('RGBA', (TILE_FRAMES * 16, 16), (0, 0, 0, 0))
+    def put(i, tile):
+        im.paste(tile.convert('RGBA'), (i * 16, 0))
+    for p in range(TILE_P):                  # 0..15 surface
+        put(p, m.crop((p * 16, 0, p * 16 + 16, 16)))
+    for d in range(1, FILL_D + 1):           # 16..127 fill by depth
+        for p in range(TILE_P):
+            put(16 + (d - 1) * 16 + p,
+                m.crop((p * 16, d * 16, p * 16 + 16, d * 16 + 16)))
 
     def lit_col(t, x):
         d = ImageDraw.Draw(t)
-        d.rectangle([x, 0, x, 15], fill=(232, 165, 78))        # lit pit-facing edge
+        d.rectangle([x, 0, x, 15], fill=(232, 165, 78))
         d.rectangle([x + (1 if x == 0 else -1), 2,
-                     x + (1 if x == 0 else -1), 15], fill=(138, 64, 48))
+                     x + (1 if x == 0 else -1), 15], fill=(148, 73, 35))
         return t
-    put(2, lit_col(surface(3, cracks=0, embers=1), 0))         # pit to the LEFT
-    put(3, lit_col(surface(17, cracks=0, embers=1), 15))       # pit to the RIGHT
+    put(128, lit_col(m.crop((3 * 16, 0, 3 * 16 + 16, 16)), 0))    # pit on LEFT
+    put(129, lit_col(m.crop((11 * 16, 0, 11 * 16 + 16, 16)), 15)) # pit on RIGHT
 
-    un = masonry(41, 0.8)                                      # underside lip
+    un = m.crop((5 * 16, 16, 5 * 16 + 16, 32))                    # underside lip
     dU = ImageDraw.Draw(un)
-    dU.rectangle([0, 15, 15, 15], fill=(29, 11, 16))
-    dU.rectangle([0, 14, 15, 14], fill=(58, 18, 22))
-    put(4, un)
+    dU.rectangle([0, 14, 15, 14], fill=(56, 6, 15))
+    dU.rectangle([0, 15, 15, 15], fill=(22, 4, 15))
+    put(130, un)
 
-    for i, seed, lx in ((8, 51, 0), (9, 63, 15)):              # pit walls: darker
-        t = masonry(seed, 0.62)
+    DARKER = {(112, 20, 13): (79, 18, 18), (100, 4, 22): (56, 6, 15),
+              (79, 18, 18): (56, 6, 15), (125, 49, 24): (90, 35, 15),
+              (156, 57, 23): (125, 49, 24), (188, 80, 24): (125, 49, 24),
+              (39, 3, 11): (1, 8, 0), (89, 14, 12): (56, 6, 15)}
+    for i, (ph, lx) in ((131, (2, 0)), (132, (9, 15))):
+        t = m.crop((ph * 16, 32, ph * 16 + 16, 48)).copy()
+        tp = t.load()
+        for yy in range(16):
+            for xx in range(16):
+                c = tp[xx, yy][:3] if len(tp[xx, yy]) > 3 else tp[xx, yy]
+                tp[xx, yy] = DARKER.get(c, c)
         dP = ImageDraw.Draw(t)
-        dP.rectangle([lx, 0, lx, 15], fill=(176, 96, 48))      # lit pit-facing edge
+        dP.rectangle([lx, 0, lx, 15], fill=(173, 71, 39))         # lit pit face
+        dP.rectangle([lx + (1 if lx == 0 else -1), 0,
+                      lx + (1 if lx == 0 else -1), 15], fill=(89, 14, 12))
         rng = random.Random(11 + i)
         for _ in range(2):
-            x, y = rng.randrange(3, 13), rng.randrange(2, 14)
-            dP.line([x, y, x + rng.randrange(1, 3), y + rng.randrange(1, 4)],
-                    fill=(194, 84, 15))                        # ember crack
+            x, y = rng.randrange(4, 12), rng.randrange(2, 12)
+            dP.line([x, y, x + rng.randrange(1, 3), y + rng.randrange(2, 4)],
+                    fill=(171, 64, 16))
         put(i, t)
-    return quantize_to(im, palimg)
+    # No quantize pass: every color above IS an exact locked-master entry
+    # (verified by the regen driver), and build_palette's palimg predates the
+    # sky-derived master additions — quantizing through it would silently
+    # merge the ember ramp the sheet census picked.
+    return im
 
 def build_objects(name, heights, palimg):
     objs = objects_from(chroma_key(Image.open(RAW / name / 'raw_0.jpg')))
@@ -606,31 +924,35 @@ def compose(A, *, sky, sun_at=None, mesa_off=0, rock_off=0, tiles=None,
         comp.alpha_composite(f, (x, ROCK_BOT - f.height))
     strip_x(comp, A['rocks'], rock_off, ROCK_BOT)
     tiles = tiles if tiles is not None else A['tiles']
-    fr = [tiles.crop((i * 16, 0, i * 16 + 16, 16)) for i in range(10)]
-    rng = random.Random(seed)
+    fr = [tiles.crop((i * 16, 0, i * 16 + 16, 16)) for i in range(TILE_FRAMES)]
     pit = pit or ()
     for tx in pit:                                       # pit void: fades down
         for yy in range(HORIZON, VH):
             k = (yy - HORIZON) / (VH - HORIZON)
             c = (round(46 - 40 * k), round(14 - 12 * k), round(16 - 14 * k))
             d.line([tx * 16, yy, tx * 16 + 15, yy], fill=c)
+    # frame choice mirrors tiles.js pickTileFrame on this flat-slab geometry:
+    # surface phase across the 16-tile super-pattern, depth-indexed fill,
+    # shaped pit edges/walls
     for ty in range(8):
         for tx in range(VW // 16):
             if tx in pit:
                 continue
+            ph = tx % TILE_P
             if ty == 0:
-                if tx + 1 in pit:   t = fr[3]            # lit pit-facing edge
-                elif tx - 1 in pit: t = fr[2]
-                else:
-                    t = fr[0] if rng.random() < 0.75 else rng.choice([fr[5], fr[6]])
-            elif tx + 1 in pit:
-                t = fr[9]
+                if tx - 1 in pit:   t = fr[128]          # lit pit-facing edge
+                elif tx + 1 in pit: t = fr[129]
+                else:               t = fr[ph]
             elif tx - 1 in pit:
-                t = fr[8]
+                t = fr[131]
+            elif tx + 1 in pit:
+                t = fr[132]
             else:
-                t = fr[1] if rng.random() < 0.85 else fr[7]
+                t = fr[16 + (min(ty, FILL_D) - 1) * 16 + ph]
             comp.alpha_composite(t, (tx * 16, HORIZON + ty * 16))
-    for r0, r1, al in ((2, 5, 0.15), (5, 8, 0.30)):        # floor depth bands
+    # depth-band overlays, matched to play.js bandAlpha (most of the fade is
+    # baked into the stonework now; these only settle the deepest rows)
+    for r0, r1, al in ((2, 3, 0.08), (3, 5, 0.18), (5, 8, 0.32)):
         band = Image.new('RGBA', (VW, (r1 - r0) * 16), (0, 0, 0, int(al * 255)))
         comp.alpha_composite(band, (0, HORIZON + r0 * 16))
     for idx, x in flora_play:                              # playfield flora

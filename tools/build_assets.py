@@ -58,7 +58,7 @@ PROD_DIR = ROOT / 'assets-wow' / 'production'
 # longer ingested. par_stars/par_mesas/par_rocks keep their historical cell
 # names so the scene's parallax pass reads the same atlas entries as before.
 PROD = [
-    ('tiles',      'tiles.png',      16,  16, 1, False),   # 10 frames: see frame map
+    ('tiles',      'tiles.png',      16,  16, 1, False),   # 133 frames: see frame map
     ('tiles_wow',  'tiles_wow.png',  16,  16, 1, False),   # ember shift, wow zone
     ('par_stars',  'sky.png',       640, 360, 1, False),   # gauntlet sky
     ('sky_boss',   'sky_boss.png',  640, 360, 1, False),   # boss arena sky
@@ -197,7 +197,7 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 231, len(frames)
+    assert len(frames) == 477, len(frames)   # 231 + 2 x (133-10) masonry frames
     assert len(anims) == 51, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 

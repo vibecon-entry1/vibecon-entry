@@ -857,9 +857,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       ctx.save(); cam.apply(ctx);
 
       // (2) tiles, culled to the visible window and CACHED (see tileCanvas up
-      // top). Frame choice is pickTileFrame (tiles.js): surface/fill plus the
-      // pit-edge, pit-wall, underside-lip and worn-variant frames of the
-      // 10-frame production set. It is a pure function of the coordinate and
+      // top). Frame choice is pickTileFrame (tiles.js): the 133-frame organic
+      // masonry set — surface/fill windows of a continuous 256x128 stone band
+      // (16-tile x phase, depth-indexed courses) plus the pit-edge, pit-wall
+      // and underside-lip shapes. It is a pure function of the coordinate and
       // the (carve-epoch-guarded) neighbourhood, so cached cells stay valid.
       const tx0 = Math.max(0, Math.floor(cam.x / TILE));
       const tx1 = Math.min(level.wTiles - 1, Math.floor((cam.x + VW) / TILE));
@@ -889,40 +890,37 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           vg.fillStyle = lg;
           vg.fillRect(0, 0, TILE, voidGrad.height);
         }
-        // Depth-band darkening for a floor row: the walked slab reads as a
-        // dead flat wall without it. All the stops are tile-aligned, so it
-        // decomposes per cell and BAKES — as does the pit void — which is why
-        // neither costs a per-frame pass any more (the perf probe priced the
-        // live full-width fills at ~2ms a frame at 4x throttle).
-        // Retuned for the masonry tileset (fix round): the direction sheet
-        // fades its stonework to near-black by the fourth course, and the
-        // old gentle .15/.30 ramp left eight rows of full-brightness blocks
-        // — busier than the approved look and worse for sprite pop.
-        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 3 ? 0.18
-                              : ty < floorTy + 5 ? 0.38 : ty < floorTy + 8 ? 0.55 : 0.7;
+        // Depth-band darkening for a floor row: most of the fade now lives IN
+        // the masonry frames themselves (the depth-indexed courses go from
+        // lit crust to near-flat dark maroon, per the approved sheet), so
+        // these overlays only settle the deepest rows and keep the pit void /
+        // pit walls on the same ramp. Tile-aligned stops, so it still
+        // decomposes per cell and BAKES into the cache like the void does.
+        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 3 ? 0.08
+                              : ty < floorTy + 5 ? 0.18 : ty < floorTy + 8 ? 0.32 : 0.45;
         const g = tileScratch.getContext('2d');
-        // Per-cell decals over the fill frames, retuned for the masonry
-        // tileset (fix round): the fill frames repeat the same stone every
-        // 16px, so this stamps coordinate-hashed weathering ON the block
-        // body (mottle inside the 1..13 interior, clear of the mortar seams)
-        // plus the odd ember pip glowing IN a seam. Deterministic per
-        // coordinate, exact palette entries only, baked into the cache so it
-        // costs nothing per frame.
-        const decal = (tx, ty, cx, cy) => {
+        // Per-cell decals over the fill frames (rework round): the masonry
+        // super-pattern repeats every 16 tiles, so this stamps sparse
+        // coordinate-hashed weathering to break the 256px cadence — a dark
+        // mottle fleck or two on the stone bodies, a rare warm scuff, and a
+        // rarer ember pip, all fading out with baked depth (shallow rows get
+        // the detail, deep rows only the dark). Deterministic per coordinate,
+        // exact palette entries only, baked into the cache so it costs
+        // nothing per frame.
+        const decal = (tx, ty, cx, cy, depth) => {
           let h = hash2(tx + 0x9e37, ty);
           const px = (col, x, y, w2) => { g.fillStyle = col; g.fillRect(cx + x, cy + y, w2, 1); };
-          for (let i = 0, nd = 1 + (h & 1); i < nd; i++) {   // block mottle
+          const dark = depth < 3 ? '#38060f' : depth < 5 ? '#16040f' : '#010800';
+          for (let i = 0, nd = 1 + (h & 1); i < nd; i++) {   // body mottle
             h = hash2(h, i);
-            px('#4f1212', 2 + h % 11, 3 + (h >>> 4) % 10, 1 + (h >>> 8) % 2);
+            px(dark, 2 + h % 12, 2 + (h >>> 4) % 12, 1 + (h >>> 8) % 2);
           }
-          h = hash2(h, 77);                                   // a lighter scuff
-          if ((h >>> 12) % 3 === 0) px('#70140d', 2 + (h >>> 16) % 11, 3 + (h >>> 20) % 10, 2);
-          h = hash2(h, 9);                                    // ember pip in a seam
-          if (h % 4 === 0) {
-            const inRight = (h >>> 4) & 1;                    // right column vs bottom row
-            px((h >>> 8) & 1 ? '#e46016' : '#cb5316',
-               inRight ? 15 : 2 + h % 12, inRight ? 2 + h % 12 : 15, 1);
-          }
+          h = hash2(h, 77);                                   // a warm scuff, shallow only
+          if (depth < 3 && (h >>> 12) % 4 === 0)
+            px(depth < 2 ? '#70140d' : '#640416', 2 + (h >>> 16) % 11, 3 + (h >>> 20) % 10, 2);
+          h = hash2(h, 9);                                    // rare ember pip in the rubble
+          if (depth < 4 && h % 6 === 0)
+            px((h >>> 8) & 1 ? '#cb5316' : '#ab4010', 2 + h % 12, 2 + (h >>> 4) % 12, 1);
         };
         g.clearRect(0, 0, tileScratch.width, tileScratch.height);
         // Same-epoch window shift: copy the overlap, draw only exposed cells.
@@ -943,7 +941,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
               const f = pickTileFrame(level, tx, ty);
               atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
                                  cx + 8, cy + 8);
-              if (f === 1 || f === 7) decal(tx, ty, cx, cy);
+              if (f >= 16 && f < 128) decal(tx, ty, cx, cy, 1 + ((f - 16) >> 4));
             }
             const ba = bandAlpha(ty);
             if (ba) { g.fillStyle = `rgba(0,0,0,${ba})`; g.fillRect(cx, cy, TILE, TILE); }

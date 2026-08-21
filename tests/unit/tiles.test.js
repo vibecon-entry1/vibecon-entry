@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickTileFrame, floraIndexAt, hash2 } from '../../web/game/tiles.js';
+import { pickTileFrame, floraIndexAt, hash2,
+         TILE_PERIOD, FILL_DEPTH } from '../../web/game/tiles.js';
 import { parseChunk } from '../../web/game/chunks.js';
 
 // Real level semantics via parseChunk (solid side walls, open bottom), so the
@@ -36,56 +37,75 @@ test('hash2 is a stable uint32 of both inputs', () => {
   }
 });
 
-test('surface row: plain top + pit-edge L/R orientation', () => {
-  // Platform top: pit opens LEFT of x2 → frame 2; RIGHT of x4 → frame 3.
-  assert.equal(pickTileFrame(SHAPES, 2, 1), 2);
-  assert.equal(pickTileFrame(SHAPES, 4, 1), 3);
+test('surface row: phased crust + pit-edge L/R orientation', () => {
+  // Platform top: pit opens LEFT of x2 → frame 128; RIGHT of x4 → frame 129.
+  assert.equal(pickTileFrame(SHAPES, 2, 1), 128);
+  assert.equal(pickTileFrame(SHAPES, 4, 1), 129);
   // One-wide column: both sides open — the left check wins, by code order.
-  assert.equal(pickTileFrame(SHAPES, 7, 1), 2);
+  assert.equal(pickTileFrame(SHAPES, 7, 1), 128);
   // Floor beside the pit at x3: x2 has the pit on its RIGHT, x4 on its LEFT.
-  assert.equal(pickTileFrame(SHAPES, 2, 4), 3);
-  assert.equal(pickTileFrame(SHAPES, 4, 4), 2);
-  // Interior platform top is a surface frame (0 or a worn variant).
-  assert.ok([0, 5, 6].includes(pickTileFrame(SHAPES, 3, 1)));
+  assert.equal(pickTileFrame(SHAPES, 2, 4), 129);
+  assert.equal(pickTileFrame(SHAPES, 4, 4), 128);
+  // Interior platform top wears its x-phase surface window.
+  assert.equal(pickTileFrame(SHAPES, 3, 1), 3);
 });
 
-test('surface variants 0/5/6 all appear on a long flat top, ~25% worn', () => {
-  const seen = new Set();
-  let worn = 0;
+test('surface course meshes: frame = tx mod 16 along a long flat top', () => {
   for (let tx = 1; tx < 199; tx++) {                     // skip the wall-adjacent ends
     const f = pickTileFrame(FLAT, tx, 8);
-    assert.ok([0, 5, 6].includes(f), `unexpected surface frame ${f} at ${tx}`);
-    if (f !== 0) { seen.add(f); worn++; }
+    assert.equal(f, tx % TILE_PERIOD, `surface phase off at ${tx}: ${f}`);
   }
-  assert.ok(seen.has(5) && seen.has(6));
-  assert.ok(worn > 198 * 0.15 && worn < 198 * 0.35, `worn ratio off: ${worn}/198`);
+  // negative coordinates still answer a valid phase (pure modular math)
+  const f = pickTileFrame({ hTiles: 4, solidAt: (x, y) => y >= 2 }, -3, 2);
+  assert.ok(f >= 0 && f < TILE_PERIOD, `negative tx phase broke: ${f}`);
 });
 
 test('underside lip under floating platforms, bounds-guarded on the last row', () => {
-  // Bottom row of the floating platform + column: open below → frame 4.
-  for (const tx of [2, 3, 4, 7]) assert.equal(pickTileFrame(SHAPES, tx, 2), 4);
+  // Bottom row of the floating platform + column: open below → frame 130.
+  for (const tx of [2, 3, 4, 7]) assert.equal(pickTileFrame(SHAPES, tx, 2), 130);
   // LAST slab row: below reads open too (pits kill), but the ty+1 bounds
   // guard must keep the whole row from wearing the lip.
   for (let tx = 1; tx < 199; tx++)
-    assert.ok([1, 7].includes(pickTileFrame(FLAT, tx, 9)),
-              `last row wore a lip at ${tx}`);
+    assert.ok(pickTileFrame(FLAT, tx, 9) >= 16 && pickTileFrame(FLAT, tx, 9) < 128,
+              `last row wore a non-fill frame at ${tx}`);
 });
 
-test('fill rows: ember-fleck variant ~14%, pit walls oriented L/R', () => {
-  let flecks = 0;
-  for (let tx = 1; tx < 199; tx++) if (pickTileFrame(FLAT, tx, 9) === 7) flecks++;
-  assert.ok(flecks > 198 * 0.07 && flecks < 198 * 0.25, `fleck ratio off: ${flecks}/198`);
-  // Pit flank rows in SHAPES: x2 row 5 has the pit on its RIGHT → 9; x4 → 8.
-  assert.equal(pickTileFrame(SHAPES, 2, 5), 9);
-  assert.equal(pickTileFrame(SHAPES, 4, 5), 8);
+test('fill rows: depth-indexed courses, phase-meshed, pit walls oriented L/R', () => {
+  // FLAT floor: surface ty=8, so ty=9 is depth 1 → frames 16..31 by phase.
+  for (let tx = 1; tx < 199; tx++)
+    assert.equal(pickTileFrame(FLAT, tx, 9), 16 + (tx % TILE_PERIOD),
+                 `depth-1 fill off at ${tx}`);
+  // A deep slab: surface at ty=2, fill to ty=12 — each row wears its own
+  // course until the cap, then reuses the darkest (depth 7) course.
+  const DEEP = { hTiles: 13, solidAt: (x, y) => y >= 2 && y < 13 };
+  for (let d = 1; d <= 10; d++) {
+    const f = pickTileFrame(DEEP, 37, 2 + d);
+    const want = 16 + (Math.min(d, FILL_DEPTH) - 1) * 16 + (37 % TILE_PERIOD);
+    assert.equal(f, want, `depth ${d} course off: ${f} != ${want}`);
+  }
+  // Pit flank rows in SHAPES: x2 row 5 has the pit on its RIGHT → 132; x4 → 131.
+  assert.equal(pickTileFrame(SHAPES, 2, 5), 132);
+  assert.equal(pickTileFrame(SHAPES, 4, 5), 131);
 });
 
-test('variant determinism: same coords always answer the same frame', () => {
+test('determinism: same coords always answer the same frame', () => {
   for (let tx = 0; tx < 200; tx += 7) {
     assert.equal(pickTileFrame(FLAT, tx, 8), pickTileFrame(FLAT, tx, 8));
     assert.equal(pickTileFrame(FLAT, tx, 9), pickTileFrame(FLAT, tx, 9));
   }
   assert.equal(pickTileFrame(SHAPES, 3, 1), pickTileFrame(SHAPES, 3, 1));
+});
+
+test('horizontal neighbours wear consecutive band windows (the mesh contract)', () => {
+  // The super-pattern only reads as continuous stone if adjacent cells pull
+  // adjacent 16px windows of the band, on the surface AND every fill course.
+  for (let tx = 1; tx < 198; tx++) {
+    const a = pickTileFrame(FLAT, tx, 8), b = pickTileFrame(FLAT, tx + 1, 8);
+    assert.equal((a + 1) % TILE_PERIOD, b % TILE_PERIOD, `surface mesh broke at ${tx}`);
+    const c = pickTileFrame(FLAT, tx, 9), e = pickTileFrame(FLAT, tx + 1, 9);
+    assert.equal((c - 16 + 1) % TILE_PERIOD, (e - 16) % TILE_PERIOD,
+                 `fill mesh broke at ${tx}`);
+  }
 });
 
 test('floraIndexAt: deterministic sparse scatter, valid indices, intact floor only', () => {
