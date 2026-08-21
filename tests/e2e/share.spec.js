@@ -9,11 +9,12 @@ import { boot, runTape } from './helpers.mjs';
 // navigator.clipboard.readText() then returns what the game wrote, so these
 // specs assert on the REAL clipboard — that is the thing a player experiences,
 // and a state hook that agreed with itself would prove nothing. The game's own
-// belief (state().shareText/shareStatus) is asserted too, so a future browser
+// belief (state().shareUrl/shareStatus) is asserted too, so a future browser
 // that stops granting the read permission degrades to a still-meaningful test
-// instead of a silent pass. The IMAGE half of the copy is deliberately NOT
-// asserted: ClipboardItem support is per-browser (Firefox has none) and the
-// game treats it as a bonus, so pinning it here would be pinning chromium.
+// instead of a silent pass. The copy is LINK-ONLY by design (user bug report:
+// an attached image/png made chat apps paste the picture and drop the link,
+// starving the unfurl worker) — so these specs assert the clipboard holds the
+// bare URL and that NO image representation rides along with it.
 //
 // KeyS is the 'down' action (engine/input.js). Nothing on these screens reads
 // 'down', which is why the prompt can say "press S" — see shareui.js.
@@ -62,11 +63,18 @@ test('win screen: S copies this run to the clipboard', async ({ page, context })
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clip).toContain(String(before.finalScore));
+  expect(clip).toContain(`s=${before.finalScore}`);  // the score rides IN the url
   expect(clip).toContain(WORKER);
-  expect(clip).toBe(before.shareText);               // what it says it copied
+  expect(clip).toBe(before.shareUrl);                // the bare link, nothing else
+  // ...and no image representation on the clipboard beside it: an image is
+  // exactly what made chat apps drop the link.
+  const kinds = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    return items.flatMap(i => [...i.types]);
+  });
+  expect(kinds).not.toContain('image/png');
 
-  // "very copied." is on screen for three seconds — screenshot it while it is.
+  // The confirmation is on screen for three seconds — screenshot it while it is.
   const st = await page.evaluate(() => window.__blast.state());
   expect(st.shareStatus).toBe('ok');
   await page.screenshot({ path: 'tests/artifacts/share-win.png' });
@@ -95,9 +103,9 @@ test('wowend: S copies the zone run, mode and all', async ({ page, context }) =>
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clip).toContain(String(before.finalScore));
+  expect(clip).toContain(`s=${before.finalScore}`);
   expect(clip).toContain(WORKER);
-  expect(clip).toBe(before.shareText);
+  expect(clip).toBe(before.shareUrl);
   await page.screenshot({ path: 'tests/artifacts/share-wowend.png' });
   expect(errors).toEqual([]);
 });

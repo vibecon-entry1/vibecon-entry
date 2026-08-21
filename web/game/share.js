@@ -149,46 +149,25 @@ export function drawShareCard(ctx, run) {
 // --- the copy itself --------------------------------------------------------
 
 /**
- * Copy the run to the clipboard: text always, the card image too where the
- * browser allows it.
+ * Copy the run's LINK to the clipboard. The link, and nothing else.
  *
- * Per-browser reality, which is why the image is best-effort and the text is
- * not: Chrome/Edge support ClipboardItem with image/png, Safari supports it
- * only inside the user-gesture task (which a keypress handler is), and Firefox
- * has no ClipboardItem write for images at all. Firefox therefore gets the
- * text, which is the part that actually carries the link.
+ * It used to be one ClipboardItem carrying text/plain AND image/png of the
+ * card. User bug report: image-preferring paste targets (every chat app) take
+ * the picture and drop the link — so a share pasted into Discord arrived as a
+ * static screenshot with nothing to click, and the unfurl worker (whose whole
+ * job is turning the link into that same card via OpenGraph) never got a look
+ * in. The card still reaches the reader — through the LINK's unfurl, which is
+ * the designed route. So: plain writeText of the bare URL, which every
+ * clipboard-having browser supports, and every paste target treats as a link.
  *
- * Returns {text, image, url} — `image` false when the picture didn't make it.
- * Rejects only when the TEXT write failed, which is what the caller shows the
- * manual-copy fallback for.
+ * Returns {text, url} (text === url). Rejects only when the write failed,
+ * which is what the caller shows the manual-copy fallback for.
  */
-export async function copyShare(run, { canvas, clipboard = navigator.clipboard } = {}) {
-  const url = shareUrl(run), text = shareText(run);
+export async function copyShare(run, { clipboard = navigator.clipboard } = {}) {
+  const url = shareUrl(run);
   if (!clipboard?.writeText) throw new Error('no clipboard');
-
-  // ONE write with BOTH flavours, not a writeText followed by an image write.
-  // Caught by the e2e: each call to the clipboard REPLACES its contents, so
-  // writing the picture second threw the text away and a paste into a chat box
-  // produced a bare image with no link in it. A single ClipboardItem carrying
-  // text/plain and image/png leaves the paste target to pick — chat apps take
-  // the image, text fields take the link.
-  let image = false;
-  try {
-    if (canvas && clipboard.write && typeof ClipboardItem === 'function') {
-      const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-      if (blob) {
-        await clipboard.write([new ClipboardItem({
-          'text/plain': new Blob([text], { type: 'text/plain' }),
-          'image/png': blob,
-        })]);
-        image = true;
-      }
-    }
-  } catch {
-    image = false;                       // fall through to the text-only write
-  }
-  if (!image) await clipboard.writeText(text);
-  return { text, image, url };
+  await clipboard.writeText(url);
+  return { text: url, url };
 }
 
 /** An offscreen 1200x630 canvas with the card on it, or null without a DOM. */

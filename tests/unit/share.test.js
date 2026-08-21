@@ -74,32 +74,39 @@ test('the static og:image points at a card that exists', () => {
 
 // --- clipboard --------------------------------------------------------------
 
-test('copyShare writes the text and reports the image it managed to attach', async () => {
+test('copyShare writes the bare link, and only the link', async () => {
+  // User bug report: a ClipboardItem carrying image/png alongside the text made
+  // chat apps paste the picture and drop the link. The write is now writeText
+  // of the URL alone — the card reaches readers via the link's unfurl.
   const writes = [];
   const clipboard = { writeText: async (t) => writes.push(t) };
   const res = await copyShare({ score: 500, kills: 1, deaths: 0 }, { clipboard });
+  const url = shareUrl({ score: 500, kills: 1, deaths: 0 });
   assert.equal(writes.length, 1);
-  assert.ok(writes[0].includes('500 WOW'));
-  assert.equal(res.image, false);           // no canvas, no picture — text stands
-  assert.equal(res.url, shareUrl({ score: 500, kills: 1, deaths: 0 }));
+  assert.equal(writes[0], url);             // the link, nothing else
+  assert.equal(res.url, url);
+  assert.equal(res.text, url);
+});
+
+test('copyShare never touches ClipboardItem, even where one exists', async () => {
+  const writes = [];
+  const clipboard = {
+    writeText: async (t) => writes.push(t),
+    write: async () => { throw new Error('image write must not be reached'); },
+  };
+  globalThis.ClipboardItem = function ClipboardItem() {};
+  try {
+    const res = await copyShare({ score: 7 }, { clipboard });
+    assert.equal(writes.length, 1);
+    assert.equal(res.url, shareUrl({ score: 7 }));
+  } finally {
+    delete globalThis.ClipboardItem;
+  }
 });
 
 test('copyShare rejects when there is no clipboard at all', async () => {
   await assert.rejects(() => copyShare({ score: 1 }, { clipboard: undefined }));
   await assert.rejects(() => copyShare({ score: 1 }, { clipboard: {} }));
-});
-
-test('a failed IMAGE write does not lose the text', async () => {
-  const clipboard = {
-    writeText: async () => {},
-    write: async () => { throw new Error('nope'); },
-  };
-  const canvas = { toBlob: (cb) => cb({}) };
-  globalThis.ClipboardItem = function ClipboardItem() {};
-  const res = await copyShare({ score: 7 }, { clipboard, canvas });
-  delete globalThis.ClipboardItem;
-  assert.equal(res.image, false);
-  assert.ok(res.text.includes('7 WOW'));
 });
 
 // --- the card ---------------------------------------------------------------
