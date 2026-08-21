@@ -5,6 +5,7 @@
 //   parallax (screen space, OUTSIDE the camera) → tiles → signs → checkpoints
 //   → coins → enemies → player → muzzle → bolts → popups → [restore] → HUD.
 import { buildGauntlet, buildWowZone, WOW_LEN, CHUNK_W, TILE } from '../chunks.js';
+import { pickTileFrame, floraIndexAt, hash2 } from '../tiles.js';
 import { makePlayer } from '../player.js';
 import { makeBullets } from '../bullets.js';
 import { makeEnemies } from '../enemies.js';
@@ -81,6 +82,24 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // them under the floor slab.
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
+  // --- area dressing ---------------------------------------------------------
+  // The wow zone wears its own sky and tileset outright; the gauntlet swaps to
+  // the boss sky across the arena via the dread blend below. All three skies
+  // are full atlas cells (the swap mechanism the integration notes left open:
+  // cells, not draw-time tints — a tint can't move the banding).
+  const skyName = wow ? 'sky_wow' : 'par_stars';
+  const tilesName = wow ? 'tiles_wow' : 'tiles';
+  // Boss-arena dread, 0..1 off the CAMERA's x so it can't pop: ramps in over
+  // the ~5 screens before the arena floor starts, holds 1 through the fight
+  // (the camera physically can't pass gateX-VW/2 while the gate wall stands),
+  // and ramps back out on the victory lap so the ship moment gets the sunset
+  // back. Gauntlet-only — wow has no arena.
+  const arenaX = wow ? 0 : level.bossTrigger - 8 * TILE;
+  const gateX = wow ? 0 : level.gate[0][0] * TILE;
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const dread = wow ? () => 0
+    : cx => clamp01((cx - (arenaX - 560)) / 360) *
+            (1 - clamp01((cx - (gateX - 260)) / 300));
   let paused = false;
   // Scene-level freeze: a brief world-stall on a big hit lands harder than any
   // amount of shake alone. SET on trigger (Math.max), never accumulated, so
@@ -157,6 +176,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // so no frame ever pays for the full window twice. Sized for the worst-case
   // window (+1 tile each axis for the partial edges).
   let tileCanvas = null, tileScratch = null, tileWin = null;
+  let voidGrad = null;            // pit-void gradient, built on first render
   let tileEpoch = 0;              // bumped by the one thing that edits tiles: the gate carve
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
@@ -455,10 +475,19 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // stops being polite. The y is the same offset inside the band each one had
   // when it was painted into the strip, so the composition — how much of it the
   // rock swallows — is unchanged.
+  // The production landmarks ride the same two bands: spire and arch on the
+  // far mesas (either side of prop1's stretch), the wreck half-buried on the
+  // near rocks well before prop2's neighbourhood. y sinks each base a few px
+  // into its band so nothing floats.
   const PROPS = [
-    { name: 'prop1', x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
-    { name: 'prop2', x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56 },
+    { name: 'prop_spire', x: 1750, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 46 },
+    { name: 'prop1',      x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
+    { name: 'prop_arch',  x: 4650, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 58 },
+    { name: 'prop_wreck', x: 6200, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 36 },
+    { name: 'prop2',      x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56 },
   ];
+  const MESA_PROPS = PROPS.filter(p => p.fx === 0.30);
+  const ROCK_PROPS = PROPS.filter(p => p.fx === 0.60);
 
   function drawProp(ctx, p, drift) {
     const sx = Math.round(p.x - cam.x * p.fx);
@@ -705,30 +734,62 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         drawLayer(ctx, name, ox + VW, oy);
       };
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
-      drawLayer(ctx, 'par_stars', sox, drift(0.05));      // sky: pinned to the top
-      drawLayer(ctx, 'par_stars', sox + VW, drift(0.05));
-      // Hangs in the same far sky as the stars, on the same slow factors, so it
-      // sits behind every band that follows and drifts with them.
+      const dr = dread(cam.x);
+      drawLayer(ctx, skyName, sox, drift(0.05));      // sky: pinned to the top
+      drawLayer(ctx, skyName, sox + VW, drift(0.05));
+      if (dr > 0) {
+        // Arena dread: the boss sky fades over the sunset as the camera closes
+        // on the arena and back out on the victory lap — a blend, never a pop.
+        ctx.globalAlpha = dr;
+        drawLayer(ctx, 'sky_boss', sox, drift(0.05));
+        drawLayer(ctx, 'sky_boss', sox + VW, drift(0.05));
+        ctx.globalAlpha = 1;
+      }
+      // The sun. A single-placement cameo — NEVER baked into (or wrapped with)
+      // the tiling sky strip. It gets its own near-zero parallax because the
+      // sun is at optical infinity: the one placement drifts ~160px over the
+      // whole run and never leaves the sky. The dread blend swallows it whole
+      // before the arena (the boss sky has no sun by design).
+      if (!wow && dr < 1) {
+        ctx.globalAlpha = 1 - dr;
+        drawLayer(ctx, 'sun', Math.round(356 - cam.x * 0.007), 44 + drift(0.05));
+        ctx.globalAlpha = 1;
+      }
+      // Hangs in the same far sky, on the same slow factors, so it sits behind
+      // every band that follows and drifts with them.
       if (xOn?.()) { drawDeco1(ctx, sox + 96, 52 + drift(0.05));
                      drawDeco1(ctx, sox + VW + 96, 52 + drift(0.05)); }
       // Props go down BEFORE their band, so the band occludes them the same way
       // the strip art did when they were painted underneath it.
-      drawProp(ctx, PROPS[0], drift);
+      for (const p of MESA_PROPS) drawProp(ctx, p, drift);
       band('par_mesas', 0.30, 0.12, 4);
       // far-ground haze under the near band: with the camera riding high the
       // real floor drops away faster than the parallax does, and without this
-      // you get a strip of starfield wedged between the rocks and the ground.
+      // you get a strip of bare sky wedged between the rocks and the ground.
       const rocksBottom = restLine + 10 + drift(0.20);
-      ctx.fillStyle = '#2a1c33';
+      ctx.fillStyle = '#3b190f';
       ctx.fillRect(0, rocksBottom - 20, VW, VH - rocksBottom + 20);
-      drawProp(ctx, PROPS[1], drift);
+      for (const p of ROCK_PROPS) drawProp(ctx, p, drift);
       band('par_rocks', 0.60, 0.20, 10);
+      // Mid-band flora: sparse silhouettes rooted on the haze shelf between
+      // the rock band and the playfield, riding the rocks' parallax. Pure
+      // function of the strip index k — the same desert every session.
+      for (let k = Math.max(0, Math.floor(cam.x * 0.60 / 256) - 1), n = 0; n < 5; k++, n++) {
+        const h = hash2(k, 4211);
+        if (h % 3 === 0) continue;                     // gaps in the hedge
+        const name = 'flora_' + [1, 0, 5, 2, 1, 5][h % 6];
+        const sx = Math.round(k * 256 + (h >>> 8) % 160 - cam.x * 0.60);
+        if (sx < -30 || sx > VW + 30) continue;
+        atlas.drawFeet(ctx, name, atlas.anims[name].frames[0], sx, rocksBottom - 12);
+      }
 
       ctx.save(); cam.apply(ctx);
 
       // (2) tiles, culled to the visible window and CACHED (see tileCanvas up
-      // top). Frame 0 = sunlit surface (no solid directly above), frame 1 =
-      // fill. Edge frames 2/3 stay unused.
+      // top). Frame choice is pickTileFrame (tiles.js): surface/fill plus the
+      // pit-edge, pit-wall, underside-lip and worn-variant frames of the
+      // 10-frame production set. It is a pure function of the coordinate and
+      // the (carve-epoch-guarded) neighbourhood, so cached cells stay valid.
       const tx0 = Math.max(0, Math.floor(cam.x / TILE));
       const tx1 = Math.min(level.wTiles - 1, Math.floor((cam.x + VW) / TILE));
       const ty0 = Math.max(0, Math.floor(cam.y / TILE));
@@ -754,13 +815,26 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           for (let tx = tx0; tx <= tx1; tx++) {
             if (shift && tx >= w.tx0 && tx <= w.tx1 && ty >= w.ty0 && ty <= w.ty1) continue;
             if (!level.solidAt(tx, ty)) continue;
-            const f = level.solidAt(tx, ty - 1) ? 1 : 0;
-            atlas.drawCentered(g, 'tiles', atlas.anims.tiles.frames[f],
+            const f = pickTileFrame(level, tx, ty);
+            atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
                                (tx - tx0) * TILE + 8, (ty - ty0) * TILE + 8);
           }
         [tileCanvas, tileScratch] = [tileScratch, tileCanvas];
         tileWin = { tx0, ty0, tx1, ty1, epoch: tileEpoch };
       }
+      // Pit void: a dark vertical falloff painted UNDER the tile blit across
+      // the whole floor band. Solid tiles cover it; only pit columns show it,
+      // which is what turns a hole in the floor into depth instead of a
+      // window onto the parallax haze. Built once — world-space y is constant.
+      const floorTopWorldY = level.h - 8 * TILE;
+      if (!voidGrad) {
+        voidGrad = ctx.createLinearGradient(0, floorTopWorldY, 0, level.h);
+        voidGrad.addColorStop(0, '#3b190f');
+        voidGrad.addColorStop(0.45, '#27030b');
+        voidGrad.addColorStop(1, '#010800');
+      }
+      ctx.fillStyle = voidGrad;
+      ctx.fillRect(cam.x, floorTopWorldY, VW, level.h - floorTopWorldY);
       if (tileCanvas) ctx.drawImage(tileCanvas, tx0 * TILE, ty0 * TILE);
 
       // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
@@ -780,6 +854,26 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       for (let i = 0; i < bandAlphas.length; i++) {
         ctx.fillStyle = `rgba(0,0,0,${bandAlphas[i]})`;
         ctx.fillRect(bandX0, bandStops[i], bandX1 - bandX0, bandStops[i + 1] - bandStops[i]);
+      }
+
+      // (2c) ground flora: decor scattered along the walked floor, a pure
+      // function of the world column (tiles.js floraIndexAt) — deterministic,
+      // non-colliding, and it only grows on intact floor so pit lips and
+      // corridors stay readable. Drawn over the depth bands (feet on the lit
+      // floor line, above where the bands start) and under everything alive.
+      const floorTy = level.hTiles - 8;
+      for (let ftx = tx0; ftx <= tx1 + 1; ftx++) {
+        let fi = floraIndexAt(level, ftx, floorTy);
+        if (fi < 0) continue;
+        // The arena floor keeps its decor LOW: a knee-high shrub dresses the
+        // fight, a 34px cactus in the dive lane reads as cover the game does
+        // not honour. Still deterministic — the remap is a pure function of
+        // the same index.
+        if (!wow && ftx * TILE > arenaX - 200 && ftx * TILE < gateX + 100 &&
+            fi !== 3 && fi !== 4 && fi !== 6 && fi !== 7) fi = [3, 6, 7, 4][fi % 4];
+        const fname = 'flora_' + fi;
+        atlas.drawFeet(ctx, fname, atlas.anims[fname].frames[0],
+                       ftx * TILE + 8 + (hash2(ftx, 51) % 7) - 3, floorTy * TILE);
       }
 
       // (3) signs: a post carrying a board sized to its own text. The dark
@@ -832,6 +926,15 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // (6b) MEGA SAUCER — the 64px enemyfly_red cell blown up 3x to arena scale,
       // plus a floating hp bar. Both hang off boss.x/boss.y (the CENTER anchor).
       if (boss && boss.on) {
+        // Separation halo, proposed off the arena-mock feedback: against the
+        // near-black boss sky the 3x red dome read as a flat blob. A faint
+        // warm radial behind it (render-only — the sprite is untouched)
+        // restores the silhouette. See the integration report screenshot.
+        const halo = ctx.createRadialGradient(boss.x, boss.y, 12, boss.x, boss.y, 105);
+        halo.addColorStop(0, 'rgba(249,210,129,0.22)');
+        halo.addColorStop(1, 'rgba(249,210,129,0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(boss.x - 105, boss.y - 105, 210, 210);
         ctx.save();
         ctx.translate(boss.x, boss.y);
         ctx.scale(3, 3);
@@ -939,18 +1042,20 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       for (let i = 0; i < P.AIR_CHARGES; i++)
         atlas.drawCentered(ctx, 'pip', atlas.anims.pip.frames[i < player.airCharges ? 0 : 1],
                            10 + i * 10 + 4, 24 + 6);
-      ctx.fillStyle = '#eec548';
       // 608, not 630: the shell layer's sound button occupies x 615..637 at the
       // top-right corner (see main.js), and at 630 the score ran straight under
       // the speaker glyph. Caught in the branding pass's visual check.
       // y is now the TOP of the 14px-tall text box (scale 2), not a baseline.
-      drawText(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' });
+      // Shadowed since the sky overhaul: gold on the pale-gold sky band was
+      // invisible; the deep-crimson drop restores it on every area's sky.
+      drawTextShadow(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' },
+                     '#eec548', '#3b190f');
       // Wow's progress readout, under the score. The gauntlet has signs, a boss
       // and a ship to tell you where you are; wow is 40 anonymous chunks, so the
       // counter IS the sense of progress.
       if (wow) {
-        ctx.fillStyle = '#8fa';
-        drawText(ctx, `CHUNK ${chunkIndex}/${WOW_LEN}`, 608, 26, { scale: 2, align: 'right' });
+        drawTextShadow(ctx, `CHUNK ${chunkIndex}/${WOW_LEN}`, 608, 26,
+                       { scale: 2, align: 'right' }, '#8fa', '#3b190f');
       }
 
       // (12) pause veil, over the HUD and everything else.

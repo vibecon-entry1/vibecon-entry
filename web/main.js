@@ -435,7 +435,7 @@ async function boot() {
   // touchUI/tapNeed ride along so the title can offer TAP plates (wow entry,
   // display toggle) with the same 44 CSS px floor as the shell's own buttons,
   // while main.js stays the single owner of scale/dpr and the coarse gate.
-  scenes.title = () => makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+  scenes.title = () => makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
                                    touchUI, tapNeed });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't

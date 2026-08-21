@@ -42,26 +42,51 @@ SHIP = ('ship', 12, True)
 GEN_DIR = ROOT / 'assets-gen'
 # name, file, frame_w, frame_h, fps, loop  (frames slice left-to-right)
 GEN = [
-    ('tiles',     'tiles.png',      16,  16,  1, False),
     ('coin',      'coin.png',       12,  12, 10, True),
     ('heart',     'hearts.png',     10,  10,  1, False),
     ('pip',       'pips.png',        8,  12,  1, False),
-    ('par_stars', 'par_stars.png', 640, 360,  1, False),
-    ('par_mesas', 'par_mesas.png', 640, 120,  1, False),
-    ('par_rocks', 'par_rocks.png', 640,  80,  1, False),
     # Surgical pose derived from the pack's Stand frame by tools/posegen.py —
     # same 64x64 cell, same feet line, so it drops straight into drawFeet next
     # to the authored player anims.
     ('gundown',   'pose_gundown.png', 64,  64,  1, False),
 ]
 
+PROD_DIR = ROOT / 'assets-wow' / 'production'
+# The environment set. Every file here is a pure function of the committed raws
+# via tools/genart_v2_prod.py (see assets-wow/INTEGRATION_NOTES.md); the old
+# tools/genart.py terrain/parallax outputs in assets-gen/ are superseded and no
+# longer ingested. par_stars/par_mesas/par_rocks keep their historical cell
+# names so the scene's parallax pass reads the same atlas entries as before.
+PROD = [
+    ('tiles',      'tiles.png',      16,  16, 1, False),   # 10 frames: see frame map
+    ('tiles_wow',  'tiles_wow.png',  16,  16, 1, False),   # ember shift, wow zone
+    ('par_stars',  'sky.png',       640, 360, 1, False),   # gauntlet sky
+    ('sky_boss',   'sky_boss.png',  640, 360, 1, False),   # boss arena sky
+    ('sky_wow',    'sky_wow.png',   640, 360, 1, False),   # wow zone sky
+    ('par_mesas',  'mesas.png',     640, 120, 1, False),
+    ('par_rocks',  'rocks.png',     640,  80, 1, False),
+    ('sun',        'sun.png',       128, 128, 1, False),   # single-placement cameo, never tiled
+    ('prop_spire', 'prop_spire.png', 40,  64, 1, False),
+    ('prop_arch',  'prop_arch.png',  79,  56, 1, False),
+    ('prop_wreck', 'prop_wreck.png', 50,  40, 1, False),
+    ('flora_0',    'flora_0.png',    29,  34, 1, False),
+    ('flora_1',    'flora_1.png',    15,  44, 1, False),
+    ('flora_2',    'flora_2.png',    15,  22, 1, False),
+    ('flora_3',    'flora_3.png',    18,  16, 1, False),
+    ('flora_4',    'flora_4.png',    16,  12, 1, False),
+    ('flora_5',    'flora_5.png',    15,  32, 1, False),
+    ('flora_6',    'flora_6.png',     4,   7, 1, False),
+    ('flora_7',    'flora_7.png',     4,   7, 1, False),
+    ('title',      'title.png',     640, 360, 1, False),   # title backdrop
+]
+
 EXTRA_DIR = ROOT / 'assets-extra'
-# Single-cell props. Same shape as GEN, different source tree: these are hand
-# art rather than generated, and the scene places each one at exactly one spot
-# in the world instead of tiling it.
+# Single-cell props. Same shape as GEN, different source tree: the scene places
+# each one at exactly one spot in the world instead of tiling it. Sources moved
+# to the production re-composites (same cell sizes, same atlas names).
 EXTRA = [
-    ('prop1',     'deco1.png',      19,  28,  1, False),
-    ('prop2',     'deco2.png',      27,  28,  1, False),
+    ('prop1',     PROD_DIR / 'prop1.png',      19,  28,  1, False),
+    ('prop2',     PROD_DIR / 'prop2.png',      27,  28,  1, False),
 ]
 
 def slice_sheet(path, cw, ch, factor):
@@ -104,7 +129,7 @@ def collect():
     anims[name] = dict(frames=list(range(base, base + len(ship_files))),
                        fps=fps, loop=loop, feetY=feet, cw=256, ch=200)
 
-    for src_dir, table in ((GEN_DIR, GEN), (EXTRA_DIR, EXTRA)):
+    for src_dir, table in ((GEN_DIR, GEN), (PROD_DIR, PROD), (EXTRA_DIR, EXTRA)):
         for name, fname, fw, fh, fps, loop in table:
             im = Image.open(src_dir / fname).convert('RGBA')
             base = len(frames)
@@ -169,8 +194,8 @@ def main():
     kb = (OUT / 'atlas.png').stat().st_size // 1024
     print(f'frames={len(frames)} anims={len(anims)} atlas={atlas.width}x{atlas.height} '
           f'({kb} KB) palette={len(pal)} colors')
-    assert len(frames) == 196, len(frames)
-    assert len(anims) == 31, len(anims)
+    assert len(frames) == 227, len(frames)
+    assert len(anims) == 47, len(anims)
     assert atlas.height <= 2048, 'atlas overflow'
 
 if __name__ == '__main__':

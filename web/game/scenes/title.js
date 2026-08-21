@@ -1,12 +1,8 @@
 // Title + intro cards. The first thing a player sees, and the only scene that
-// isn't the game: dark sky, a procedural starfield, the logo, and a pulsing
-// prompt. X walks the intro one line at a time, then hands off to play.
-//
-// No atlas dependency on purpose — the parallax star band is authored 640 wide
-// and pinned to the play camera, and dragging the whole atlas in just to reuse
-// it would couple the title to asset loading order for a field of dots. These
-// stars are generated once from a fixed seed, so the sky is stable across
-// reloads and screenshots are diffable.
+// isn't the game: the painted sunset backdrop (atlas 'title' cell), the logo,
+// and a pulsing prompt. X walks the intro one line at a time, then hands off
+// to play. The old seeded starfield is gone with the night sky — the backdrop
+// is a static cell, so screenshots stay diffable for free.
 import { getSticker, BRAND } from '../../engine/sticker.js';
 // Screen text goes through the 5x7 bitmap font, not canvas fillText: see the
 // header of engine/font.js for why. Everything below positions by the TOP of
@@ -63,7 +59,7 @@ const LEGEND = [
 
 // `save` is read-only here: the title only ever DISPLAYS the banked best.
 // main.js's win-scene factory is still the one and only writer.
-export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+export function makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
                             touchUI, tapNeed }) {
   // The title pool starts the moment this scene exists. Before the player's
   // first keypress the jukebox just records the intent and main.js's unlock
@@ -155,15 +151,6 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
   // ---------------------------------------------------------------------------
   let intro = -1;
 
-  // Deterministic star field: a tiny LCG, not Math.random, so every boot draws
-  // the same sky (and so screenshots are diffable).
-  const stars = [];
-  let seed = 1337;
-  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-  for (let i = 0; i < 140; i++)
-    stars.push({ x: rnd() * VW, y: rnd() * VH, r: rnd() < 0.15 ? 2 : 1,
-                 tw: rnd() * Math.PI * 2, dim: 0.35 + rnd() * 0.65 });
-
   return {
     update(dt) {
       t += dt;
@@ -220,25 +207,21 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
     },
 
     render(ctx) {
-      ctx.fillStyle = '#080610'; ctx.fillRect(0, 0, VW, VH);
-      // ground haze: the same purple the play scene's far band sits on, so the
-      // cut to gameplay doesn't flash a different planet.
-      const g = ctx.createLinearGradient(0, VH - 120, 0, VH);
-      g.addColorStop(0, 'rgba(42,28,51,0)'); g.addColorStop(1, 'rgba(42,28,51,1)');
-      ctx.fillStyle = g; ctx.fillRect(0, VH - 120, VW, 120);
-
-      for (const s of stars) {
-        ctx.globalAlpha = s.dim * (0.55 + 0.45 * Math.sin(t * 1.7 + s.tw));
-        ctx.fillStyle = '#cfe6ff';
-        ctx.fillRect(Math.round(s.x), Math.round(s.y), s.r, s.r);
+      // The painted backdrop: same planet the run opens on, sun and all.
+      atlas.drawCentered(ctx, 'title', atlas.anims.title.frames[0], VW / 2, VH / 2);
+      // Intro cards keep the backdrop but dim it — one line of text against
+      // the full sunset was unreadable at the bright end of the sky.
+      if (phase !== 'title') {
+        ctx.fillStyle = 'rgba(11,11,18,0.62)'; ctx.fillRect(0, 0, VW, VH);
       }
-      ctx.globalAlpha = 1;
 
       const C = { align: 'center' };
       if (phase === 'title') {
         drawTextShadow(ctx, 'SUCH BLAST', VW / 2, 104, { ...C, scale: 4 }, '#eec548', '#2a1c33');
 
-        ctx.fillStyle = '#8a7db0';
+        // Deep crimson, not the old lilac: the strapline sits right on the
+        // backdrop's sun and pale lilac dissolved into it.
+        ctx.fillStyle = '#5a230f';
         drawText(ctx, 'a very mars. much escape.', VW / 2, 146, C);
 
         ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4);
@@ -282,6 +265,13 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
             drawText(ctx, `BEST ZONE: ${bz}`, VW / 2, bestG > 0 ? 272 : 248, C);
           }
         }
+
+        // Quiet plate under the settings + legend block: the backdrop's lower
+        // third is busy painted terrain now, and the dim grey legend sank
+        // straight into it. Full-width band, same page-black family as every
+        // other plate.
+        ctx.fillStyle = 'rgba(11,11,18,0.5)';
+        ctx.fillRect(0, 292, VW, 48);
 
         // Settings line, above the control legend and set apart from it by
         // colour: the key name is lit like the other prompts, the current value
