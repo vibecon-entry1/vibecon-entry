@@ -368,6 +368,10 @@ const DESIGNS = {
         osc(buf, { shape: 'sine', freq: glide(C4, C6, 0.22), amp: t => 0.2 * bell({ a: 0.07, r: 0.16 })(t),
           vol: 1, fm: { ratio: 2.01, index: () => 1.2 } });
         click(buf, rnd, { dur: 0.006, f: 3000, vol: 0.3 }); // r2: crisp onset per review
+        // r3: low-mid weight 180-250 Hz for downward impact per review
+        const lm = makeBuf(0.12);
+        osc(lm, { shape: 'sine', freq: glide(220, 180, 0.1), amp: env({ a: 0.008, tau: 0.05 }), vol: 0.35 });
+        mixAt(buf, lm, 0, 1);
       },
     },
   },
@@ -498,7 +502,12 @@ const DESIGNS = {
         const sub = makeBuf(0.2);
         osc(sub, { shape: 'sine', freq: glide(G2, 60, 0.16), amp: env({ a: 0.008, tau: 0.09 }), vol: 0.4 });
         mixAt(buf, sub, 0, 1);
-        return reverb(buf, { mix: 0.26, decay: 0.7, tail: 0.5 });
+        // r3: warm 150-280 Hz pad under the whole phrase + brighter tail bloom
+        const pad = makeBuf(0.9);
+        osc(pad, { shape: 'sine', freq: flat(C4 / 1.5), amp: t => Math.min(1, t / 0.1) * Math.exp(-Math.max(0, t - 0.5) / 0.25), vol: 0.22 });
+        osc(pad, { shape: 'tri', freq: flat(C4), amp: t => Math.min(1, t / 0.12) * Math.exp(-Math.max(0, t - 0.5) / 0.22), vol: 0.12 });
+        mixAt(buf, pad, 0, 1);
+        return reverb(buf, { mix: 0.3, decay: 0.85, tail: 0.6, damp: 0.25 });
       },
     },
     b: { // "minor fall": darker line C5-Ab4-F4-C4, square-ish console voice + echo.
@@ -652,6 +661,8 @@ const DESIGNS = {
           vol: 1, fm: { ratio: 0.71, index: t => 8 * Math.exp(-t / 0.08) } });
         // r2: ~500ms more sub-rumble grandeur per review
         osc(buf, { shape: 'sine', freq: t => 45 * (1 + 0.06 * Math.sin(2 * Math.PI * 7 * t)), amp: env({ a: 0.06, h: 0.35, tau: 0.4 }), vol: 0.5 });
+        // r3: deeper 40-50 Hz sub-impact layer for physical weight per review
+        osc(buf, { shape: 'sine', freq: glide(48, 36, 0.5), amp: env({ a: 0.004, tau: 0.3 }), vol: 0.9 });
         noise(buf, { amp: env({ a: 0.005, tau: 0.22 }), vol: 0.6, filter: { type: 'lp', f: glide(4500, 350, 0.8), q: 0.9 }, rnd });
         // r2: glass/debris scatter layer 3-6 kHz per review
         for (let k = 0; k < 10; k++) {
@@ -668,7 +679,8 @@ const DESIGNS = {
           bellStrike(buf, { at, base: hz, partials: [[1, 1, 0.05], [2.52, 0.3, 0.03]], vol: 0.1 + rnd() * 0.1 });
         }
         saturate(buf, 1.7);
-        return reverb(buf, { mix: 0.22, decay: 0.85, tail: 0.5, damp: 0.4 });
+        // r3: longer sparkle-friendly tail per review
+        return reverb(buf, { mix: 0.24, decay: 1.0, tail: 0.65, damp: 0.32 });
       },
     },
   },
@@ -728,7 +740,13 @@ const DESIGNS = {
     b: { // "rocket rumble": deeper, noise-led, slower bloom — more cinematic.
       dur: 2.7, tail: 0.5,
       build(buf, rnd) {
-        noise(buf, { amp: t => Math.min(1, (t / 2.2) ** 1.3), vol: 0.95, filter: { type: 'lp', f: glide(300, 3800, 2.5), q: 1.1 }, rnd });
+        // r3: smooth 250ms exponential fade replaces the abrupt end per review
+        const fade = t => t < 2.45 ? 1 : Math.exp(-(t - 2.45) / 0.1);
+        noise(buf, { amp: t => Math.min(1, (t / 2.2) ** 1.3) * fade(t), vol: 0.95, filter: { type: 'lp', f: glide(300, 3800, 2.5), q: 1.1 }, rnd });
+        // r3: bigger initial sub impact (ignition kick at t=0)
+        const kick = makeBuf(0.4);
+        osc(kick, { shape: 'sine', freq: glide(70, 34, 0.3), amp: env({ a: 0.005, tau: 0.16 }), vol: 0.8 });
+        mixAt(buf, kick, 0, 1);
         // crackle: sparse combustion pops riding the noise bed
         for (let k = 0; k < 60; k++) {
           const at = rnd() * 2.5;
@@ -737,8 +755,8 @@ const DESIGNS = {
           noise(pop, { amp: env({ a: 0.0004, tau: 0.004 }), vol: amp, filter: { type: 'bp', f: 900 + rnd() * 1800, q: 1.6 }, rnd });
           mixAt(buf, pop, at, 1);
         }
-        osc(buf, { shape: 'sine', freq: t => 34 + 14 * (t / 2.7), amp: t => Math.min(1, t / 1.4), vol: 0.75 });
-        osc(buf, { shape: 'tri', freq: glide(C3, C4, 2.4), amp: t => Math.min(0.7, t / 2.0) * 0.25, vol: 1 });
+        osc(buf, { shape: 'sine', freq: t => 34 + 14 * (t / 2.7), amp: t => Math.min(1, t / 1.4) * (t < 2.45 ? 1 : Math.exp(-(t - 2.45) / 0.1)), vol: 0.75 });
+        osc(buf, { shape: 'tri', freq: glide(C3, C4, 2.4), amp: t => Math.min(0.7, t / 2.0) * 0.25 * (t < 2.45 ? 1 : Math.exp(-(t - 2.45) / 0.1)), vol: 1 });
         saturate(buf, 2);
         return reverb(buf, { mix: 0.14, decay: 0.7, tail: 0.5, damp: 0.5 });
       },
@@ -785,6 +803,7 @@ const DESIGNS = {
       dur: 0.08,
       build(buf, rnd) {
         noise(buf, { amp: env({ a: 0.0003, tau: 0.004 }), vol: 0.6, filter: { type: 'bp', f: 2600, q: 5 }, rnd });
+        click(buf, rnd, { dur: 0.0015, f: 2500, vol: 0.25 }); // r3: readability click per review
         const t2 = makeBuf(0.02);
         noise(t2, { amp: env({ a: 0.0003, tau: 0.003 }), vol: 0.35, filter: { type: 'bp', f: 2100, q: 5 }, rnd });
         mixAt(buf, t2, 0.035, 1);

@@ -1,0 +1,72 @@
+{
+  "label": "round3",
+  "model": "audio review",
+  "calls": 5,
+  "sounds": {
+    "boost": {
+      "scores": {
+        "a": 5,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Lacks attack punch and body, sounding like a single filtered noise sweep. To elevate from indie to commercial quality: add a snappy transient layer (5-10ms attack around 2-4kHz), boost the low-mid body (180-300Hz) for physical weight, and extend a subtle high-frequency air sizzle layer (7-12kHz) so it cuts over dense gameplay music.",
+        "b": "Solid commercial-grade sound design. Features a crisp, well-designed transient impact coupled with a weighty air-thrust decay that sits well without being fatiguing. To push it to a 9+, implement subtle pitch/formant variations (+/- 3-5%) and micro-envelope randomization per trigger to completely eliminate repetition fatigue during rapid firing.",
+        "c": "A raw, single-oscillator chiptune pitch chirp that misses the 'airy thrust' brief entirely. The resonant peak around 2.5kHz is harsh and will cause instant ear fatigue when spammed. Needs a complete overhaul: replace with a multi-layered sound featuring a punchy attack transient, an organic airy noise burst, and a tight sub-punch."
+      }
+    },
+    "ded": {
+      "scores": {
+        "a": 5,
+        "b": 3,
+        "c": 7
+      },
+      "best": "c",
+      "notes": {
+        "a": "The descending 4-note melodic phrase fits the death concept well, but the sound relies on an unlayered, bare synth oscillator that feels like a basic retro indie placeholder. To elevate it to commercial quality, layer a warm felt piano or low-mid electric piano transient over the synth, add a subtle sub-bass layer (50–90 Hz) on the final note, and apply a stereo hall reverb (1.2s decay) to allow the tail to bloom during the full-stop pause.",
+        "b": "Paced far too quickly; it reads as a fast UI error or damage tick rather than a impactful death jingle. The timbre is thin, clicky, and completely lacks emotional weight or tail. Slow the tempo down significantly, soften the initial attack envelope (15–20ms fade-in) to eliminate clickiness, and introduce harmonic body around 250–500 Hz with a proper lingering decay.",
+        "c": "The expressive pitch glide and warm filter cutoff capture a genuinely sad tone that fits a full-stop death screen well. To push this to top-shelf console quality, anchor the start of the slide with a subtle sub-bass drop (40–70 Hz), notch out a slight mid-range boxiness around 1.5 kHz, and extend the reverb space so the tail smoothly dissolves as the screen fades."
+      }
+    },
+    "bossdown": {
+      "scores": {
+        "a": 3,
+        "b": 7,
+        "c": 5
+      },
+      "best": "b",
+      "notes": {
+        "a": "Lacks any explosive transient or low-end weight; sounds strictly like a light stage-cleared or item-pickup chime sequence. To make this a boss payoff, layer a heavy cinematic impact/explosion (40-80 Hz sub punch) at the start and widen the synth tail with high-tier reverb and spatial detuning.",
+        "b": "Great sci-fi destruction punch with strong low-end weight and mix-piercing midrange crunch. Missing the 'triumphant' emotional payoff element, feeling more like a player death or mechanical breakdown. Add a shimmering, high-frequency victory chord layer (2-6 kHz) with a 2.0s lingering reverb tail.",
+        "c": "Captures the right structure (initial impact transitioning to a victorious chime), but execution feels thin and indie. The initial thump lacks sub-bass explosion weight (needs 50-90 Hz body), and the chime synth layer sounds unpolished. Layer real cinematic impact textures and apply stereo chorus/shimmer EQ (>8 kHz) to the tail."
+      }
+    },
+    "takeoff": {
+      "scores": {
+        "a": 4,
+        "b": 9,
+        "c": 4
+      },
+      "best": "b",
+      "notes": {
+        "a": "Overly tonal synth pitch sweep that directly fights the victory fanfare in the mid frequencies (400Hz-2kHz). Lacks physical weight, low-end sub rumble (40-80Hz), and realistic high-frequency noise thrust layers.",
+        "b": "Top-shelf sound design. Perfect rumble-and-noise profile with deep sub-bass spool-up (40-90Hz) and crisp air thrust (5kHz+), keeping the mid-range wide open for the melodic fanfare to shine.",
+        "c": "Pure pitched glissando synth patch with no low-end weight or noise texture. Reads like a generic sci-fi UI or retro blip rather than a heavy ship takeoff, and will clash with music brass/leads."
+      }
+    },
+    "afktick": {
+      "scores": {
+        "a": 8,
+        "b": 5,
+        "c": 6
+      },
+      "best": "a",
+      "notes": {
+        "a": "Clean, tight transient with an exceptionally dry, controlled decay under 40ms. The subtle wooden/organic weight gives it a muted, slightly tense feel without drawing undue attention. Perfect repetition tolerance for a 1-second interval loop that will cut through music without harshness.",
+        "b": "Contains an annoying metallic ringing tail with strong tonal resonance in the 2kHz-3kHz range. Over a potential 3-minute warning, this tone will severely fatigue the player and clash with music harmonies. Production fix: Apply a steep notch filter on the ringing resonance, pull down the wet tail, and trim the decay envelope down to under 30ms.",
+        "c": "The transient attack is too soft and muted, relying heavily on a low-mid thump (150Hz-300Hz). In a loud 2D platformer mix with active gunfire and energetic music, this sound will get completely masked. Production fix: Layer a tiny high-frequency transient click (3kHz-6kHz, ~5ms duration) for UI bite, and high-pass filter below 120Hz to keep the mix clean."
+      }
+    }
+  }
+}

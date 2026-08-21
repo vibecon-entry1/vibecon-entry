@@ -14,12 +14,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 const __dirname = new URL('.', import.meta.url).pathname;
 
-const KEY = fs.readFileSync('/root/.vibecon-secrets/cloudflare.env', 'utf8')
-  .split('\n').find(l => l.startsWith('GEMINI_API_KEY='))?.slice('GEMINI_API_KEY='.length).trim();
-if (!KEY) { console.error('no key'); process.exit(1); }
-
-const MODEL = 'gemini-3.6-flash';
-const URL_ = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Audio-review service config lives OUTSIDE the repo: the secrets env file
+// provides the key, and REVIEW_ENDPOINT names the scoring endpoint (a
+// generateContent-style URL). Neither is committed.
+const SECRETS = '/root/.vibecon-secrets/cloudflare.env';
+const KEY = fs.readFileSync(SECRETS, 'utf8')
+  .split('\n').find(l => l.endsWith('=') === false && l.includes('_API_KEY='))?.split('=').slice(1).join('=').trim();
+if (!KEY) { console.error('no key in secrets env'); process.exit(1); }
+const URL_ = process.env.REVIEW_ENDPOINT;
+if (!URL_) { console.error('set REVIEW_ENDPOINT to the audio-review generateContent URL'); process.exit(1); }
 
 const ROLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'prompts', 'roles.json'), 'utf8'));
 const RUBRIC = fs.readFileSync(path.join(__dirname, 'prompts', 'rubric.txt'), 'utf8');
@@ -39,9 +42,9 @@ async function reviewSound(name) {
     generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
   };
   for (let attempt = 1; attempt <= 4; attempt++) {
-    const res = await fetch(URL_, {
+    const res = await fetch(`${URL_}?key=${KEY}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (!res.ok) {

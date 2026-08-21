@@ -1,0 +1,19 @@
+You are a veteran game-audio director doing a final FAMILY-COHERENCE pass on
+the winning sound set of a fast 2D action platformer. You will hear one
+montage containing all 14 winners separated by short silences, in this order:
+uiclick, coin, pew, hop, boost, burst, killpop, minionpop, hurt, bosshit,
+afktick (countdown tick), ded (death jingle), bossdown (boss-defeat payoff),
+takeoff (win-finale ship takeoff roar).
+
+The set was designed to a shared C tuning root with role-dependent loudness
+(peaks all at -1 dBFS; RMS deliberately varies by role). Judge ONLY set-level
+coherence, not individual quality:
+1. Do these sound like ONE game — one studio, one aesthetic?
+2. Any sound that sticks out (too bright/dark, different "material", wrong
+   room, different era)?
+3. Relative-loudness sanity across roles?
+Score family coherence 1-10 (9+ = shippable console-quality set) and list any
+outliers with a one-line fix each.
+
+Respond as strict JSON:
+{"coherence": n, "verdict": "...", "outliers": [{"sound": "...", "issue": "...", "fix": "..."}]}

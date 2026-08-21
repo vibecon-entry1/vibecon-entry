@@ -1,0 +1,59 @@
+{
+  "label": "round4a",
+  "model": "audio review",
+  "calls": 4,
+  "sounds": {
+    "boost": {
+      "scores": {
+        "a": 4,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Transient is far too soft and mushy, lacking high-frequency clarity above 4kHz needed to slice through a dense music mix. The low-mid range (250Hz-500Hz) is overly boxy. To fix: boost/layer a fast-attack (2-5ms) high-passed air noise layer (>4kHz) and notch 400Hz by 3dB.",
+        "b": "Solid commercial quality with a punchy attack, distinct airy sweep, and good mid-range body. Cuts through well without harshness. To reach 9+, add subtle pitch/filter variation (±3% pitch, subtle LP cutoff randomization) for high repetition tolerance in fast gameplay.",
+        "c": "Sounds like a retro synth/laser chirp rather than an airy physical thrust. Entirely lacks low-end body (100Hz-300Hz) and broadband air texture, while the high-pitched tonal sweep is too harsh for frequent triggering. Needs a full redesign: add a broadband noise sweep layer (~100-150ms decay) and a soft mid-bass thud."
+      }
+    },
+    "ded": {
+      "scores": {
+        "a": 8,
+        "b": 4,
+        "c": 3
+      },
+      "best": "a",
+      "notes": {
+        "a": "Clear descending melodic phrase with a pleasant bell/pluck transient and clean tail decay. Reads clearly in a full-stop moment. To reach 9+, layer a subtle low-mid warm pad (around 200-400 Hz) underneath to give the death moment emotional weight and round out the high-frequency chime transient.",
+        "b": "Bare retro synth blips with dry, clicky attacks and zero tail decay. Sounds like placeholder chiptune audio. Needs softer attack envelopes, dynamic low-pass filtering, stereo widening, and a dedicated reverb/delay tail to sound like a modern polished commercial asset.",
+        "c": "Continuous pitch-glide slide rather than a structured melodic phrase. Lacks musical cadence, musicality, and emotional resonance for a player death state. Needs to be replaced with distinct interval steps, warm harmonic layering, and a proper decay tail."
+      }
+    },
+    "bossdown": {
+      "scores": {
+        "a": 5,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Sounds more like a stage-clear jingle or major item pickup than a boss kill explosion. High-mid chimes cut well, but it completely lacks low-end power and dynamic weight. Needs a heavy sub-impact layer (short pitch-drop 150Hz->35Hz over 100ms) and a crunch/explosion layer to deliver the necessary visceral payoff before the triumphant tail.",
+        "b": "Great sci-fi weight, punchy low-end impact, and an aggressive pitch-drop that will easily punch through an active music track. To push this to top-shelf 9+ console polish, layer a longer bright triumphant sheen/harmonic shimmer tail in the 2kHz-6kHz region that lingers for 1.5-2 seconds after the low-end impact clears.",
+        "c": "Far too short, thin, and minor—reads like a standard UI element or small pickup sound. Lacks sub-bass (<100Hz) entirely and has no explosive transient or dramatic tail. Requires a total redesign with multi-layered low-end body, broad crunch, and a extended tail to fit a boss defeat payoff."
+      }
+    },
+    "afktick": {
+      "scores": {
+        "a": 7,
+        "b": 9,
+        "c": 5
+      },
+      "best": "b",
+      "notes": {
+        "a": "Great warm low-mid body (300-500 Hz) that ensures high fatigue tolerance over long repetitions. However, the transient attack is slightly too soft around 2-4 kHz, risking getting buried beneath energetic music and gunfire. Production note: add a tiny, micro-layered metallic or wood transient (1-2 ms attack duration) boosted around 3 kHz, and trim the tail decay under 45 ms.",
+        "b": "Top-shelf console quality UI tick. The transient is remarkably crisp and well-defined without being harsh, cutting through dense music and combat effortlessly via a focused 2.5-4 kHz attack backed by a subtle, tight low-mid body. Perfectly conveys countdown urgency while maintaining high repetition tolerance.",
+        "c": "Feels like a basic single-layer synthetic pop/woodblock impulse lacking sound design depth. The attack around 1.5-3 kHz sounds hollow and plastic, and it lacks low-mid body (needs grounding around 250-400 Hz). Production note: layer a subtle mechanical/digital timer element underneath, apply a gentle high-shelf roll-off above 7 kHz to avoid ear fatigue, and lengthen the body envelope slightly."
+      }
+    }
+  }
+}

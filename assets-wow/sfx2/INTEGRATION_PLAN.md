@@ -6,44 +6,71 @@ the plan for the later integration wave.
 
 ## What ships
 
-12 winner files + the remaining audition candidates, all AAC-LC in `.m4a`
+14 winner files (12 existing sounds + 2 new) + the remaining audition
+candidates, all AAC-LC in `.m4a`
 (the one compressed container every browser's `decodeAudioData` accepts —
 Safari rejects ogg/opus, and raw WAV is 5-10x the bytes). Encoded at 64 kbps
 mono from 44100 Hz peak-normalized (-1 dBFS) masters in `wav/`.
 
-### Size table (all 36 candidates)
+### Size table (all 42 candidates, final renders; winner in bold)
 
-| sound | a | b | c | winner-only cost |
+| sound | a | b | c | winner bytes |
 |---|---|---|---|---|
-| pew | 1859 | 1887 | 1878 | ~1.9 KB |
-| hop | 2448 | 2416 | 2343 | ~2.4 KB |
-| boost | 3328 | 3104 | 3280 | ~3.3 KB |
-| burst | 2600 | 2625 | 2749 | ~2.7 KB |
-| coin | 3915 | 3217 | 3619 | ~3.9 KB |
-| hurt | 2949 | 2871 | 2809 | ~2.9 KB |
-| ded | 12770 | 11791 | 11027 | ~12.8 KB |
-| killpop | 2171 | 2190 | 2322 | ~2.2 KB |
-| bosshit | 3198 | 3018 | 4392 | ~3.2 KB |
-| bossdown | 14348 | 13539 | 13592 | ~14.3 KB |
-| minionpop | 1775 | 1766 | 1865 | ~1.8 KB |
-| uiclick | 1526 | 1576 | 1648 | ~1.6 KB |
+| pew | 1859 | 1887 | **1878** | 1.9 KB (c) |
+| hop | 2481 | **2403** | 2343 | 2.4 KB (b) |
+| boost | 3377 | **3063** | 3285 | 3.1 KB (b) |
+| burst | **2630** | 2582 | 2749 | 2.6 KB (a) |
+| coin | **3915** | 3217 | 3619 | 3.9 KB (a) |
+| hurt | **2949** | 2871 | 2809 | 2.9 KB (a) |
+| ded | **13936** | 11780 | 11027 | 13.9 KB (a) |
+| killpop | 2171 | **2190** | 2322 | 2.2 KB (b) |
+| bosshit | **3171** | 3018 | 4674 | 3.2 KB (a) |
+| bossdown | 14379 | 13539 | **17309** | 17.3 KB (c) |
+| minionpop | **1725** | 1766 | 1822 | 1.7 KB (a) |
+| uiclick | **1526** | 1576 | 1648 | 1.5 KB (a) |
+| takeoff (new) | 26056 | **27522** | 26770 | 27.5 KB (b) |
+| afktick (new) | **1635** | 1859 | 1757 | 1.6 KB (a) |
 
-Totals: **all 36 files = 154,411 B (~151 KB)**; the 12 defaults alone are
-~53 KB — both far under the 400 KB budget and well under one music-track
-second of the existing 27 MB mp3 stream.
+Totals: **all 42 files = 245,095 B (~239 KB)**, under the 400 KB
+shipped-candidate budget; the 14 winners alone are ~85 KB (takeoff_b at
+27.5 KB is the sanctioned exception file). All of it is well under one
+music-track second of the existing 27 MB mp3 stream.
+
+### Two NEW engine sound names
+
+These do not exist in `SOUNDS` today; the integrator wires both:
+
+- **`takeoff`** — ship-takeoff engine roar for the win finale. Trigger at the
+  same site that starts the sequence in `web/game/scenes/play.js` (`takeoff = 0`,
+  next to `jukebox?.playOneShot('fanfare')`, ~line 730). The asset is ~3.0-3.2s
+  against the 2.5s frozen-world window on purpose: the tail rings into the win
+  scene, which by design has no entry sting. It is mixed rumble/noise-forward
+  so it never fights the fanfare's melody. Plays once per run; lazy-loading it
+  at gate-open (or just fetching with the other 12) is fine. This one file is
+  the sanctioned budget exception (~15-30 KB encoded).
+- **`afktick`** — countdown tick for the AFK fail-safe. Fire once per second
+  while the countdown overlay is showing, i.e. while
+  `idleT >= AFK_WARN && outT < 0` (the same condition that draws the countdown,
+  play.js ~line 1158). Up to 180 repetitions per incident: the candidates are
+  bone-dry with near-zero tail for exactly this reason. Suggested trigger: on
+  each change of `Math.ceil(left)`.
+
+Both go through the same table/`play(name)` path as everything else — no new
+API. `?test` silence and mute cover them automatically once they are table
+entries.
 
 ## Preload strategy
 
 Keep the engine's whole doctrine; only the voice source changes.
 
 1. **Nothing before a gesture.** `unlock()` keeps creating the AudioContext
-   lazily. The 12 default files are `fetch()`ed at `unlock()` time (first
+   lazily. The 14 default files (12 existing sounds + takeoff + afktick) are `fetch()`ed at `unlock()` time (first
    gesture), then `decodeAudioData`d into `AudioBuffer`s held in a map.
-   ~53 KB over 12 requests is a non-event even on 3G; sounds that resolve
+   ~85 KB over 14 requests is a non-event even on 3G; sounds that resolve
    before their first trigger simply play, and any `play()` arriving before
    its buffer resolves falls through to the synth fallback (below) — the game
    never waits on audio.
-   - Optional hardening: `<link rel="prefetch">` the 12 URLs from index.html
+   - Optional hardening: `<link rel="prefetch">` the 14 URLs from index.html
      so the bytes are usually in HTTP cache before unlock even runs; still
      zero audio-device usage before the gesture.
 2. **`?test` stays silent.** The `enabled:false` build must not fetch at all:
@@ -62,7 +89,7 @@ Keep the engine's whole doctrine; only the voice source changes.
    (it is a menu — a 50 ms fetch is imperceptible) and caches the decoded
    buffer for the session. A banked pick triggers a background fetch of that
    file so the next in-game trigger is warm.
-5. **`sfx.current()` hook** grows one field: `loaded: <n of 12>` so the live
+5. **`sfx.current()` hook** grows one field: `loaded: <n of 14>` so the live
    probe can assert preload health. No existing field changes.
 
 ## Fallback question: keep the synth recipes if decode fails?
