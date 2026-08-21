@@ -142,6 +142,7 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
     const px = Math.max(0, (need - r.w) / 2), py = Math.max(0, (need - r.h) / 2);
     return v.x >= r.x - px && v.x < r.x + r.w + px && v.y >= r.y - py && v.y < r.y + r.h + py;
   };
+  const plateDist = (v, r) => Math.hypot(v.x - (r.x + r.w / 2), v.y - (r.y + r.h / 2));
   function drawPlate(ctx, r) {
     ctx.fillStyle = 'rgba(11,11,18,0.55)';
     ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -190,11 +191,19 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
       const taps = input.taps?.() ?? [];
       if (taps.length) {
         const v = taps[0];
-        if (phase === 'title' && unlocked && hitPlate(v, wowRect())) {
+        // On tiny/high-dpr fits the 44 CSS px floor inflates both hit boxes
+        // past the gap between the two lines, so — like the shell's claim() —
+        // an overlap resolves to the nearest plate CENTRE: two abutting
+        // targets stay two targets, and a display tap can never launch wow.
+        const hits = [];
+        if (phase === 'title' && unlocked && hitPlate(v, wowRect())) hits.push(['wow', wowRect()]);
+        if (phase === 'title' && hitPlate(v, dispRect())) hits.push(['display', dispRect()]);
+        hits.sort((a, b) => plateDist(v, a[1]) - plateDist(v, b[1]));
+        if (hits[0]?.[0] === 'wow') {
           sfx?.play('uiclick');
           go('play', { mode: 'wow' });    // same path as the W key above
           return;
-        } else if (phase === 'title' && hitPlate(v, dispRect())) {
+        } else if (hits[0]?.[0] === 'display') {
           sfx?.play('uiclick');
           display = toggleDisplay?.() ?? display;
           // Consume the whole frame, not just the tap: a centred plate sits in

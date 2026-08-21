@@ -182,3 +182,35 @@ test('title: the display plate flips crisp/fill and never skips a card', async (
   await page.screenshot({ path: 'tests/artifacts/touch-title-plates.png' });
   expect(errors).toEqual([]);
 });
+
+// Regression: on a tiny fit the 44 CSS px floor inflates PLATE hit boxes past
+// the gap between the two title lines. 568x320 CSS at dpr 2 (crisp scale 1)
+// puts the floor at 88 virtual px, so the unlocked-with-banked-best wow box
+// (y 217..305) swallows the display line's centre (303.5) — first-match
+// resolution launched wow from a display tap. Nearest-centre must not.
+test.describe('tiny fit: inflated plates overlap', () => {
+  test.use({ viewport: { width: 568, height: 320 }, deviceScaleFactor: 2 });
+
+  test('display tap toggles display; wow tap still enters wow', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(String(e)));
+    await page.addInitScript(() => localStorage.setItem('suchblast_v1',
+      JSON.stringify({ v: 1, wowUnlocked: true, best: { gauntlet: 4200, wow: 0 } })));
+    await page.goto('http://localhost:8123/');
+    await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+    let t = await touchRig(page);
+    await t.tap(320, 303);                      // dead centre of the DISPLAY line
+    await page.waitForFunction(() => window.__blast.state().display === 'fill',
+                               null, { timeout: 5000 });
+    const s = await st(page);
+    expect(s.scene).toBe('title');              // display toggled, wow NOT launched
+    expect(s.phase).toBe('title');
+    // ...and the wow plate itself still wins its own centre.
+    t = await touchRig(page);                   // the toggle re-fit the canvas
+    await t.tap(320, 261);
+    await page.waitForFunction(() => window.__blast.state().scene === 'play' &&
+                                     window.__blast.state().mode === 'wow',
+                               null, { timeout: 10000 });
+    expect(errors).toEqual([]);
+  });
+});
