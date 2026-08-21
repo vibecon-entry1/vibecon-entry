@@ -485,10 +485,13 @@ async function boot() {
   const loop = createLoop({
     update(dt, frame) {
       window.__blast.frame = frame;
-      // Portrait veil = the world holds still. Skipped BEFORE the tape reader
-      // so a paused frame can't consume tape entries; e2e tapes always run in
-      // landscape viewports, so the two never actually meet.
-      if (portraitBlocked()) return;
+      // Portrait veil = the world holds still. Bailed BEFORE the tape reader
+      // so a veiled frame can't consume tape entries; e2e tapes always run in
+      // landscape viewports, so the two never actually meet. The input frame
+      // cycle still runs: taps that land UNDER the veil must drain every
+      // frame, not pile up in the tap/uiTaps records and fire a phantom
+      // shot/pause/menu action on the first live frame after rotate-back.
+      if (portraitBlocked()) { input.beginFrame(); input.endFrame(); return; }
       if (xMode) xPhase += dt;
       if (xBanner >= 0 && xBanner <= BANNER_T) xBanner += dt;
       // Tape entries are frame-quantized STATE CHANGES (not pulses): an entry's
