@@ -98,7 +98,7 @@ this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans
 | player verb state machine, boss, level design, scene wiring, rendering passes | Claude Opus 5 |
 | systems (enemies, coins, score, audio engine), test suites, most implementation | Claude Sonnet 5 |
 | mechanical fixes, scaffolding, docs | Claude Haiku 4.5 |
-| soundtrack | Suno (commercial license) |
+| soundtrack | Suno |
 
 all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 30+ real bugs before any human ever hit them. such process.
 
