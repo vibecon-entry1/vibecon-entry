@@ -100,6 +100,13 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   const dread = wow ? () => 0
     : cx => clamp01((cx - (arenaX - 560)) / 360) *
             (1 - clamp01((cx - (gateX - 260)) / 300));
+  // Day's-end progression (juice pass V1): 0 at the spawn, 1 at the ship pad.
+  // Pure f(camera x) like dread above, so it can never pop and two machines on
+  // the same frame agree. It drives ONLY render dressing (sun height + a warm
+  // sky glaze below); the glaze is scaled by (1 - dread) so the two
+  // progressions compose — dread owns the arena, the sunset owns the road.
+  const runEnd = !wow && level.shipPad ? Math.max(1, level.shipPad.x) : 1;
+  const sunset = wow ? () => 0 : cx => clamp01(cx / runEnd);
   let paused = false;
   // Scene-level freeze: a brief world-stall on a big hit lands harder than any
   // amount of shake alone. SET on trigger (Math.max), never accumulated, so
@@ -799,10 +806,27 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // sun is at optical infinity: the one placement drifts ~160px over the
       // whole run and never leaves the sky. The dread blend swallows it whole
       // before the arena (the boss sky has no sun by design).
+      const su = sunset(cam.x);
       if (!wow && dr < 1) {
         ctx.globalAlpha = 1 - dr;
-        drawLayer(ctx, 'sun', Math.round(356 - cam.x * 0.007), 44 + drift(0.05));
+        // The sun SINKS with run progress (juice pass V1): 64px of drop across
+        // the full gauntlet, slow enough to never read as movement, plain
+        // enough that the pad's sky is visibly later in the day than the
+        // spawn's. It slides down BEHIND the mesa band, which is the sunset.
+        drawLayer(ctx, 'sun', Math.round(356 - cam.x * 0.007),
+                  44 + Math.round(su * 64) + drift(0.05));
         ctx.globalAlpha = 1;
+      }
+      // Warm dusk glaze over the sky slice (V1): a dark-red wash (palette
+      // #38060f) that deepens toward the pad, so the run ends redder and a
+      // touch darker. Scaled by (1 - dread): the boss sky arrives unglazed,
+      // exactly as authored, and gets the sunset back on the victory lap.
+      if (!wow) {
+        const warm = su * (1 - dr) * 0.26;
+        if (warm > 0.01 && hazeTop > 0) {
+          ctx.fillStyle = `rgba(56,6,15,${warm.toFixed(3)})`;
+          ctx.fillRect(0, 0, VW, Math.min(360, hazeTop));
+        }
       }
       // Hangs in the same far sky, on the same slow factors, so it sits behind
       // every band that follows and drifts with them.
