@@ -18,7 +18,7 @@ const KEY = fs.readFileSync('/root/.vibecon-secrets/cloudflare.env', 'utf8')
   .split('\n').find(l => l.startsWith('GEMINI_API_KEY='))?.slice('GEMINI_API_KEY='.length).trim();
 if (!KEY) { console.error('no key'); process.exit(1); }
 
-const MODEL = 'audio-review-model';
+const MODEL = 'gemini-3.6-flash';
 const URL_ = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 const ROLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'prompts', 'roles.json'), 'utf8'));

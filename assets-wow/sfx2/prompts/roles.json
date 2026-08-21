@@ -1,14 +1,16 @@
 {
-  "pew": "The player's gun. Fires several times per second for minutes at a time — must be tight, dry, characterful, and absolutely non-fatiguing. The quietest sound in the game by design.",
+  "pew": "The player's gun. Fires several times per second for minutes at a time \u2014 must be tight, dry, characterful, and absolutely non-fatiguing. The quietest sound in the game by design.",
   "hop": "Downward-shot recoil off the ground that launches the player UP: a light, springy upward gesture. Fired often.",
   "boost": "Mid-air downward-shot boost: an airy thrust whoosh with some body, bigger than hop but still short. Fired often.",
   "burst": "Slide-burst: the one shot that shoves the player HORIZONTALLY. Should feel like a physical low shove/kick with weight, not a laser.",
-  "coin": "Pickup collect: a bright inharmonic sparkle-ping with a fast decay. Must pierce a busy mix (kills + landings on the same frame) without shrillness. Plays constantly — must stay delightful.",
+  "coin": "Pickup collect: a bright inharmonic sparkle-ping with a fast decay. Must pierce a busy mix (kills + landings on the same frame) without shrillness. Plays constantly \u2014 must stay delightful.",
   "hurt": "Player takes damage: a falling, crunchy, slightly ugly hit that can NEVER be confused with any weapon sound. Attention-grabbing but not painful.",
-  "ded": "Player death: the only melodic jingle in the set — a short descending phrase, properly sad, with a small tail. Plays at a full-stop moment so it can breathe.",
+  "ded": "Player death: the only melodic jingle in the set \u2014 a short descending phrase, properly sad, with a small tail. Plays at a full-stop moment so it can breathe.",
   "killpop": "Enemy kill confirm: plays hundreds of times per run. Tight, juicy, instantly readable pop with zero tail. The most repetition-critical sound after pew.",
   "bosshit": "Boss taking a hit from the player: a thump with real low-end body, deliberately NO sharp transient click (it lands on the same frame as the player's own fire).",
   "bossdown": "Boss defeated: THE payoff moment, the one big sound in the game. Explosion plus a feeling of triumph; a tail is welcome. Rare, so it can be long and rich.",
-  "minionpop": "Boss-summoned minion death: a smaller, higher, lighter cousin of the kill pop — must be audibly 'not a real kill'. Very short.",
-  "uiclick": "Menu/UI interaction: soft and tactile, felt more than heard. Like a high-quality physical button. Must never grate after dozens of menu presses."
+  "minionpop": "Boss-summoned minion death: a smaller, higher, lighter cousin of the kill pop \u2014 must be audibly 'not a real kill'. Very short.",
+  "uiclick": "Menu/UI interaction: soft and tactile, felt more than heard. Like a high-quality physical button. Must never grate after dozens of menu presses.",
+  "takeoff": "NEW win-finale sound: the player's ship takes off after victory. A 2.5-second engine spool-up \u2014 low rumble building to a bright thrust roar \u2014 that plays ONCE, underneath a triumphant melodic fanfare that is already ringing. It must feel huge but stay out of the melody's frequency lane (rumble/noise-forward, not tonal-melodic).",
+  "afktick": "NEW UI sound: a countdown tick for an idle-player warning timer. Repeats exactly once per second, potentially for up to three minutes: must be short, dry, slightly ominous, with minimal tail, and absolutely non-grating on endless repetition."
 }

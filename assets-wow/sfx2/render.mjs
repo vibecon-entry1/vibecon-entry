@@ -303,6 +303,7 @@ const DESIGNS = {
         const puff = makeBuf(0.09);
         noise(puff, { amp: bell({ a: 0.015, r: 0.07 }), vol: 0.16, filter: { type: 'bp', f: glide(700, 2200, 0.09), q: 1.2 }, rnd });
         mixAt(buf, puff, 0, 1);
+        click(buf, rnd, { dur: 0.004, f: 3000, vol: 0.28 }); // r2: designed snap per review
       },
     },
     b: { // "boing": FM spring — modulator gives it a rubbery snap.
@@ -311,6 +312,10 @@ const DESIGNS = {
         osc(buf, { shape: 'sine', freq: glide(G4, G5, 0.12), amp: env({ a: 0.004, tau: 0.055 }),
           vol: 0.9, fm: { ratio: 1.5, index: t => 2.2 * Math.exp(-t / 0.05) } });
         click(buf, rnd, { dur: 0.003, f: 3000, vol: 0.12 });
+        // r2: high-frequency air puff accenting the recoil (review: 8-10 kHz)
+        const air = makeBuf(0.07);
+        noise(air, { amp: bell({ a: 0.008, r: 0.055 }), vol: 0.12, filter: { type: 'hp', f: 8000, q: 0.8 }, rnd });
+        mixAt(buf, air, 0.01, 1);
       },
     },
     c: { // "pixel hop": bright tri two-step up (C5→G5) + air, more retro-melodic.
@@ -330,23 +335,30 @@ const DESIGNS = {
     a: { // "jetpuff": swept bandpass noise swell + rising tri + sub anchor.
       dur: 0.26,
       build(buf, rnd) {
-        noise(buf, { amp: bell({ a: 0.05, r: 0.19 }), vol: 0.55, filter: { type: 'bp', f: glide(500, 3200, 0.24), q: 1.6 }, rnd });
-        osc(buf, { shape: 'tri', freq: glide(G3, G5, 0.22), amp: env({ a: 0.02, tau: 0.09 }), vol: 0.5 });
-        osc(buf, { shape: 'sine', freq: glide(G2, G3, 0.22), amp: env({ a: 0.015, tau: 0.08 }), vol: 0.35 });
+        // r2: noise-forward per review — tonal chirp demoted, low-mid punch added
+        noise(buf, { amp: bell({ a: 0.04, r: 0.2 }), vol: 0.75, filter: { type: 'bp', f: glide(450, 3400, 0.24), q: 1.4 }, rnd });
+        osc(buf, { shape: 'tri', freq: glide(G3, G5, 0.22), amp: env({ a: 0.02, tau: 0.09 }), vol: 0.22 });
+        const punch = makeBuf(0.09);
+        osc(punch, { shape: 'sine', freq: glide(C3, G2, 0.08), amp: env({ a: 0.004, tau: 0.04 }), vol: 0.55 });
+        mixAt(buf, punch, 0, 1);
+        click(buf, rnd, { dur: 0.005, f: 2800, vol: 0.2 });
       },
     },
     b: { // "afterburner": saw through an opening LP, noisier, more mechanical.
       dur: 0.24,
       build(buf, rnd) {
+        // r2: whoosh-led per review — saws pulled way down, air sheen added
         const body = makeBuf(0.24);
-        osc(body, { shape: 'saw', freq: glide(C3, C5, 0.2), amp: env({ a: 0.015, tau: 0.09 }), vol: 0.55, detune: -5 });
-        osc(body, { shape: 'saw', freq: glide(C3, C5, 0.2), amp: env({ a: 0.015, tau: 0.09 }), vol: 0.55, detune: 5 });
+        osc(body, { shape: 'saw', freq: glide(C3, C5, 0.2), amp: env({ a: 0.015, tau: 0.09 }), vol: 0.2, detune: -5 });
+        osc(body, { shape: 'saw', freq: glide(C3, C5, 0.2), amp: env({ a: 0.015, tau: 0.09 }), vol: 0.2, detune: 5 });
         // opening LP sells acceleration
         const bi = biquad();
         for (let i = 0; i < body.length; i++) { bi.set('lp', 600 + 5000 * (i / body.length) ** 1.4, 1.2); body[i] = bi.run(body[i]); }
         mixAt(buf, body, 0, 1);
-        noise(buf, { amp: bell({ a: 0.04, r: 0.18 }), vol: 0.3, filter: { type: 'hp', f: 1800, q: 0.8 }, rnd });
-        saturate(buf, 1.5);
+        noise(buf, { amp: bell({ a: 0.04, r: 0.19 }), vol: 0.65, filter: { type: 'bp', f: glide(500, 2800, 0.23), q: 1.3 }, rnd });
+        noise(buf, { amp: bell({ a: 0.05, r: 0.17 }), vol: 0.18, filter: { type: 'hp', f: 6000, q: 0.8 }, rnd });
+        filterBuf(buf, 'hp', 180, 0.7);
+        saturate(buf, 1.4);
       },
     },
     c: { // "updraft": pure airy — big filtered-noise gesture + faint FM whistle.
@@ -355,6 +367,7 @@ const DESIGNS = {
         noise(buf, { amp: bell({ a: 0.06, r: 0.18 }), vol: 0.7, filter: { type: 'bp', f: glide(400, 4200, 0.23), q: 2.4 }, rnd });
         osc(buf, { shape: 'sine', freq: glide(C4, C6, 0.22), amp: t => 0.2 * bell({ a: 0.07, r: 0.16 })(t),
           vol: 1, fm: { ratio: 2.01, index: () => 1.2 } });
+        click(buf, rnd, { dur: 0.006, f: 3000, vol: 0.3 }); // r2: crisp onset per review
       },
     },
   },
@@ -364,12 +377,15 @@ const DESIGNS = {
     a: { // "kick shove": saturated sine drop + gut-punch noise + tight click.
       dur: 0.18,
       build(buf, rnd) {
+        // r2: laser-tail killed, sub-drop added per review
         osc(buf, { shape: 'sine', freq: glide(E3, 49, 0.13), amp: env({ a: 0.002, tau: 0.06 }), vol: 1 });
+        osc(buf, { shape: 'sine', freq: glide(65, 45, 0.14), amp: env({ a: 0.004, tau: 0.07 }), vol: 0.5 });
         const th = makeBuf(0.1);
-        noise(th, { amp: env({ a: 0.002, tau: 0.03 }), vol: 0.5, filter: { type: 'lp', f: 900, q: 0.9 }, rnd });
+        noise(th, { amp: env({ a: 0.002, tau: 0.03 }), vol: 0.5, filter: { type: 'lp', f: 700, q: 0.9 }, rnd });
         mixAt(buf, th, 0, 1);
-        click(buf, rnd, { dur: 0.003, f: 2500, vol: 0.3 });
-        saturate(buf, 2.8);
+        click(buf, rnd, { dur: 0.003, f: 1800, vol: 0.15 });
+        saturate(buf, 2.6);
+        filterBuf(buf, 'lp', 2400, 0.8);
       },
     },
     b: { // "fm slam": low FM punch, grittier midrange knock.
@@ -378,6 +394,8 @@ const DESIGNS = {
         osc(buf, { shape: 'sine', freq: glide(C3, G2 / 2, 0.12), amp: env({ a: 0.002, tau: 0.055 }),
           vol: 1, fm: { ratio: 1.4, index: t => 6 * Math.exp(-t / 0.02) } });
         noise(buf, { amp: env({ a: 0.002, tau: 0.04 }), vol: 0.35, filter: { type: 'bp', f: 350, q: 1.1 }, rnd });
+        // r2: mid slap so the shove reads over music (review: 1-2.5 kHz, snappy)
+        noise(buf, { amp: env({ a: 0.003, h: 0.012, tau: 0.02 }), vol: 0.3, filter: { type: 'bp', f: 1800, q: 1.2 }, rnd });
         saturate(buf, 2.2);
       },
     },
@@ -468,13 +486,19 @@ const DESIGNS = {
         const notes = [[C5, 0], [G4, 0.18], [E4, 0.36], [C4, 0.54]];
         for (const [hz, at] of notes) {
           const last = hz === C4;
-          const n = makeBuf(last ? 0.4 : 0.22);
-          osc(n, { shape: 'sine', freq: flat(hz), amp: env({ a: 0.008, tau: last ? 0.18 : 0.08 }), vol: 0.7 });
-          osc(n, { shape: 'tri', freq: flat(hz * 2), amp: env({ a: 0.008, tau: last ? 0.12 : 0.06 }), vol: 0.2 });
-          osc(n, { shape: 'sine', freq: flat(hz), amp: env({ a: 0.008, tau: last ? 0.18 : 0.08 }), vol: 0.35, detune: 6 });
+          const n = makeBuf(last ? 0.55 : 0.22);
+          osc(n, { shape: 'sine', freq: flat(hz), amp: env({ a: 0.008, tau: last ? 0.26 : 0.08 }), vol: 0.7 });
+          osc(n, { shape: 'tri', freq: flat(hz * 2), amp: env({ a: 0.008, tau: last ? 0.16 : 0.06 }), vol: 0.2 });
+          osc(n, { shape: 'sine', freq: flat(hz), amp: env({ a: 0.008, tau: last ? 0.26 : 0.08 }), vol: 0.35, detune: 6 });
+          // r2: low-mid pad under each note per review
+          osc(n, { shape: 'sine', freq: flat(hz / 2), amp: env({ a: 0.015, tau: last ? 0.22 : 0.09 }), vol: 0.3 });
           mixAt(buf, n, at, 1);
         }
-        return reverb(buf, { mix: 0.22, decay: 0.6, tail: 0.45 });
+        // r2: soft sub drop under the first note
+        const sub = makeBuf(0.2);
+        osc(sub, { shape: 'sine', freq: glide(G2, 60, 0.16), amp: env({ a: 0.008, tau: 0.09 }), vol: 0.4 });
+        mixAt(buf, sub, 0, 1);
+        return reverb(buf, { mix: 0.26, decay: 0.7, tail: 0.5 });
       },
     },
     b: { // "minor fall": darker line C5-Ab4-F4-C4, square-ish console voice + echo.
@@ -488,6 +512,10 @@ const DESIGNS = {
           osc(n, { shape: 'sine', freq: flat(hz), amp: env({ a: 0.006, tau: last ? 0.17 : 0.08 }), vol: 0.5 });
           mixAt(buf, n, at, 1);
         }
+        // r2: dull low thud on the first note's transient (review: 60-90 Hz, ~100ms)
+        const thud = makeBuf(0.13);
+        osc(thud, { shape: 'sine', freq: glide(85, 60, 0.1), amp: env({ a: 0.004, tau: 0.05 }), vol: 0.5 });
+        mixAt(buf, thud, 0, 1);
         filterBuf(buf, 'lp', 3000, 0.8);
         return reverb(buf, { mix: 0.18, decay: 0.5, tail: 0.4 });
       },
@@ -545,10 +573,13 @@ const DESIGNS = {
       dur: 0.24,
       build(buf, rnd) {
         osc(buf, { shape: 'sine', freq: glide(G2, 41, 0.16), amp: env({ a: 0.003, tau: 0.09 }), vol: 1 });
+        // r2: dedicated sub layer + low-mid weight per review
+        osc(buf, { shape: 'sine', freq: glide(55, 40, 0.2), amp: env({ a: 0.005, tau: 0.11 }), vol: 0.6 });
+        osc(buf, { shape: 'tri', freq: glide(196, 110, 0.1), amp: env({ a: 0.003, tau: 0.045 }), vol: 0.3 });
         const kn = makeBuf(0.05);
         noise(kn, { amp: env({ a: 0.002, tau: 0.014 }), vol: 0.4, filter: { type: 'bp', f: 650, q: 1.6 }, rnd });
         mixAt(buf, kn, 0, 1);
-        saturate(buf, 2.2);
+        saturate(buf, 2.4);
         filterBuf(buf, 'lp', 2200, 0.8);
       },
     },
@@ -562,12 +593,13 @@ const DESIGNS = {
       },
     },
     c: { // "gut thud": square body + sub + tiny dark room tail.
-      dur: 0.26, tail: 0.12,
+      dur: 0.3, tail: 0.12,
       build(buf, rnd) {
         osc(buf, { shape: 'square', freq: glide(110, 49, 0.14), amp: env({ a: 0.003, tau: 0.06 }), vol: 0.45 });
-        osc(buf, { shape: 'sine', freq: glide(G2 / 1.5, 37, 0.16), amp: env({ a: 0.004, tau: 0.09 }), vol: 0.9 });
+        // r2: longer 50 Hz sub decay + a touch more drive per review
+        osc(buf, { shape: 'sine', freq: glide(G2 / 1.5, 37, 0.2), amp: env({ a: 0.004, tau: 0.13 }), vol: 0.9 });
         noise(buf, { amp: env({ a: 0.002, tau: 0.025 }), vol: 0.25, filter: { type: 'lp', f: 900, q: 1 }, rnd });
-        saturate(buf, 2);
+        saturate(buf, 2.4);
         return reverb(buf, { mix: 0.1, decay: 0.3, tail: 0.12, damp: 0.6 });
       },
     },
@@ -579,19 +611,20 @@ const DESIGNS = {
       // sparkle arp blooming out of the smoke.
       dur: 1.1, tail: 0.5,
       build(buf, rnd) {
-        // impact
-        osc(buf, { shape: 'sine', freq: glide(G2, 33, 0.3), amp: env({ a: 0.003, tau: 0.16 }), vol: 0.9 });
-        click(buf, rnd, { dur: 0.005, f: 2000, vol: 0.5 });
+        // impact — r2: much heavier sub layer, bells demoted (review: no low end)
+        osc(buf, { shape: 'sine', freq: glide(G2, 33, 0.3), amp: env({ a: 0.003, tau: 0.2 }), vol: 1.4 });
+        osc(buf, { shape: 'sine', freq: glide(60, 30, 0.4), amp: env({ a: 0.005, tau: 0.22 }), vol: 0.9 });
+        click(buf, rnd, { dur: 0.005, f: 2000, vol: 0.4 });
         // explosion wash: LP noise closing down
-        noise(buf, { amp: env({ a: 0.008, tau: 0.28 }), vol: 0.8, filter: { type: 'lp', f: glide(5200, 260, 0.9), q: 0.9 }, rnd });
+        noise(buf, { amp: env({ a: 0.008, tau: 0.3 }), vol: 1.0, filter: { type: 'lp', f: glide(5200, 260, 0.9), q: 0.9 }, rnd });
         // rumble wobble
-        osc(buf, { shape: 'sine', freq: t => 41 * (1 + 0.08 * Math.sin(2 * Math.PI * 9 * t)), amp: env({ a: 0.05, h: 0.2, tau: 0.25 }), vol: 0.35 });
+        osc(buf, { shape: 'sine', freq: t => 41 * (1 + 0.08 * Math.sin(2 * Math.PI * 9 * t)), amp: env({ a: 0.05, h: 0.3, tau: 0.3 }), vol: 0.6 });
         // triumph arp out of the smoke
         const arp = [[C5, 0.42], [E5, 0.5], [G5, 0.58], [C6, 0.66], [E6, 0.76], [G6, 0.86]];
         for (const [hz, at] of arp) {
-          bellStrike(buf, { at, base: hz, partials: [[1, 1, 0.12], [2.52, 0.3, 0.06]], vol: 0.28 });
+          bellStrike(buf, { at, base: hz, partials: [[1, 1, 0.12], [2.52, 0.3, 0.06]], vol: 0.16 });
         }
-        saturate(buf, 1.6);
+        saturate(buf, 1.8);
         return reverb(buf, { mix: 0.2, decay: 0.8, tail: 0.5, damp: 0.4 });
       },
     },
@@ -613,11 +646,20 @@ const DESIGNS = {
       },
     },
     c: { // "shatter bloom": big FM boom then glittering debris field.
-      dur: 1.0, tail: 0.5,
+      dur: 1.3, tail: 0.5,
       build(buf, rnd) {
         osc(buf, { shape: 'sine', freq: glide(C3, 37, 0.4), amp: env({ a: 0.003, tau: 0.2 }),
           vol: 1, fm: { ratio: 0.71, index: t => 8 * Math.exp(-t / 0.08) } });
+        // r2: ~500ms more sub-rumble grandeur per review
+        osc(buf, { shape: 'sine', freq: t => 45 * (1 + 0.06 * Math.sin(2 * Math.PI * 7 * t)), amp: env({ a: 0.06, h: 0.35, tau: 0.4 }), vol: 0.5 });
         noise(buf, { amp: env({ a: 0.005, tau: 0.22 }), vol: 0.6, filter: { type: 'lp', f: glide(4500, 350, 0.8), q: 0.9 }, rnd });
+        // r2: glass/debris scatter layer 3-6 kHz per review
+        for (let k = 0; k < 10; k++) {
+          const at = 0.2 + rnd() * 0.6;
+          const tick = makeBuf(0.03);
+          noise(tick, { amp: env({ a: 0.0005, tau: 0.008 }), vol: 0.25 + rnd() * 0.1, filter: { type: 'bp', f: 3200 + rnd() * 2600, q: 3 }, rnd });
+          mixAt(buf, tick, at, 1);
+        }
         // glitter debris: seeded random bell ticks raining down, C-family
         const tones = [C6, G5, E6, C7, G6, E5];
         for (let k = 0; k < 14; k++) {
@@ -638,7 +680,7 @@ const DESIGNS = {
       dur: 0.07,
       build(buf, rnd) {
         osc(buf, { shape: 'sine', freq: glide(E6, G6, 0.05), amp: env({ a: 0.001, tau: 0.018 }), vol: 0.85 });
-        click(buf, rnd, { dur: 0.0015, f: 7000, vol: 0.3 });
+        click(buf, rnd, { dur: 0.002, f: 3500, vol: 0.4 }); // r2: 2.5-4 kHz bite per review
       },
     },
     b: { // "fm spark": one FM tick, glassy.
@@ -653,6 +695,100 @@ const DESIGNS = {
       build(buf, rnd) {
         osc(buf, { shape: 'sine', freq: glide(C6, C7, 0.055), amp: env({ a: 0.002, tau: 0.022 }), vol: 0.8 });
         osc(buf, { shape: 'tri', freq: glide(C5, C6, 0.055), amp: env({ a: 0.002, tau: 0.018 }), vol: 0.2 });
+        // r2: whisper of 8k+ air on the micro-tail per review
+        noise(buf, { amp: env({ a: 0.003, tau: 0.02 }), vol: 0.1, filter: { type: 'hp', f: 8000, q: 0.8 }, rnd });
+      },
+    },
+  },
+
+  // ============ takeoff — NEW: ship takeoff engine roar for the win finale.
+  // The play.js takeoff sequence freezes the world for 2.5s with the fanfare
+  // one-shot ringing over it — so this is rumble-forward (stays out of the
+  // melody's lane) building to a bright thrust roar as the ship leaves.
+  takeoff: {
+    a: { // "spool and punch": turbine spool-up into a full-thrust roar.
+      dur: 2.6, tail: 0.4,
+      build(buf, rnd) {
+        // rumble bed that builds the whole way
+        osc(buf, { shape: 'sine', freq: t => 38 + 20 * (t / 2.6) + 2 * Math.sin(2 * Math.PI * 6 * t), amp: t => Math.min(1, t / 1.6) * (t > 2.3 ? Math.max(0, 1 - (t - 2.3) / 0.3) : 1), vol: 0.7 });
+        // turbine whine spooling up ~2 octaves
+        osc(buf, { shape: 'saw', freq: glide(G2, G4, 2.2), amp: t => Math.min(0.8, t / 1.8) * 0.28, vol: 1, detune: -6 });
+        osc(buf, { shape: 'saw', freq: glide(G2, G4, 2.2), amp: t => Math.min(0.8, t / 1.8) * 0.28, vol: 1, detune: 6 });
+        // thrust noise opening from a hiss to a roar
+        noise(buf, { amp: t => Math.min(1, (t / 2.0) ** 1.6), vol: 0.8, filter: { type: 'lp', f: glide(500, 5200, 2.4), q: 0.9 }, rnd });
+        // ignition thump at liftoff (~1.9s) + afterburner sheen
+        const ign = makeBuf(0.35);
+        osc(ign, { shape: 'sine', freq: glide(G2, 37, 0.25), amp: env({ a: 0.004, tau: 0.13 }), vol: 0.9 });
+        mixAt(buf, ign, 1.9, 1);
+        noise(buf, { amp: t => t < 1.9 ? 0 : Math.min(1, (t - 1.9) / 0.3) * 0.35, vol: 1, filter: { type: 'hp', f: 5500, q: 0.8 }, rnd });
+        saturate(buf, 1.8);
+        return reverb(buf, { mix: 0.12, decay: 0.6, tail: 0.4, damp: 0.5 });
+      },
+    },
+    b: { // "rocket rumble": deeper, noise-led, slower bloom — more cinematic.
+      dur: 2.7, tail: 0.5,
+      build(buf, rnd) {
+        noise(buf, { amp: t => Math.min(1, (t / 2.2) ** 1.3), vol: 0.95, filter: { type: 'lp', f: glide(300, 3800, 2.5), q: 1.1 }, rnd });
+        // crackle: sparse combustion pops riding the noise bed
+        for (let k = 0; k < 60; k++) {
+          const at = rnd() * 2.5;
+          const amp = Math.min(1, at / 1.8) * (0.1 + rnd() * 0.15);
+          const pop = makeBuf(0.012);
+          noise(pop, { amp: env({ a: 0.0004, tau: 0.004 }), vol: amp, filter: { type: 'bp', f: 900 + rnd() * 1800, q: 1.6 }, rnd });
+          mixAt(buf, pop, at, 1);
+        }
+        osc(buf, { shape: 'sine', freq: t => 34 + 14 * (t / 2.7), amp: t => Math.min(1, t / 1.4), vol: 0.75 });
+        osc(buf, { shape: 'tri', freq: glide(C3, C4, 2.4), amp: t => Math.min(0.7, t / 2.0) * 0.25, vol: 1 });
+        saturate(buf, 2);
+        return reverb(buf, { mix: 0.14, decay: 0.7, tail: 0.5, damp: 0.5 });
+      },
+    },
+    c: { // "hero liftoff": staged — idle hum, spool whine, then a G-chord
+      // shimmer at liftoff so the roar tips its hat to the fanfare.
+      dur: 2.6, tail: 0.5,
+      build(buf, rnd) {
+        osc(buf, { shape: 'sine', freq: t => 49 + 30 * Math.min(1, t / 2.0), amp: t => Math.min(1, t / 1.2), vol: 0.6 });
+        osc(buf, { shape: 'saw', freq: glide(98, 392, 2.3), amp: t => Math.min(0.9, t / 1.6) * 0.3, vol: 1, detune: -8 });
+        osc(buf, { shape: 'saw', freq: glide(98, 392, 2.3), amp: t => Math.min(0.9, t / 1.6) * 0.3, vol: 1, detune: 8 });
+        noise(buf, { amp: t => Math.min(1, (t / 2.1) ** 1.5), vol: 0.7, filter: { type: 'bp', f: glide(600, 4200, 2.4), q: 1.2 }, rnd });
+        // liftoff bells: G major sparkle at 2.0s, quiet, riding above the roar
+        for (const [hz, at] of [[G4, 2.0], [G5 / 2 * 1.5, 2.08], [G5, 2.16]]) {
+          bellStrike(buf, { at, base: hz * 2, partials: [[1, 1, 0.15], [2.52, 0.3, 0.08]], vol: 0.18 });
+        }
+        saturate(buf, 1.7);
+        return reverb(buf, { mix: 0.15, decay: 0.7, tail: 0.5, damp: 0.45 });
+      },
+    },
+  },
+
+  // ============ afktick — NEW: AFK rekt-countdown tick. Repeats once per
+  // second for up to three minutes: bone-dry, tiny, slightly ominous.
+  afktick: {
+    a: { // "clock of doom": woody low tick with a minor-second dissonance ghost.
+      dur: 0.07,
+      build(buf, rnd) {
+        noise(buf, { amp: env({ a: 0.0004, tau: 0.005 }), vol: 0.5, filter: { type: 'bp', f: 1100, q: 4 }, rnd });
+        osc(buf, { shape: 'sine', freq: flat(A3), amp: env({ a: 0.001, tau: 0.02 }), vol: 0.6 });
+        osc(buf, { shape: 'sine', freq: flat(A3 * 16 / 15), amp: env({ a: 0.001, tau: 0.014 }), vol: 0.2 });
+      },
+    },
+    b: { // "dead drum": muted low tom tap — felt in the chest, not the ear.
+      dur: 0.09,
+      build(buf, rnd) {
+        osc(buf, { shape: 'sine', freq: glide(E3, 110, 0.06), amp: env({ a: 0.001, tau: 0.025 }), vol: 0.9 });
+        noise(buf, { amp: env({ a: 0.0005, tau: 0.006 }), vol: 0.25, filter: { type: 'bp', f: 800, q: 2 }, rnd });
+        saturate(buf, 1.6);
+        filterBuf(buf, 'lp', 2000, 0.8);
+      },
+    },
+    c: { // "geiger": dry metallic double-tick, tense, almost no pitch.
+      dur: 0.08,
+      build(buf, rnd) {
+        noise(buf, { amp: env({ a: 0.0003, tau: 0.004 }), vol: 0.6, filter: { type: 'bp', f: 2600, q: 5 }, rnd });
+        const t2 = makeBuf(0.02);
+        noise(t2, { amp: env({ a: 0.0003, tau: 0.003 }), vol: 0.35, filter: { type: 'bp', f: 2100, q: 5 }, rnd });
+        mixAt(buf, t2, 0.035, 1);
+        osc(buf, { shape: 'sine', freq: flat(E4), amp: env({ a: 0.001, tau: 0.01 }), vol: 0.15 });
       },
     },
   },

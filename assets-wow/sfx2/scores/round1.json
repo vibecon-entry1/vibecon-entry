@@ -1,6 +1,163 @@
 {
   "label": "round1",
   "model": "audio review",
-  "calls": 44,
-  "sounds": {}
+  "calls": 12,
+  "sounds": {
+    "pew": {
+      "scores": {
+        "a": 3,
+        "b": 4,
+        "c": 9
+      },
+      "best": "c",
+      "notes": {
+        "a": "Bare synth pitch sweep with no layering. High-mid sweep around 2kHz-5kHz is piercing and will cause extreme ear fatigue during rapid fire. Add a dedicated transient click (10-15ms), a warm low-mid body layer (200-400Hz), and roll off the top end above 8kHz with a steep low-pass filter.",
+        "b": "Softer envelope than A, but feels like an unlayered placeholder synth patch. Lacks tactile impact and weight. Needs a subtle mechanical/bolt snap layer for attack definition and a tight body layer around 300Hz to sit cleanly under music without sounding thin.",
+        "c": "Top-shelf execution. Excellent transient snap paired with a tight, dry body and a controlled high-frequency tail that cuts through a busy mix without being harsh. Highly repetitive-friendly and ready for production."
+      }
+    },
+    "hop": {
+      "scores": {
+        "a": 5,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Sounds like a single synthesized pitch sweep without enough layered depth. Needs a punchier attack layer (2-4 kHz snap, <10ms) and a subtle mechanical spring resonance. Notch 300-500 Hz to avoid cluttering a dense action mix.",
+        "b": "Crisp transient and satisfying upward spring arc. Cuts well through music without being harsh. To reach top-shelf tier, add subtle pitch/formant randomization on rapid triggers and a high-frequency air puff (8-10 kHz) to accentuate the recoil feel.",
+        "c": "Thin, clicky 8-bit style oscillator sweep that lacks commercial polish. Feels like placeholder audio. Needs full multi-layer treatment: a punchy mechanical transient, a tight low-mid thump (80-120 Hz, 30ms decay), and a smooth resonant body instead of the harsh retro chirp."
+      }
+    },
+    "boost": {
+      "scores": {
+        "a": 3,
+        "b": 3,
+        "c": 6
+      },
+      "best": "c",
+      "notes": {
+        "a": "Bare retro synth chirp with no body or noise element. Completely lacks the requested airy thrust texture and will fatigue players instantly. Replace or layer with a shaped pink-noise air burst (150-200ms decay) and a low-mid body punch around 100-150Hz.",
+        "b": "A high-pitched tonal laser/sweep sound that feels like a placeholder blip. Extremely fatigue-inducing for a spammed mechanic. Remove the harsh tonal sweep or drop it by -15dB, and build a layered noise-based whoosh with a gentle high-pass filter at 180Hz and a 6kHz air sheen.",
+        "c": "Captures the airy whoosh and weight of a downward thrust best, but the transient attack is slightly mushy and muffled. Add a crisp initial transient impact (5-15ms snap in the 2kHz-4kHz range) so it cuts through heavy gunfire and music, and add +/- 1.5 semitone pitch randomization for high repetition tolerance."
+      }
+    },
+    "burst": {
+      "scores": {
+        "a": 4,
+        "b": 7,
+        "c": 2
+      },
+      "best": "b",
+      "notes": {
+        "a": "Too much like a sci-fi laser zap/FM pitch-drop with zero physical weight. Lacks the low-end thump required for a horizontal shove. High frequencies around 3kHz-6kHz dominate. To fix, high-cut the tonal laser tail, layer a heavy low-mid impact body (100Hz-220Hz), and add a low-frequency sub-drop (50Hz-80Hz) for weight.",
+        "b": "Best fit for the brief—captures a solid, heavy physical kick/thud that conveys directional shove. Low-end weight is good, but the transient is a bit muted and might get buried under an energetic music track. Boost a crisp mid-range slap/punch layer (1kHz-2.5kHz with a 15-20ms snappy attack) to help it cut through busy gunfire and music.",
+        "c": "Sounds like a placeholder synth pop or UI bubble click. Completely lacks body, layering, and transient punch. Needs a full overhaul: add a sharp mechanical or pneumatic air-burst attack layer, a weighty sub-kick body (60Hz-120Hz), and a fast pitch envelope to create physical velocity."
+      }
+    },
+    "coin": {
+      "scores": {
+        "a": 9,
+        "b": 4,
+        "c": 6
+      },
+      "best": "a",
+      "notes": {
+        "a": "Top-shelf pickup sound. Features a crisp, well-designed transient with a brilliant, inharmonic shimmer that cuts effortlessly through heavy low/mid action (kills, landings) without high-end fatigue. Layering feels rich and balanced for high repetition.",
+        "b": "Lacks the high-end sparkle and brightness required for a coin collect. Transient is too soft and thuddy, resting mostly in the 800Hz-2kHz range, which will get buried under music and sfx. Needs a high-frequency sparkle layer (6kHz-10kHz) and a faster, sharper attack.",
+        "c": "Sounds like a single pure synth/FM tone around 2.5kHz rather than a rich layered sound effect. While audible, its narrow resonant peak will cause ear fatigue quickly during rapid pickups. Suggest adding an organic metallic attack layer and spreading harmonic content across a wider top-end range."
+      }
+    },
+    "hurt": {
+      "scores": {
+        "a": 9,
+        "b": 3,
+        "c": 5
+      },
+      "best": "a",
+      "notes": {
+        "a": "Outstanding commercial quality. The downward-pitched grunt texture layered over a crunchy, body-hit transient makes it instantly recognizable as player damage, completely distinct from weapon fire. The 2.5kHz attack cuts through dense music mixes effortlessly without being ear-fatiguing.",
+        "b": "Sounds like a simple, unlayered retro synth sweep rather than a polished game sound. Lacks weight, transient snap, and organic crunch. To fix: layer a sub-bass thud (60-100Hz), add a crunchy impact texture, and give the envelope a punchier attack rather than a plain downward frequency sweep.",
+        "c": "Good layered foundation, but far too muffled and bass-heavy. The bloated 150-300Hz region will muddy the mix during active music playback, and it lacks the high-mid transient snap (2k-4kHz) required to cut through gunfire. Boost 2.5kHz transient, dip 200Hz, and shorten the tail to 120ms."
+      }
+    },
+    "ded": {
+      "scores": {
+        "a": 5,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Clean transient but feels like a bare synth patch with minimal body. It reads as lightweight indie chiptune rather than top-tier sound design. To elevate it, layer a soft low-mid pad (180–350 Hz) and a subtle sub drop beneath the initial note, extend the release time on the final note by ~400ms, and add a gentle diffusion reverb.",
+        "b": "Clear winner. Beautiful chime/bell attack with a balanced harmonic tail that uses the full-stop pause wonderfully without cluttering the spectrum. To push it to a 9+, layer a quiet, dull low-end thud (60–90 Hz, 100ms decay) right on the first note transient to give the fatal hit extra physical weight.",
+        "c": "Too comedic and cartoonish. The pitch-bend slide lacks discrete note articulation, transient impact, and emotional weight. For a 'properly sad' death, replace the continuous pitch slide with distinct descending interval steps, add acoustic/electric piano or vibe layers, and carve out the harsh resonant peak around 2.5 kHz."
+      }
+    },
+    "killpop": {
+      "scores": {
+        "a": 4,
+        "b": 9,
+        "c": 6
+      },
+      "best": "b",
+      "notes": {
+        "a": "Sounds like an unadorned pitch-dropped sine wave. The attack is mushy with no high-end transient click (needs sharpness around 3-5 kHz) to cut through music. Lacks layered depth and will be completely lost in a active mix.",
+        "b": "Top-tier kill confirm pop. The transient is extremely sharp and clean with an impeccably controlled decay under 50ms. High-frequency snap and rounded mid-body pop cut through music without causing listening fatigue during high repetition.",
+        "c": "Has a decent crunchy layer, but the tail is too long (~150ms) and contains muddy low-mids around 250-400Hz that will quickly clutter the mix during rapid kills. Needs a tighter amplitude decay envelope, a high-pass filter at 200Hz, and a cleaner transient snap."
+      }
+    },
+    "bosshit": {
+      "scores": {
+        "a": 6,
+        "b": 4,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Respects the no-click requirement well, but the impact feels lightweight and hollow for a boss. Lacks deep sub-bass body (40-70 Hz) and low-mid weight (150-250 Hz). Needs a layered sub-pitch drop and slight low-mid saturation to feel heavy.",
+        "b": "Fails to register as a heavy boss hit. Sounds like an isolated, filtered low-frequency pop without sub-weight or impact resonance. Needs a complete redesign with a dedicated sub layer and a meatier mid-body envelope.",
+        "c": "Strong candidate that meets the brief cleanly: round, clickless attack that leaves room for player weapon transients while delivering a punchy, low-end thump. To push to top-shelf quality, extend the sub-decay slightly (50 Hz) and add subtle low-mid saturation so it cuts through dense music."
+      }
+    },
+    "bossdown": {
+      "scores": {
+        "a": 4,
+        "b": 3,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Lacks any low-end impact or explosion layer entirely, sounding like a stage-clear or item pickup chime rather than a major boss climax. To fix, add a heavy sub-bass impact (40-80 Hz) and a broad explosion crunch layer underneath the ascending tonal chime.",
+        "b": "A basic retro FM pitch-drop explosion that feels thin and dated. Lacks sub-bass punch, transient snap, and any feeling of triumph. Needs a multi-layered overhaul: punchy transient click (2-4 kHz), sub-thump, and a soaring tonal or metallic tail replacing the simple noise decay.",
+        "c": "Strong impact with a clear sub-boom, crisp transient, and an uplifting tonal tail that cuts over energetic music. To reach top-shelf console quality, add a subtle glass/debris scatter layer (3-6 kHz) and lengthen the sub-rumble decay tail by ~500ms for extra grandeur."
+      }
+    },
+    "minionpop": {
+      "scores": {
+        "a": 6,
+        "b": 5,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Slightly too rubbery and thin. The pitch drop gives it a fun squishy feel, but it lacks a snappy transient attack above 3kHz to pierce through dense gunfire and music. Boost 2.5kHz–4kHz for transient bite and add a subtle high-frequency air layer so it sounds like a designed asset rather than a simple synth patch.",
+        "b": "Sounds like a dry, unlayered synth/wooden click rather than a polished game audio asset. Lacks body and tonal character, making it sound more like a UI tick or placeholder sound. Needs a tiny mid-range body layer (400Hz–700Hz) and a subtle liquid/squish accent to give it organic feedback.",
+        "c": "Excellent transient snap and crisp high-mid character that distinctively communicates a low-value minion kill. Fits the 'lighter cousin of a real kill' prompt perfectly without fatiguing the listener. Well-layered with good mix survivability. To reach top-shelf console quality (9+), add a tiny bit of stereo width or subtle high-end air (8kHz+) on the micro-tail."
+      }
+    },
+    "uiclick": {
+      "scores": {
+        "a": 9,
+        "b": 5,
+        "c": 4
+      },
+      "best": "a",
+      "notes": {
+        "a": "Outstanding tactile UI sound. Perfect balance of a soft low-mid knock (~250Hz) for physical weight and a smooth, rolled-off high frequency transient above 7kHz. Highly satisfying and completely non-fatiguing across repeated presses.",
+        "b": "Too harsh and clicky in the 2.5kHz–5kHz range. It lacks organic body and will cause ear fatigue quickly. Apply a gentle high-pass filter to clean up low-end rumble, dip 3kHz by 3dB, and introduce a soft wood/membrane body layer around 300Hz with a 15ms decay.",
+        "c": "Mushy transient and overly dark tone. Sounds like an unlayered low-passed sine pop without physical texture. Needs a crisp micro-transient layer (1–2ms attack tick around 4kHz) and tighter amplitude envelope decay to feel like a responsive button rather than a dull bump."
+      }
+    }
+  }
 }
