@@ -35,12 +35,24 @@ test('boots clean: canvas, atlas, no console errors', async ({ page }) => {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
+  // Cache-busting guard: every atlas fetch must carry the ?v= build stamp read
+  // off index.html's module entry tag (engine/version.js). A returning
+  // player's cache once mixed an old main.js with a new atlas — the stamp is
+  // what keys those caches consistently, so its absence is a regression.
+  const atlasReqs = [];
+  page.on('request', r => {
+    const u = new URL(r.url());
+    if (/\/assets\/atlas\.(json|png)$/.test(u.pathname))
+      atlasReqs.push(u.searchParams.get('v'));
+  });
   await page.goto('http://localhost:8123/?test');       // test-mode boot → straight to play
   await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
   await expect(page.locator('canvas#screen')).toBeVisible();
   const st = await page.evaluate(() => window.__blast.state());
   expect(st.scene).toBe('play');
-  expect(st.anims).toBe(31);
+  expect(st.anims).toBe(51);
+  expect(atlasReqs.length).toBe(2);                     // atlas.json + atlas.png
+  for (const v of atlasReqs) expect(v).toMatch(/^.+$/); // both stamped, non-empty
   expect(errors).toEqual([]);
   await page.screenshot({ path: 'tests/artifacts/boot.png' });
 });

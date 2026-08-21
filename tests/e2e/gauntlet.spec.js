@@ -170,19 +170,37 @@ test('scenery props are landmarks: each one exists at exactly one place', async 
   // and this is the test that keeps them that way: a colour that only that
   // prop's art uses is counted over the whole finished frame at camera
   // positions spread across the level. Exactly one position may see it.
+  // The production palette is LOCKED across every environment asset — no
+  // single colour is unique to a prop any more. The signature is therefore a
+  // horizontal 3-pixel colour RUN out of each prop's own art, verified unique
+  // against every shipped production asset and the official atlas (a specific
+  // adjacency of three palette entries occurs nowhere else).
   const counts = await page.evaluate(async (spots) => {
-    const SIG = { prop1: [113, 86, 69], prop2: [156, 82, 55] };
+    const SIG = {
+      prop1: [[36, 28, 15], [249, 210, 129], [56, 56, 28]],
+      prop2: [[234, 159, 58], [240, 181, 74], [220, 76, 18]],
+    };
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const out = [];
     for (const x of spots) {
       window.__blast.cheat.warp(x);
       await sleep(700);                       // let the camera catch up and redraw
       const c = document.getElementById('screen');
+      // Sample at GAME resolution: crisp mode at 1280x720 is an integer 2x
+      // blit, so game pixel (gx, gy) lives at (gx*S, gy*S) exactly.
+      const S = Math.round(c.width / 640);
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const at = (gx, gy) => {
+        const i = (gy * S * c.width + gx * S) * 4;
+        return [d[i], d[i + 1], d[i + 2]];
+      };
+      const eq = (p, s) => p[0] === s[0] && p[1] === s[1] && p[2] === s[2];
       const n = { warp: x, prop1: 0, prop2: 0 };
-      for (let i = 0; i < d.length; i += 4)
-        for (const k in SIG)
-          if (d[i] === SIG[k][0] && d[i + 1] === SIG[k][1] && d[i + 2] === SIG[k][2]) n[k]++;
+      for (let gy = 0; gy < 360; gy++)
+        for (let gx = 0; gx < 638; gx++)
+          for (const k in SIG)
+            if (eq(at(gx, gy), SIG[k][0]) && eq(at(gx + 1, gy), SIG[k][1]) &&
+                eq(at(gx + 2, gy), SIG[k][2])) n[k]++;
       out.push(n);
     }
     return out;
@@ -194,5 +212,44 @@ test('scenery props are landmarks: each one exists at exactly one place', async 
   }
   expect(counts.find(c => c.warp === 9020).prop1).toBeGreaterThan(0);   // mid-run, far band
   expect(counts.find(c => c.warp === 15800).prop2).toBeGreaterThan(0);  // deep, near band
+  expect(errors).toEqual([]);
+});
+
+test('parked ship is grounded at the pad: hull pixels fill the haze band', async ({ page }) => {
+  const errors = await boot(page);
+  // Regression probe for the "ship sunk in a hole" playtest finding: the
+  // parked ship frame used to hang off the anim's shared feet line (set by
+  // the exhaust frames), leaving the 14px band just above the floor's lit
+  // crust — exactly where the dark haze shelf / pit-void colours live — bare
+  // behind it. Grounded, the hull's own colours (the official pack's ship
+  // yellow/red, which the locked terrain palette does not contain) must be
+  // present in that band while the player stands at the pad.
+  const res = await page.evaluate(async () => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    window.__blast.cheat.warpPad();
+    await sleep(900);                          // camera settle + tile cache redraw
+    const st = window.__blast.state();
+    const c = document.getElementById('screen');
+    const S = Math.round(c.width / 640);
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const at = (gx, gy) => {
+      const i = (gy * S * c.width + gx * S) * 4;
+      return [d[i], d[i + 1], d[i + 2]];
+    };
+    // The band between the ship's OLD hovering bottom and the walked floor
+    // line (virtual y 218..231 at rest camera). Scan the full width: the pad
+    // chunk has no other art that uses the hull colours.
+    let hull = 0;
+    for (let gy = 218; gy <= 231; gy++)
+      for (let gx = 0; gx < 640; gx++) {
+        const p = at(gx, gy);
+        if ((p[0] === 255 && p[1] === 169 && p[2] === 0) ||
+            (p[0] === 255 && p[1] === 58 && p[2] === 58)) hull++;
+      }
+    return { hull, pstate: st.pstate, y: st.y };
+  });
+  expect(res.pstate).toBe('idle');             // grounded at the pad, not mid-jump
+  expect(res.hull).toBeGreaterThan(30);        // the skid + wing fill the band
+  await page.screenshot({ path: 'tests/artifacts/gauntlet-ship-pad.png' });
   expect(errors).toEqual([]);
 });

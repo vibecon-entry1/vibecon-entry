@@ -5,6 +5,7 @@
 //   parallax (screen space, OUTSIDE the camera) → tiles → signs → checkpoints
 //   → coins → enemies → player → muzzle → bolts → popups → [restore] → HUD.
 import { buildGauntlet, buildWowZone, WOW_LEN, CHUNK_W, TILE } from '../chunks.js';
+import { pickTileFrame, floraIndexAt, hash2 } from '../tiles.js';
 import { makePlayer } from '../player.js';
 import { makeBullets } from '../bullets.js';
 import { makeEnemies } from '../enemies.js';
@@ -81,6 +82,31 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // them under the floor slab.
   const restLine = (level.h - 8 * TILE) - camY0;   // horizon, in screen px, at rest
   cam.snap(0, camY0);
+  // --- area dressing ---------------------------------------------------------
+  // The wow zone wears its own sky and tileset outright; the gauntlet swaps to
+  // the boss sky across the arena via the dread blend below. All three skies
+  // are full atlas cells (the swap mechanism the integration notes left open:
+  // cells, not draw-time tints — a tint can't move the banding).
+  const skyName = wow ? 'sky_wow' : 'par_stars';
+  const tilesName = wow ? 'tiles_wow' : 'tiles';
+  // Boss-arena dread, 0..1 off the CAMERA's x so it can't pop: ramps in over
+  // the ~5 screens before the arena floor starts, holds 1 through the fight
+  // (the camera physically can't pass gateX-VW/2 while the gate wall stands),
+  // and ramps back out on the victory lap so the ship moment gets the sunset
+  // back. Gauntlet-only — wow has no arena.
+  const arenaX = wow ? 0 : level.bossTrigger - 8 * TILE;
+  const gateX = wow ? 0 : level.gate[0][0] * TILE;
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const dread = wow ? () => 0
+    : cx => clamp01((cx - (arenaX - 560)) / 360) *
+            (1 - clamp01((cx - (gateX - 260)) / 300));
+  // Day's-end progression (juice pass V1): 0 at the spawn, 1 at the ship pad.
+  // Pure f(camera x) like dread above, so it can never pop and two machines on
+  // the same frame agree. It drives ONLY render dressing (sun height + a warm
+  // sky glaze below); the glaze is scaled by (1 - dread) so the two
+  // progressions compose — dread owns the arena, the sunset owns the road.
+  const runEnd = !wow && level.shipPad ? Math.max(1, level.shipPad.x) : 1;
+  const sunset = wow ? () => 0 : cx => clamp01(cx / runEnd);
   let paused = false;
   // Scene-level freeze: a brief world-stall on a big hit lands harder than any
   // amount of shake alone. SET on trigger (Math.max), never accumulated, so
@@ -141,6 +167,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   const AFK_OUT = 300;           // ...and before the run is taken away
   let idleT = 0;                 // seconds since the last input of any kind
   let outT = -1;                 // -1 = not fired; >= 0 = seconds since it fired
+  let afkSec = -1;               // last countdown second an afktick sounded on
   // Free-running scene clock for the decorative bands below. Deliberately its
   // own accumulator rather than timeS: that one is the RUN clock and stops for
   // the pause and the extraction, and ambient motion that freezes with the
@@ -157,6 +184,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // so no frame ever pays for the full window twice. Sized for the worst-case
   // window (+1 tile each axis for the partial edges).
   let tileCanvas = null, tileScratch = null, tileWin = null;
+  let voidGrad = null;            // pit-void gradient strip, baked on first render
+  let haloCanvas = null;          // boss separation halo, baked on first use
   let tileEpoch = 0;              // bumped by the one thing that edits tiles: the gate carve
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
@@ -167,6 +196,74 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // next cycle while a player who ignores them never faces more than MINION_CAP.
   let sawSummon = false;
   const fx = [];                          // explode puffs: { x, y, t } — t < 0 = staggered wait
+  // --- juice particles (V2) --------------------------------------------------
+  // Landing/slide dust and enemy-pop debris. PURE RENDER DRESSING: nothing in
+  // here is ever read by the sim, and the randomness is a render-side
+  // mulberry32 seeded off the spawn coordinate + a scene-local spawn counter —
+  // never Math.random, never sim state, so two machines running the same tape
+  // kick up the same dust. Fixed pool, ring-overwritten: the budget can never
+  // grow, a burst frame just recycles the oldest speck.
+  const PART_MAX = 64;
+  const parts = Array.from({ length: PART_MAX },
+    () => ({ on: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, grav: 0, cols: null }));
+  let partIdx = 0, partSpawns = 0;
+  const mulberry32 = s => () => {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  // Exact palette entries (assets-wow/production/PALETTE.json): sandy floor
+  // tones for dust, the enemies' dark-red-to-ember family for shards.
+  const DUST_COLS = ['#b76028', '#cd611a', '#ea9f3a'];
+  const DEBRIS_COLS = ['#4f1212', '#7d3118', '#e46016', '#94261d'];
+  /** kind: dust drifts up and dies fast; debris pops out and falls. */
+  function spawnParts(kind, x, y, n, kickX = 0) {
+    const rnd = mulberry32(hash2(Math.round(x), Math.round(y)) ^ partSpawns++);
+    for (let i = 0; i < n; i++) {
+      const p = parts[partIdx]; partIdx = (partIdx + 1) % PART_MAX;
+      p.on = true; p.t = 0;
+      p.x = x + (rnd() - 0.5) * 14;
+      p.y = y - rnd() * 4;
+      if (kind === 0) {                    // dust puff
+        p.vx = (rnd() - 0.5) * 46 + kickX;
+        p.vy = -14 - rnd() * 26;
+        p.grav = -30;                      // buoyant: it thins as it lifts
+        p.life = 0.28 + rnd() * 0.16;
+        p.cols = DUST_COLS;
+      } else {                             // debris shard
+        p.vx = (rnd() - 0.5) * 170;
+        p.vy = -60 - rnd() * 120;
+        p.grav = 520;
+        p.life = 0.34 + rnd() * 0.2;
+        p.cols = DEBRIS_COLS;
+      }
+    }
+  }
+  function tickParts(dt) {
+    for (const p of parts) {
+      if (!p.on) continue;
+      p.t += dt;
+      if (p.t >= p.life) { p.on = false; continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt;
+    }
+  }
+  /** 3-frame life: 3px → 2px → 1px, fading over the last third. Culled. */
+  function drawParts(ctx) {
+    const px0 = cam.x - 8, px1 = cam.x + VW + 8;
+    let dimmed = false;
+    for (const p of parts) {
+      if (!p.on || p.x < px0 || p.x > px1) continue;
+      const ph = p.t / p.life;                       // 0..1 through its life
+      const size = ph < 0.34 ? 3 : ph < 0.67 ? 2 : 1;
+      if (ph >= 0.67 && !dimmed) { ctx.globalAlpha = 0.6; dimmed = true; }
+      else if (ph < 0.67 && dimmed) { ctx.globalAlpha = 1; dimmed = false; }
+      ctx.fillStyle = p.cols[(p.x * 7 + p.y * 3 & 0x7fffffff) % p.cols.length | 0];
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), size, size);
+    }
+    if (dimmed) ctx.globalAlpha = 1;
+  }
+  let slideDustT = 0;                     // slide-trail emitter metronome
   const MINION_CAP = 4;                   // live boss-summoned minions at once
   // Floor top at the trigger column, scanned out of the level rather than
   // hardcoded: the arena's authored row count is a chunks.js detail, and the
@@ -253,6 +350,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // through. This winds it forward directly so a spec can assert the
       // countdown and the death itself in a couple of seconds.
       idle(seconds) { idleT = seconds; },
+      // Wind the free-running ambient clock (flyer schedule rides on it): the
+      // scheduling windows are ~22s, which is real-time nobody sits through.
+      amb(seconds) { ambT = seconds; },
       warp(x) {
         player.body.x = x;
         player.checkpoint = { x, y: player.body.y };
@@ -282,9 +382,6 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     };
   }
 
-  // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
-  // transparent margins, so we go through drawCentered with the cell centre —
-  // that re-applies the frame's ox/oy and lands the art where it was authored.
   const gateIsOpen = () => level.gate.every(([tx, ty]) => !level.solidAt(tx, ty));
 
   // Ship extraction cutscene. The world is FROZEN for its duration — no player
@@ -303,6 +400,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       fx[i].t += dt;
       if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
     }
+    tickParts(dt);                 // leftover dust settles during the cutscene
     popups.update(dt);
     cam.follow(level.shipPad.x, level.shipPad.y - liftY, 0, dt, level);
     if (takeoff >= 2.5) go('win', breakdown());
@@ -349,12 +447,21 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     // Raw touch presence first: a finger inside the move deadzone (or a tap
     // still settling) emits no action for the loop below to see, but a thumb
     // on the glass answers "is anybody there" as surely as a held key.
-    if (input.touchActive?.()) { idleT = 0; return; }
+    if (input.touchActive?.()) { idleT = 0; afkSec = -1; return; }
     const act = input.actions();
     // touched(), not the held value: a key tapped and released between two
     // frames is still somebody being there.
-    for (const k in act) if (act[k] || input.touched(k)) { idleT = 0; return; }
+    for (const k in act) if (act[k] || input.touched(k)) { idleT = 0; afkSec = -1; return; }
     idleT += dt;
+    // SFX v2: one dry tick per countdown second while the warning is up —
+    // keyed off the same ceil the readout draws, so tick and digit agree.
+    // Sits HERE (above the pause bail, like the clock itself) because the
+    // countdown renders over the pause veil: what you can see, you can hear.
+    // afkSec resets with the clock, so each incident starts its own count.
+    if (idleT >= AFK_WARN && outT < 0) {
+      const sec = Math.ceil(AFK_OUT - idleT);
+      if (sec !== afkSec) { afkSec = sec; sfx?.play('afktick'); }
+    }
     if (idleT >= AFK_OUT && outT < 0) afkOut();
   }
 
@@ -424,7 +531,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // Slow motes falling across the frame. Every mote's whole trajectory is a
   // function of its index and the clock — no array, no spawn bookkeeping, and
   // the same 24 specks every session.
-  const DECO_COL = ['#982c2c', '#eec548', '#ffa900'];
+  // Retuned for the sunset palette: the old red/gold specks vanished into a
+  // world that is gold wall to wall. Pink / ice / warm white carry the disco.
+  const DECO_COL = ['#ff5ad9', '#aee6ff', '#fffdf0'];
   function drawDeco2(ctx) {
     for (let i = 0; i < 24; i++) {
       const sp = 16 + (i % 5) * 5;
@@ -435,6 +544,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     }
   }
 
+  // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
+  // transparent margins, so we go through drawCentered with the cell centre —
+  // that re-applies the frame's ox/oy and lands the art where it was authored.
   function drawLayer(ctx, name, sx, sy) {
     const a = atlas.anims[name];
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);
@@ -455,10 +567,40 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // stops being polite. The y is the same offset inside the band each one had
   // when it was painted into the strip, so the composition — how much of it the
   // rock swallows — is unchanged.
+  // The production landmarks ride the same two bands. Placement had to adapt
+  // to the new strips: the painted rock ridge is opaque nearly to its top
+  // edge (the old one was sparse triangles), so anything drawn behind it
+  // simply ceased to exist. Split by `front`:
+  //   back  — behind its band, occluded by it (prop1 peeking over a mesa
+  //           gap, the spire's tip over the far ridge);
+  //   front — after its band, feet on the haze shelf between the rocks and
+  //           the playfield (arch, wreck, and prop2 — which keeps its exact
+  //           world x and in-band y offset; only the draw order moved, or
+  //           the new opaque ridge would have swallowed it whole).
   const PROPS = [
-    { name: 'prop1', x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
-    { name: 'prop2', x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56 },
+    { name: 'prop_spire', x: 1504, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 46 },
+    // prop1's anchor nudged a few strip px left onto a measured FLAT stretch
+    // of the new skyline (opaque top edge at strip row 9 across its whole
+    // footprint, measured programmatically) with its feet two px into the
+    // crest — the old y left it hovering over a gap in the repainted ridge.
+    { name: 'prop1',      x: 2858, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: -17 },
+    { name: 'prop_arch',  x: 4650, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 22, front: true },
+    { name: 'prop_wreck', x: 6200, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 38, front: true },
+    { name: 'prop2',      x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56, front: true },
   ];
+  const MESA_PROPS = PROPS.filter(p => p.fx === 0.30);
+  const ROCK_PROPS = PROPS.filter(p => p.fx === 0.60 && !p.front);
+  const SHELF_PROPS = PROPS.filter(p => p.front);
+
+  // LANDMARK-RARE (fix round, user request): the ancient-monument family —
+  // half-buried statue head, weathered obelisk, megalithic gate, fossil
+  // ribcage. Unlike the one-of-each PROPS above these repeat across the
+  // whole run (gauntlet AND wow), but SPARSELY: a coordinate hash gates
+  // roughly one 512px shelf strip in four, so one drifts past every few
+  // screens. Pure function of the strip index — the same ruins every
+  // session, per the determinism rule. All four are soft, clearly inanimate
+  // silhouettes on the far shelf; they never overlap the playfield.
+  const LANDMARKS = ['prop_head', 'prop_obelisk', 'prop_mgate', 'prop_ribs'];
 
   function drawProp(ctx, p, drift) {
     const sx = Math.round(p.x - cam.x * p.fx);
@@ -598,6 +740,18 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         fx[i].t += dt;
         if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
       }
+      // Juice particles (V2): tick the pool, breathe the slide trail. Render
+      // dressing only — see the pool block up top.
+      tickParts(dt);
+      if (player.state === 'slide' && player.coyote > 0) {
+        slideDustT += dt;
+        while (slideDustT >= 0.06) {
+          slideDustT -= 0.06;
+          // Heel-side, kicked opposite the travel so the trail streams behind.
+          spawnParts(0, player.body.x - player.facing * 10, player.body.y, 2,
+                     -player.facing * 30);
+        }
+      } else slideDustT = 0;
 
       playerBolts.forEachHittable(b => {
         if (boss && boss.on && boss.hitTest(b)) {
@@ -620,6 +774,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           killCredited++;
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
+          spawnParts(1, dead.x, dead.y - 14, 6);      // V2: pop debris shards
           cam.shake(5, 0.2);
           hitstop = Math.max(hitstop, 0.05);
         });
@@ -637,7 +792,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         sfx?.play('coin'); score.add('coin'); popups.spawn(c.x, c.y, '+10');
       });
 
-      if (wasAirborne && player.coyote > 0) { score.onLand(); flightWows = 0; }
+      if (wasAirborne && player.coyote > 0) {
+        score.onLand(); flightWows = 0;
+        spawnParts(0, player.body.x, player.body.y, 6);   // V2: landing dust
+      }
       const evs = score.takeEvents();
       if (evs.length) {
         flightWows = Math.min(flightWows + evs.length, 3);
@@ -687,6 +845,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         takeoff = 0;
         jukebox?.stopMusic();
         jukebox?.playOneShot('fanfare');   // fanfare rings through the takeoff into the win screen
+        // SFX v2: the ship's engine roar under the fanfare. Rendered
+        // rumble-forward on purpose so the two never fight; its ~3s tail
+        // rings past the 2.5s cutscene into the win screen's silence.
+        sfx?.play('takeoff');
       }
     },
 
@@ -697,38 +859,171 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // ones: the horizon should breathe when you fly, not swing.
       const drift = f => -Math.round((cam.y - camY0) * f);
       // each band is authored 640 wide, so it is drawn twice to cover the seam
+      // Bands draw as the exact visible slice (two source-rect cuts across
+      // the wrap seam), like the sky: the draw-the-cell-twice seam pattern
+      // rasterized a second full strip for nothing. The production strips are
+      // untrimmed 640-wide cells, so source math is direct.
       const band = (name, fx, fy, bias) => {
-        const a = atlas.anims[name];
-        const ox = -Math.round(wrap(cam.x * fx, VW));
+        const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
         const oy = restLine + bias - a.ch + drift(fy);   // cell BOTTOM sits `bias` below the horizon
-        drawLayer(ctx, name, ox, oy);
-        drawLayer(ctx, name, ox + VW, oy);
+        const off = Math.round(wrap(cam.x * fx, VW));
+        const w1 = Math.min(VW, a.cw - off);
+        ctx.drawImage(atlas.img, f.x + off, f.y, w1, a.ch, 0, oy, w1, a.ch);
+        if (w1 < VW) ctx.drawImage(atlas.img, f.x, f.y, VW - w1, a.ch, w1, oy, VW - w1, a.ch);
       };
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
-      drawLayer(ctx, 'par_stars', sox, drift(0.05));      // sky: pinned to the top
-      drawLayer(ctx, 'par_stars', sox + VW, drift(0.05));
-      // Hangs in the same far sky as the stars, on the same slow factors, so it
-      // sits behind every band that follows and drifts with them.
+      const dr = dread(cam.x);
+      // OVERDRAW BUDGET. The old starfield sky was mostly transparent pixels
+      // and rasterized for almost nothing; the production skies are opaque
+      // 640x360 cells, and a naive draw-twice-for-the-seam pattern doubles
+      // their raster cost. So the sky is drawn as exactly the VISIBLE slice:
+      // two source-rect cuts that stitch the wrap seam edge to edge, cropped
+      // at the haze line below which the haze fill + floor cover every pixel
+      // anyway. hazeTop is computed here (it belongs to the rocks band drawn
+      // later) because the sky needs the crop line first. The sky sits pinned
+      // to the top of the frame: its old 0.05 vertical drift is gone, which
+      // with an OPAQUE sky would have opened a bare strip above it in flight.
+      const hazeTop = restLine + 10 + drift(0.20) - 20;
+      const drawSky = (name) => {
+        const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
+        const h = Math.min(a.ch, Math.max(0, hazeTop));
+        const off = Math.round(wrap(cam.x * 0.10, VW));
+        const w1 = Math.min(VW, a.cw - off);
+        ctx.drawImage(atlas.img, f.x + off, f.y, w1, h, 0, 0, w1, h);
+        if (w1 < VW) ctx.drawImage(atlas.img, f.x, f.y, VW - w1, h, w1, 0, VW - w1, h);
+      };
+      // Arena dread: the boss sky fades over the sunset as the camera closes
+      // on the arena and back out on the victory lap — a blend, never a pop.
+      // At the blend's ENDS only one sky is drawn: the whole boss fight sits
+      // at dr === 1, and doubled sky raster there is exactly the kind of cost
+      // the perf gate exists to catch.
+      drawSky(dr >= 1 ? 'sky_boss' : skyName);
+      if (dr > 0 && dr < 1) {
+        ctx.globalAlpha = dr;
+        drawSky('sky_boss');
+        ctx.globalAlpha = 1;
+      }
+      // The sun. A single-placement cameo — NEVER baked into (or wrapped with)
+      // the tiling sky strip. It gets its own near-zero parallax because the
+      // sun is at optical infinity: the one placement drifts ~160px over the
+      // whole run and never leaves the sky. The dread blend swallows it whole
+      // before the arena (the boss sky has no sun by design).
+      const su = sunset(cam.x);
+      if (!wow && dr < 1) {
+        ctx.globalAlpha = 1 - dr;
+        // The sun SINKS with run progress (juice pass V1): 64px of drop across
+        // the full gauntlet, slow enough to never read as movement, plain
+        // enough that the pad's sky is visibly later in the day than the
+        // spawn's. It slides down BEHIND the mesa band, which is the sunset.
+        drawLayer(ctx, 'sun', Math.round(356 - cam.x * 0.007),
+                  44 + Math.round(su * 64) + drift(0.05));
+        ctx.globalAlpha = 1;
+      }
+      // Warm dusk glaze over the sky slice (V1): a dark-red wash (palette
+      // #38060f) that deepens toward the pad, so the run ends redder and a
+      // touch darker. Scaled by (1 - dread): the boss sky arrives unglazed,
+      // exactly as authored, and gets the sunset back on the victory lap.
+      if (!wow) {
+        const warm = su * (1 - dr) * 0.26;
+        if (warm > 0.01 && hazeTop > 0) {
+          ctx.fillStyle = `rgba(56,6,15,${warm.toFixed(3)})`;
+          ctx.fillRect(0, 0, VW, Math.min(360, hazeTop));
+        }
+      }
+      // Ambient flyer (juice pass V4): a rare distant silhouette crossing the
+      // upper sky. The SCHEDULE is a hash of the time-segment index — one
+      // ~22s window in three carries a crossing, height/direction/flap all
+      // dealt off the same hash — so every session sees the same birds at the
+      // same moments and two machines agree. Screen-space, high in the sky
+      // band (y < ~100, far above the playfield), 7px of dark silhouette:
+      // unmistakably scenery, not a threat. Faded out with the dread blend so
+      // nothing shares the boss's sky, and gauntlet-only (wow keeps its own
+      // untouched sky).
+      if (!wow && dr < 0.5) {
+        const SEG = 22;
+        const k = Math.floor(ambT / SEG);
+        const h = hash2(k, 6011);
+        if (h % 3 === 0) {
+          const p = (ambT - k * SEG) / SEG;             // 0..1 across the window
+          const dir = (h >>> 3) & 1 ? 1 : -1;
+          const bx = Math.round(dir > 0 ? -8 + p * (VW + 16) : VW + 8 - p * (VW + 16));
+          const by = Math.round(24 + (h >>> 4) % 64 +
+                                Math.sin(ambT * 0.9 + k) * 3);   // lazy glide bob
+          const flap = Math.floor(ambT * 2.6) % 2;      // slow two-frame wingbeat
+          ctx.globalAlpha = (1 - dr * 2) * 0.8;
+          ctx.fillStyle = '#38060f';
+          ctx.fillRect(bx - 1, by, 3, 1);               // body
+          if (flap) { ctx.fillRect(bx - 3, by - 1, 2, 1); ctx.fillRect(bx + 2, by - 1, 2, 1); }
+          else      { ctx.fillRect(bx - 3, by + 1, 2, 1); ctx.fillRect(bx + 2, by + 1, 2, 1); }
+          // Some windows deal a companion trailing behind and slightly above.
+          if ((h >>> 9) & 1) {
+            ctx.fillRect(bx - dir * 11 - 1, by - 5, 3, 1);
+            if (!flap) { ctx.fillRect(bx - dir * 11 - 3, by - 6, 2, 1);
+                         ctx.fillRect(bx - dir * 11 + 2, by - 6, 2, 1); }
+            else      { ctx.fillRect(bx - dir * 11 - 3, by - 4, 2, 1);
+                         ctx.fillRect(bx - dir * 11 + 2, by - 4, 2, 1); }
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      // Hangs in the same far sky, on the same slow factors, so it sits behind
+      // every band that follows and drifts with them.
       if (xOn?.()) { drawDeco1(ctx, sox + 96, 52 + drift(0.05));
                      drawDeco1(ctx, sox + VW + 96, 52 + drift(0.05)); }
       // Props go down BEFORE their band, so the band occludes them the same way
       // the strip art did when they were painted underneath it.
-      drawProp(ctx, PROPS[0], drift);
+      for (const p of MESA_PROPS) drawProp(ctx, p, drift);
       band('par_mesas', 0.30, 0.12, 4);
       // far-ground haze under the near band: with the camera riding high the
       // real floor drops away faster than the parallax does, and without this
-      // you get a strip of starfield wedged between the rocks and the ground.
+      // you get a strip of bare sky wedged between the rocks and the ground.
       const rocksBottom = restLine + 10 + drift(0.20);
-      ctx.fillStyle = '#2a1c33';
-      ctx.fillRect(0, rocksBottom - 20, VW, VH - rocksBottom + 20);
-      drawProp(ctx, PROPS[1], drift);
+      // Capped at the floor slab's screen line (the world tiles + pit-void
+      // strip are opaque from there down), not the screen bottom: the old
+      // full-height fill was ~120 rows of pure overdraw at rest camera.
+      ctx.fillStyle = '#3b190f';
+      ctx.fillRect(0, rocksBottom - 20, VW,
+                   Math.min(VH, level.h - 8 * TILE - cam.y + 1) - rocksBottom + 20);
+      for (const p of ROCK_PROPS) drawProp(ctx, p, drift);
       band('par_rocks', 0.60, 0.20, 10);
+      // Ancient landmarks: feet on the haze shelf, drawn BEFORE the
+      // single-placement shelf props so those keep the front of the stage —
+      // and skipped anywhere near one (the layer-space guard), so a repeating
+      // ruin can never crowd a landmark that exists exactly once.
+      // One ruin per 2048px super-strip of the shelf layer (~every 3-4
+      // screens of world travel), at a hashed offset inside it — a plain
+      // per-strip hash gate clumped badly (an 8-screen empty gap, then three
+      // of the same monument in a row at the pad; measured before shipping).
+      for (let k = Math.max(0, Math.floor(cam.x * 0.60 / 2048) - 1), n = 0; n < 3; k++, n++) {
+        const h = hash2(k, 7877);
+        const lx = k * 2048 + h % 1600;
+        if (SHELF_PROPS.some(p => Math.abs(lx - p.x) < 170)) continue;
+        const sx = Math.round(lx - cam.x * 0.60);
+        if (sx < -60 || sx > VW + 60) continue;
+        const name = LANDMARKS[(h >>> 11) % LANDMARKS.length];
+        atlas.drawFeet(ctx, name, atlas.anims[name].frames[0], sx, rocksBottom - 4);
+      }
+      for (const p of SHELF_PROPS) drawProp(ctx, p, drift);
+      // Mid-band flora: sparse silhouettes rooted on the haze shelf between
+      // the rock band and the playfield, riding the rocks' parallax. Pure
+      // function of the strip index k — the same desert every session.
+      for (let k = Math.max(0, Math.floor(cam.x * 0.60 / 256) - 1), n = 0; n < 5; k++, n++) {
+        const h = hash2(k, 4211);
+        if (h % 3 === 0) continue;                     // gaps in the hedge
+        const name = 'flora_' + [1, 0, 5, 2, 1, 5][h % 6];
+        const sx = Math.round(k * 256 + (h >>> 8) % 160 - cam.x * 0.60);
+        if (sx < -30 || sx > VW + 30) continue;
+        atlas.drawFeet(ctx, name, atlas.anims[name].frames[0], sx, rocksBottom - 12);
+      }
 
       ctx.save(); cam.apply(ctx);
 
       // (2) tiles, culled to the visible window and CACHED (see tileCanvas up
-      // top). Frame 0 = sunlit surface (no solid directly above), frame 1 =
-      // fill. Edge frames 2/3 stay unused.
+      // top). Frame choice is pickTileFrame (tiles.js): the 133-frame organic
+      // masonry set — surface/fill windows of a continuous 256x128 stone band
+      // (16-tile x phase, depth-indexed courses) plus the pit-edge, pit-wall
+      // and underside-lip shapes. It is a pure function of the coordinate and
+      // the (carve-epoch-guarded) neighbourhood, so cached cells stay valid.
       const tx0 = Math.max(0, Math.floor(cam.x / TILE));
       const tx1 = Math.min(level.wTiles - 1, Math.floor((cam.x + VW) / TILE));
       const ty0 = Math.max(0, Math.floor(cam.y / TILE));
@@ -743,7 +1038,52 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           tileCanvas.width = tileScratch.width = cw;
           tileCanvas.height = tileScratch.height = ch;
         }
+        // The pit-void gradient the cache paints under its cells. Uniform in
+        // x, so a 16px-wide strip is enough; sliced per cell row below.
+        const floorTy = level.hTiles - 8;
+        if (!voidGrad) {
+          voidGrad = document.createElement('canvas');
+          voidGrad.width = TILE; voidGrad.height = 8 * TILE;
+          const vg = voidGrad.getContext('2d');
+          const lg = vg.createLinearGradient(0, 0, 0, voidGrad.height);
+          lg.addColorStop(0, '#3b190f');
+          lg.addColorStop(0.45, '#27030b');
+          lg.addColorStop(1, '#010800');
+          vg.fillStyle = lg;
+          vg.fillRect(0, 0, TILE, voidGrad.height);
+        }
+        // Depth-band darkening for a floor row: most of the fade now lives IN
+        // the masonry frames themselves (the depth-indexed courses go from
+        // lit crust to near-flat dark maroon, per the approved sheet), so
+        // these overlays only settle the deepest rows and keep the pit void /
+        // pit walls on the same ramp. Tile-aligned stops, so it still
+        // decomposes per cell and BAKES into the cache like the void does.
+        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 3 ? 0.08
+                              : ty < floorTy + 5 ? 0.18 : ty < floorTy + 8 ? 0.32 : 0.45;
         const g = tileScratch.getContext('2d');
+        // Per-cell decals over the fill frames (rework round): the masonry
+        // super-pattern repeats every 16 tiles, so this stamps sparse
+        // coordinate-hashed weathering to break the 256px cadence — a dark
+        // mottle fleck or two on the stone bodies, a rare warm scuff, and a
+        // rarer ember pip, all fading out with baked depth (shallow rows get
+        // the detail, deep rows only the dark). Deterministic per coordinate,
+        // exact palette entries only, baked into the cache so it costs
+        // nothing per frame.
+        const decal = (tx, ty, cx, cy, depth) => {
+          let h = hash2(tx + 0x9e37, ty);
+          const px = (col, x, y, w2) => { g.fillStyle = col; g.fillRect(cx + x, cy + y, w2, 1); };
+          const dark = depth < 3 ? '#38060f' : depth < 5 ? '#16040f' : '#010800';
+          for (let i = 0, nd = 1 + (h & 1); i < nd; i++) {   // body mottle
+            h = hash2(h, i);
+            px(dark, 2 + h % 12, 2 + (h >>> 4) % 12, 1 + (h >>> 8) % 2);
+          }
+          h = hash2(h, 77);                                   // a warm scuff, shallow only
+          if (depth < 3 && (h >>> 12) % 4 === 0)
+            px(depth < 2 ? '#70140d' : '#640416', 2 + (h >>> 16) % 11, 3 + (h >>> 20) % 10, 2);
+          h = hash2(h, 9);                                    // rare ember pip in the rubble
+          if (depth < 4 && h % 6 === 0)
+            px((h >>> 8) & 1 ? '#cb5316' : '#ab4010', 2 + h % 12, 2 + (h >>> 4) % 12, 1);
+        };
         g.clearRect(0, 0, tileScratch.width, tileScratch.height);
         // Same-epoch window shift: copy the overlap, draw only exposed cells.
         // An epoch change (gate carve) invalidates the pixels, so it redraws
@@ -753,33 +1093,44 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         for (let ty = ty0; ty <= ty1; ty++)
           for (let tx = tx0; tx <= tx1; tx++) {
             if (shift && tx >= w.tx0 && tx <= w.tx1 && ty >= w.ty0 && ty <= w.ty1) continue;
-            if (!level.solidAt(tx, ty)) continue;
-            const f = level.solidAt(tx, ty - 1) ? 1 : 0;
-            atlas.drawCentered(g, 'tiles', atlas.anims.tiles.frames[f],
-                               (tx - tx0) * TILE + 8, (ty - ty0) * TILE + 8);
+            const cx = (tx - tx0) * TILE, cy = (ty - ty0) * TILE;
+            // Void behind the cell: solid tiles cover it; pit columns keep it,
+            // which turns a hole in the floor into depth instead of a window
+            // onto the parallax haze.
+            if (ty >= floorTy)
+              g.drawImage(voidGrad, 0, (ty - floorTy) * TILE, TILE, TILE, cx, cy, TILE, TILE);
+            if (level.solidAt(tx, ty)) {
+              const f = pickTileFrame(level, tx, ty);
+              atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
+                                 cx + 8, cy + 8);
+              if (f >= 16 && f < 128) decal(tx, ty, cx, cy, 1 + ((f - 16) >> 4));
+            }
+            const ba = bandAlpha(ty);
+            if (ba) { g.fillStyle = `rgba(0,0,0,${ba})`; g.fillRect(cx, cy, TILE, TILE); }
           }
         [tileCanvas, tileScratch] = [tileScratch, tileCanvas];
         tileWin = { tx0, ty0, tx1, ty1, epoch: tileEpoch };
       }
       if (tileCanvas) ctx.drawImage(tileCanvas, tx0 * TILE, ty0 * TILE);
 
-      // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
-      // the same flat tile (chunks.js), which reads as a dead purple slab
-      // rather than ground receding into shadow. Three stepped darkening
-      // bands over the tile texture (world coords, drawn OVER the tiles we
-      // just placed) fake depth without new art. floorLineWorldY is the same
-      // horizon restLine anchors to, just left in world space (no camY0
-      // subtraction) since we're inside cam.apply here. Kept OUT of the tile
-      // cache: the incremental shift only redraws exposed cells, and band
-      // strips do not decompose along cell edges.
-      const floorLineWorldY = level.h - 8 * TILE;
-      const bandX0 = cam.x, bandX1 = cam.x + VW;
-      const bandStops = [floorLineWorldY + 2 * TILE, floorLineWorldY + 5 * TILE,
-                          floorLineWorldY + 8 * TILE, level.h];
-      const bandAlphas = [0.15, 0.3, 0.45];
-      for (let i = 0; i < bandAlphas.length; i++) {
-        ctx.fillStyle = `rgba(0,0,0,${bandAlphas[i]})`;
-        ctx.fillRect(bandX0, bandStops[i], bandX1 - bandX0, bandStops[i + 1] - bandStops[i]);
+      // (2c) ground flora: decor scattered along the walked floor, a pure
+      // function of the world column (tiles.js floraIndexAt) — deterministic,
+      // non-colliding, and it only grows on intact floor so pit lips and
+      // corridors stay readable. Drawn over the depth bands (feet on the lit
+      // floor line, above where the bands start) and under everything alive.
+      const floorTy = level.hTiles - 8;
+      for (let ftx = tx0; ftx <= tx1 + 1; ftx++) {
+        let fi = floraIndexAt(level, ftx, floorTy);
+        if (fi < 0) continue;
+        // The arena floor keeps its decor LOW: a knee-high shrub dresses the
+        // fight, a 34px cactus in the dive lane reads as cover the game does
+        // not honour. Still deterministic — the remap is a pure function of
+        // the same index.
+        if (!wow && ftx * TILE > arenaX - 200 && ftx * TILE < gateX + 100 &&
+            fi !== 3 && fi !== 4 && fi !== 6 && fi !== 7) fi = [3, 6, 7, 4][fi % 4];
+        const fname = 'flora_' + fi;
+        atlas.drawFeet(ctx, fname, atlas.anims[fname].frames[0],
+                       ftx * TILE + 8 + (hash2(ftx, 51) % 7) - 3, floorTy * TILE);
       }
 
       // (3) signs: a post carrying a board sized to its own text. The dark
@@ -832,6 +1183,24 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // (6b) MEGA SAUCER — the 64px enemyfly_red cell blown up 3x to arena scale,
       // plus a floating hp bar. Both hang off boss.x/boss.y (the CENTER anchor).
       if (boss && boss.on) {
+        // Separation halo, proposed off the arena-mock feedback: against the
+        // near-black boss sky the 3x red dome read as a flat blob. A faint
+        // warm radial behind it (render-only — the sprite is untouched)
+        // restores the silhouette. Baked ONCE into its own canvas: a live
+        // createRadialGradient fill every frame was a measurable chunk of the
+        // arena's frame budget on the perf probe.
+        if (!haloCanvas && typeof document !== 'undefined') {
+          haloCanvas = document.createElement('canvas');
+          haloCanvas.width = haloCanvas.height = 210;
+          const hg = haloCanvas.getContext('2d');
+          const halo = hg.createRadialGradient(105, 105, 12, 105, 105, 105);
+          halo.addColorStop(0, 'rgba(249,210,129,0.22)');
+          halo.addColorStop(1, 'rgba(249,210,129,0)');
+          hg.fillStyle = halo;
+          hg.fillRect(0, 0, 210, 210);
+        }
+        if (haloCanvas)
+          ctx.drawImage(haloCanvas, Math.round(boss.x - 105), Math.round(boss.y - 105));
         ctx.save();
         ctx.translate(boss.x, boss.y);
         ctx.scale(3, 3);
@@ -851,15 +1220,36 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         if (f.t < 0) continue;
         atlas.drawCentered(ctx, 'explode', animFrame(atlas.anims.explode, f.t), f.x, f.y);
       }
+      // (6c2) juice particles: dust + debris, under the player so a puff can
+      // never sit ON the hero and muddy a read. Pool-capped and culled.
+      drawParts(ctx);
 
       // (6d) the ship. Always drawn on its pad — before the gate opens it is
       // simply hundreds of tiles off to the right, so no gating is needed.
       // No ship in wow — there is no extraction to earn, and level.shipPad is
       // null because no wow chunk carries a 'T'.
-      if (level.shipPad)
+      //
+      // PARKED GROUNDING (user screenshot fix). The ship cell's shared feet
+      // line (feetY) is the max art bottom across the 18-frame hover loop —
+      // set by the mid-cycle exhaust frames. The parked frame's own art
+      // bottom sits higher, so anchoring it at feetY hovered the whole ship
+      // above the pad, its skid resting exactly on the dark haze shelf the
+      // parallax pass paints behind the floor lip — which read as a ship sunk
+      // in a pit void, un-sinking only when a jump shifted the bands. The
+      // correction is MEASURED from the shipped atlas (parked frame's real
+      // bottom vs feetY), never hardcoded, and melts to zero over the first
+      // ~0.1s of takeoff so the authored lift/bob keeps its own anchors.
+      // Draw order stays: the ship goes down AFTER the tile-cache blit that
+      // bakes the pit-void gradient and the floor depth bands, so nothing in
+      // the terrain pass can cover it — the pad e2e probes exactly that band.
+      if (level.shipPad) {
+        const sa = atlas.anims.ship, sf = atlas.frames[sa.frames[0]];
+        const ground = Math.max(0, sa.feetY - (sf.oy + sf.h));
+        const sink = takeoff >= 0 ? Math.max(0, ground - liftY) : ground;
         atlas.drawFeet(ctx, 'ship', takeoff >= 0 ? animFrame(atlas.anims.ship, takeoff)
                                                  : atlas.anims.ship.frames[0],
-                       level.shipPad.x, level.shipPad.y - liftY);
+                       level.shipPad.x, level.shipPad.y - liftY + sink);
+      }
 
       // (7) player — blink through iframes, but a corpse always stays visible.
       // NO separate rider during takeoff: the 'ship' art already carries a dog
@@ -912,12 +1302,23 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // shots). DOWN-shots are skipped: their recorded origin sits 6px above the
       // feet, right on top of the boot flame above, and the two stacked flames
       // read as one fat smear rather than a thruster. The boots own that beat now.
+      //
+      // ART-ORIGIN CORRECTION (fix-round, user screenshot): the blast_muzzle
+      // cell is authored with its flash CORE ~15px LEFT of the cell centre
+      // (the streak side owns the rest of the cell), so drawCentered at the
+      // recorded barrel tip parked the visible core back on the gun sprite.
+      // The correction is measured from the shipped atlas frame (spark
+      // frame's art centre vs cell centre), never hardcoded, and applied
+      // along the shot direction so both facings land the core on the tip.
       if (player.muzzle && !player.muzzle.dy) {
         const m = player.muzzle;
+        const muz = atlas.anims.blast_muzzle, mf0 = atlas.frames[muz.frames[0]];
+        const mx = m.x + m.dx * (muz.cw / 2 - (mf0.ox + mf0.w / 2));
+        const my = m.y + muz.ch / 2 - (mf0.oy + mf0.h / 2);
         ctx.save();
-        if (m.dx < 0) { ctx.translate(m.x, m.y); ctx.scale(-1, 1); ctx.translate(-m.x, -m.y); }
+        if (m.dx < 0) { ctx.translate(mx, my); ctx.scale(-1, 1); ctx.translate(-mx, -my); }
         atlas.drawCentered(ctx, 'blast_muzzle',
-          animFrame(atlas.anims.blast_muzzle, m.t), m.x, m.y, 0);
+          animFrame(atlas.anims.blast_muzzle, m.t), mx, my, 0);
         ctx.restore();
       }
 
@@ -939,18 +1340,27 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       for (let i = 0; i < P.AIR_CHARGES; i++)
         atlas.drawCentered(ctx, 'pip', atlas.anims.pip.frames[i < player.airCharges ? 0 : 1],
                            10 + i * 10 + 4, 24 + 6);
-      ctx.fillStyle = '#eec548';
       // 608, not 630: the shell layer's sound button occupies x 615..637 at the
       // top-right corner (see main.js), and at 630 the score ran straight under
       // the speaker glyph. Caught in the branding pass's visual check.
       // y is now the TOP of the 14px-tall text box (scale 2), not a baseline.
-      drawText(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' });
+      // Plated and shadowed since the sky overhaul: gold on the pale-gold sky
+      // band was invisible bare, and thin on a shadow alone. Same page-black
+      // plate family as the shell buttons; it stretches to cover the wow
+      // progress line when there is one.
+      const scoreTxt = `wow ${score.value()}`;
+      const chunkTxt = wow ? `CHUNK ${chunkIndex}/${WOW_LEN}` : '';
+      const spw = Math.max(measure(scoreTxt, 2), wow ? measure(chunkTxt, 2) : 0) + 10;
+      ctx.fillStyle = 'rgba(11,11,18,0.45)';
+      ctx.fillRect(613 - spw, 4, spw, wow ? 38 : 22);
+      drawTextShadow(ctx, scoreTxt, 608, 8, { scale: 2, align: 'right' },
+                     '#eec548', '#3b190f');
       // Wow's progress readout, under the score. The gauntlet has signs, a boss
       // and a ship to tell you where you are; wow is 40 anonymous chunks, so the
       // counter IS the sense of progress.
       if (wow) {
-        ctx.fillStyle = '#8fa';
-        drawText(ctx, `CHUNK ${chunkIndex}/${WOW_LEN}`, 608, 26, { scale: 2, align: 'right' });
+        drawTextShadow(ctx, `CHUNK ${chunkIndex}/${WOW_LEN}`, 608, 26,
+                       { scale: 2, align: 'right' }, '#8fa', '#3b190f');
       }
 
       // (12) pause veil, over the HUD and everything else.
@@ -1006,6 +1416,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       timeS: Math.floor(timeS), killCount: killCredited + (bossKilled ? 1 : 0), takeoff: takeoff >= 0,
       mode, seed, chunkIndex, maxChunk,
       idleT, countdownOn: idleT >= AFK_WARN && outT < 0,
+      // Juice-pass observability: live particles in the render pool (V2).
+      parts: parts.reduce((n, p) => n + (p.on ? 1 : 0), 0),
     }),
   };
 }

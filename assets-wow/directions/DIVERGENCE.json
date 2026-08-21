@@ -1,0 +1,50 @@
+{
+ "dir1_sunset_canyon": {
+  "desc": "molten banded sunset, giant slatted sun, rim-lit mesa rows, red strata rock",
+  "palette_colors": 40,
+  "ground_y": 238,
+  "divergence_vs_baseline": 65.94,
+  "raw": "raw/dir1_sunset_canyon/raw_0.jpg",
+  "prompt": "raw/dir1_sunset_canyon/prompt.txt"
+ },
+ "dir2_neon_abyss": {
+  "desc": "indigo night, magenta/teal nebulae, neon-rimmed spires, crystals, lit ground edge",
+  "palette_colors": 40,
+  "ground_y": 270,
+  "divergence_vs_baseline": 26.29,
+  "raw": "raw/dir2_neon_abyss/raw_0.jpg",
+  "prompt": "raw/dir2_neon_abyss/prompt.txt"
+ },
+ "dir3_butterscotch_day": {
+  "desc": "bright butterscotch daylight, dust-haze horizon, chunky saturated stone terrain",
+  "palette_colors": 36,
+  "ground_y": 235,
+  "divergence_vs_baseline": 123.99,
+  "raw": "raw/dir3_butterscotch_day/raw_0.jpg",
+  "prompt": "raw/dir3_butterscotch_day/prompt.txt"
+ },
+ "dir4_moss_dusk": {
+  "desc": "teal-to-magenta dusk, lit cloud bands, skyline arches, moss-fringed ground lip",
+  "palette_colors": 40,
+  "ground_y": 236,
+  "divergence_vs_baseline": 60.87,
+  "raw": "raw/dir4_moss_dusk/raw_0.jpg",
+  "prompt": "raw/dir4_moss_dusk/prompt.txt"
+ },
+ "hybrid_a_golden_hour": {
+  "desc": "golden-hour canyon: banded violet-to-butterscotch sky, giant slatted sun, dust haze, chunky red-strata stone band",
+  "palette_colors": 40,
+  "ground_y": 286,
+  "divergence_vs_baseline": 112.08,
+  "raw": "raw/hybrid_a_golden_hour/raw_0.jpg",
+  "prompt": "raw/hybrid_a_golden_hour/prompt.txt"
+ },
+ "hybrid_b_late_afternoon": {
+  "desc": "late afternoon: deepening amber bands, half-sunken slatted sun, raking light, molten crimson stone band with ember cracks",
+  "palette_colors": 40,
+  "ground_y": 268,
+  "divergence_vs_baseline": 82.18,
+  "raw": "raw/hybrid_b_late_afternoon/raw_0.jpg",
+  "prompt": "raw/hybrid_b_late_afternoon/prompt.txt"
+ }
+}

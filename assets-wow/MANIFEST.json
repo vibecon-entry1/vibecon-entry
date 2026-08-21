@@ -1,0 +1,102 @@
+{
+ "sky_a": {
+  "seed": 101,
+  "file": "candidates/sky_a.png"
+ },
+ "sky_b": {
+  "seed": 102,
+  "file": "candidates/sky_b.png"
+ },
+ "sky_c": {
+  "seed": 103,
+  "file": "candidates/sky_c.png"
+ },
+ "sky_d": {
+  "seed": 104,
+  "file": "candidates/sky_d.png"
+ },
+ "mesa_a": {
+  "seed": 201,
+  "file": "candidates/mesa_a.png"
+ },
+ "mesa_b": {
+  "seed": 202,
+  "file": "candidates/mesa_b.png"
+ },
+ "mesa_c": {
+  "seed": 203,
+  "file": "candidates/mesa_c.png"
+ },
+ "mesa_d": {
+  "seed": 204,
+  "file": "candidates/mesa_d.png"
+ },
+ "mesa_e": {
+  "seed": 205,
+  "file": "candidates/mesa_e.png"
+ },
+ "rock_a": {
+  "seed": 301,
+  "file": "candidates/rock_a.png"
+ },
+ "rock_b": {
+  "seed": 302,
+  "file": "candidates/rock_b.png"
+ },
+ "rock_c": {
+  "seed": 303,
+  "file": "candidates/rock_c.png"
+ },
+ "rock_d": {
+  "seed": 304,
+  "file": "candidates/rock_d.png"
+ },
+ "rock_e": {
+  "seed": 305,
+  "file": "candidates/rock_e.png"
+ },
+ "tiles_a": {
+  "seed": 401,
+  "file": "candidates/tiles_a.png"
+ },
+ "tiles_b": {
+  "seed": 402,
+  "file": "candidates/tiles_b.png"
+ },
+ "tiles_c": {
+  "seed": 403,
+  "file": "candidates/tiles_c.png"
+ },
+ "tiles_d": {
+  "seed": 404,
+  "file": "candidates/tiles_d.png"
+ },
+ "props_a": {
+  "seed": 501,
+  "file": "candidates/props_a.png"
+ },
+ "props_b": {
+  "seed": 502,
+  "file": "candidates/props_b.png"
+ },
+ "props_d": {
+  "seed": 504,
+  "file": "candidates/props_d.png"
+ },
+ "props_e": {
+  "seed": 505,
+  "file": "candidates/props_e.png"
+ },
+ "title_a": {
+  "seed": 601,
+  "file": "candidates/title_a.png"
+ },
+ "title_b": {
+  "seed": 602,
+  "file": "candidates/title_b.png"
+ },
+ "title_d": {
+  "seed": 604,
+  "file": "candidates/title_d.png"
+ }
+}

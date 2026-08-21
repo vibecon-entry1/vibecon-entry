@@ -20,6 +20,7 @@
 // the game down, and it must never put an error in the console — the e2e suite
 // asserts an empty console, and the autoplay-blocked path (no user gesture yet)
 // is the NORMAL path on a fresh page load.
+import { stamp } from './version.js';
 
 /**
  * Random starting index for a pool that isn't `lastFirst`.
@@ -117,7 +118,7 @@ export function makeJukebox({
     el.loop = false;                     // rule 3 needs the 'ended' event
     el.volume = volume();
     el.muted = muted;                    // hard mute, independent of volume
-    el.src = base + list[idx];
+    el.src = stamp(base + list[idx]);
     el.addEventListener('error', () => {
       if (el.dead || cur?.el !== el) return;
       teardown(el);
@@ -173,7 +174,7 @@ export function makeJukebox({
     el.preload = 'none';
     el.volume = volume();
     el.muted = muted;
-    el.src = base + list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
+    el.src = stamp(base + list[Math.min(list.length - 1, Math.floor(rnd() * list.length))]);
     el.addEventListener('ended', () => teardown(el));
     el.addEventListener('error', () => teardown(el));
     const p = el.play();
@@ -201,7 +202,7 @@ export function makeJukebox({
   // Manifest fetch is fire-and-forget. On failure the jukebox goes permanently
   // inert: the game keeps running, silently.
   if (!inert) {
-    fetch(base + 'manifest.json')
+    fetch(stamp(base + 'manifest.json'))
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then(m => {
         manifest = m;

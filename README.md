@@ -1,4 +1,3 @@
-<!-- NOTE: refresh every screenshot in media/ after the Plan-6 visual overhaul pass -->
 <p align="center">
   <img src="media/rocketride.gif" width="130" alt="Dogelon rides"><br>
   <img src="web/assets/brand/circle-icon-100.png" width="56" alt="Dogelon Mars">
@@ -10,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/made%20for-VibeCon%202026-ff3a3a" alt="vibecon">
   <img src="https://img.shields.io/badge/dependencies-0-eec548" alt="zero deps">
-  <img src="https://img.shields.io/badge/tests-218%20passing-2c8" alt="tests">
+  <img src="https://img.shields.io/badge/tests-288%20passing-2c8" alt="tests">
   <img src="https://img.shields.io/badge/wow-100%25-a5c3ff" alt="wow">
   <br>
   <img src="https://img.shields.io/badge/level-1488%20tiles-532e6d" alt="level">
@@ -72,7 +71,7 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 ## very tech
 
 - **zero-dependency vanilla JS** — no engine, no framework, no build step. fixed 60Hz sim, deterministic input tapes, pixel-perfect DPR-aware rendering with a hand-authored 5×7 bitmap font
-- **172 unit tests + 46 end-to-end browser tests** drive the actual game with frame-indexed input tapes and screenshot every milestone
+- **213 unit tests + 75 end-to-end browser tests** drive the actual game with frame-indexed input tapes and screenshot every milestone
 - **no `Math.random` anywhere in the sim** — WOW ZONE deals its level from a seeded mulberry32 stream, so a run is a pure function of one integer and an input tape replays it exactly
 - levels are ASCII art. the atlas is built by a Python pipeline that recovers native pixels losslessly from the official sheets. every gap in every level is machine-verified clearable before a human ever plays it
 - music streams progressively (Range/206) — nothing preloads, just like the big games do it
@@ -87,8 +86,9 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 | thing | size |
 |---|---|
 | the entire game code (unminified, every comment intact) | ~320 KB |
-| the sprite atlas (every frame of everything) | 84 KB |
-| share cards + banner | ~400 KB |
+| the sprite atlas (477 frames of everything) | 227 KB |
+| share cards + banner | ~600 KB |
+| sound effects (42 tiny files) | ~240 KB — **loads lazily after your first tap, not before** |
 | soundtrack (14 tracks) | ~33 MB — **streams on demand, loads nothing up front** |
 | what your browser downloads before you're playing | well under 1 MB |
 
@@ -99,8 +99,14 @@ no bundler. no minifier. no engine. the whole playable game is smaller than one 
 ```bash
 npm install        # dev deps only (test runner) — the game itself has zero dependencies
 npm run serve      # → http://localhost:8123
-npm test           # 172 unit + 46 e2e browser tests, much green
+npm test           # 213 unit + 75 e2e browser tests, much green
 ```
+
+deploying (GitHub Pages serves `web/` as-is): whenever a deploy changes any
+fetched asset — `web/assets/` (atlas), `web/assets/audio/`, the brand stickers —
+bump the `?v=` build stamp on the module entry in `web/index.html`. one line;
+it cache-busts every asset fetch so a returning player's browser can never mix
+an old script with a new atlas. very fresh.
 
 ## built with much AI
 

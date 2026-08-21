@@ -27,6 +27,8 @@
 // coverage is tests/e2e/brand.spec.js, which boots the actual page in Chromium
 // and checks the console stays clean and the elements get created.
 
+import { stamp } from './version.js';
+
 // The alpha-VP9 profile our assets are encoded in (profile 0, 8-bit, 4:2:0).
 // canPlayType() with a full codecs= string is the only honest capability check;
 // a bare 'video/webm' answers 'maybe' on builds with no VP9 decoder at all.
@@ -69,7 +71,7 @@ export function makeSticker(url) {
       // A media error is terminal for this sticker: mark it dead so draw()
       // stops even asking, rather than probing a broken element every frame.
       el.addEventListener('error', () => { dead = true; });
-      el.src = url;
+      el.src = stamp(url);   // build-stamped: see engine/version.js
       const p = el.play();
       // Rejected play() is EXPECTED on some paths (a policy we didn't predict,
       // a tab that starts hidden). Swallow it — the element keeps autoplay set,

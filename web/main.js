@@ -11,6 +11,7 @@ import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
 import { makeWowEnd } from './game/scenes/wowend.js';
+import { makeAudition } from './game/scenes/audition.js';
 import { drawText, drawTextShadow } from './engine/font.js';
 import { fitScale } from './engine/fit.js';
 import { P } from './game/physics.js';
@@ -416,6 +417,22 @@ async function boot() {
       seqI = e.code === SEQ9[0] ? 1 : 0;
     }
   });
+  // A second order-of-arrival watcher, same idiom as the one above and
+  // deliberately independent of it (the two share no keys, so neither ever
+  // resets the other's progress). This one only means something on the title
+  // screen, where every key in it is unbound and typing it does nothing
+  // visible until the last one lands.
+  const SEQ8 = ['KeyP', 'KeyI', 'KeyC', 'KeyK', 'KeyT', 'KeyO', 'KeyN', 'KeyE'];
+  let seqJ = 0;
+  addEventListener('keydown', e => {
+    if (e.code === SEQ8[seqJ]) {
+      if (++seqJ < SEQ8.length) return;
+      seqJ = 0;
+      if (sceneName === 'title') go('audition');
+    } else {
+      seqJ = e.code === SEQ8[0] ? 1 : 0;
+    }
+  });
   scenes.viewer = () => makeViewer({ atlas, input });
   // opts carries the WOW ZONE entry ({ mode: 'wow', seed }); gauntlet passes
   // nothing and makePlay's defaults handle it.
@@ -435,8 +452,11 @@ async function boot() {
   // touchUI/tapNeed ride along so the title can offer TAP plates (wow entry,
   // display toggle) with the same 44 CSS px floor as the shell's own buttons,
   // while main.js stays the single owner of scale/dpr and the coarse gate.
-  scenes.title = () => makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+  scenes.title = () => makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
                                    touchUI, tapNeed });
+  // The sound check. No visible menu leads here — the watcher above is the
+  // only door, and it only opens off the title.
+  scenes.audition = () => makeAudition({ input, save, sfx, go, touchUI, tapNeed });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
@@ -525,12 +545,13 @@ async function boot() {
       // it: two full-frame passes on the 640x360 buffer, which is the cheapest
       // surface in the pipeline and the only one every scene shares.
       //
-      // The colour crawls between a cool rose and a warm ember on an 8s sine,
+      // The colour crawls between a hot rose and a cool violet on an 8s sine,
       // and 'overlay' keeps it a tint rather than a coat of paint — blacks stay
       // black, highlights stay bright, and the midtones (the rock, the dirt,
-      // the sky bands) are what actually move. The swing is deliberately narrow
-      // and both ends of it are warm: this is the light changing over the same
-      // red planet, not a rainbow.
+      // the sky bands) are what actually move. Retuned for the sunset palette:
+      // the old rose-to-ember swing disappeared into a world that is now ember
+      // wall to wall, so the swing runs pink-to-violet instead — unmistakably
+      // the disco dressing, still reading as coloured LIGHT on the same planet.
       //
       // The second pass is the same phase read as brightness: a flat grey ADDED
       // at the ember end and MULTIPLIED in at the rose end, which is a +/-8%
@@ -541,8 +562,8 @@ async function boot() {
         const mix = (a, b) => Math.round(a + (b - a) * u);
         ctx.save();
         ctx.globalCompositeOperation = 'overlay';
-        ctx.globalAlpha = 0.22;
-        ctx.fillStyle = `rgb(${mix(158, 255)},${mix(40, 140)},${mix(108, 42)})`;
+        ctx.globalAlpha = 0.30;
+        ctx.fillStyle = `rgb(${mix(214, 110)},${mix(48, 64)},${mix(150, 214)})`;
         ctx.fillRect(0, 0, VW, VH);
         const bv = Math.round(Math.abs(sw) * 20);
         ctx.globalCompositeOperation = sw >= 0 ? 'lighter' : 'multiply';

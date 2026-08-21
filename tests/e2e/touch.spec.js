@@ -183,6 +183,41 @@ test('title: the display plate flips crisp/fill and never skips a card', async (
   expect(errors).toEqual([]);
 });
 
+test('sound check: tap hears a candidate, the same tap again keeps it', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  // The way in is the same key sequence as on desktop — a phone with a
+  // keyboard attached is still a phone; the SCREEN is what must answer taps.
+  for (const k of ['P', 'I', 'C', 'K', 'T', 'O', 'N', 'E']) await page.keyboard.press(k);
+  await page.waitForFunction(() => window.__blast.state().scene === 'audition',
+                             null, { timeout: 5000 });
+  const t = await touchRig(page);
+  // coin's B cell centre (row 4, second column; ROW_H 17 since the SFX v2
+  // list grew to 14 rows). The 44px floor inflates the 15px-tall cells across
+  // their neighbours; nearest-centre must resolve the dead-centre tap to
+  // exactly this row.
+  await t.tap(414, 132);
+  await page.waitForFunction(() => {
+    const s = window.__blast.state();
+    return s.sound === 'coin' && s.variant === 'b';
+  }, null, { timeout: 5000 });
+  // First tap auditions, never commits.
+  expect((await st(page)).picks.coin).toBeUndefined();
+  expect(await page.evaluate(() => window.__blast.sfx.current().log.at(-1))).toBe('coin#b');
+  await t.tap(414, 132);                        // same cell again: keep it
+  await page.waitForFunction(() => window.__blast.state().picks?.coin === 'b',
+                             null, { timeout: 5000 });
+  // Stamped with the pick generation (save.js SFX_PICKS_V), like every keep.
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('suchblast_v1')).sfxPicks)).toEqual({ v: 2, coin: 'b' });
+  await t.tap(14, 13);                          // the back plate
+  await page.waitForFunction(() => window.__blast.state().scene === 'title',
+                             null, { timeout: 5000 });
+  expect(errors).toEqual([]);
+});
+
 // Regression: on a tiny fit the 44 CSS px floor inflates PLATE hit boxes past
 // the gap between the two title lines. 568x320 CSS at dpr 2 (crisp scale 1)
 // puts the floor at 88 virtual px, so the unlocked-with-banked-best wow box

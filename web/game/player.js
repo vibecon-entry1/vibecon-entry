@@ -178,12 +178,22 @@ export function makePlayer(spawnFeet) {
         }
       } else {
         // forward bolts inherit the shooter's momentum so they always outrun the runner.
-        // Spawned further out than the muzzle (+36 vs +26): the muzzle stays pinned to
-        // the barrel, but the bolt's CENTER needs the extra clearance so its 43px streak
-        // doesn't drape back over the sprite's edge.
+        //
+        // BARREL-TIP OFFSETS (fix-round, declared constant-only change; the
+        // verb, cooldown and inheritance are untouched). Measured
+        // programmatically from the shipped atlas fire poses: the grounded
+        // poses carry the gun tip at (+26, -31) relative to the feet (stand;
+        // the run cycle bobs around the same line), the tucked air frame at
+        // (+30, -17). The old single (+26, -30) muzzle plus (+36, -30) bolt
+        // parked airborne flash and bolt on the sprite's head, and the bolt's
+        // wide ignition frame draped back over the gun — so the bolt now
+        // spawns at +44 (its ignition art reaches ~24px behind its centre),
+        // one px above the beam line's own art offset.
         const inherit = Math.sign(b.vx) === pl.facing ? Math.abs(b.vx) : 0;
-        bullets.spawn(b.x + pl.facing * 36, b.y - 30, pl.facing, 0, inherit);
-        pl.muzzle = { t: 0, dx: pl.facing, dy: 0, x: b.x + pl.facing * 26, y: b.y - 30 };
+        const air = !grounded;
+        const tipX = air ? 30 : 26, tipY = air ? -17 : -31;
+        bullets.spawn(b.x + pl.facing * 44, b.y + tipY - 1, pl.facing, 0, inherit);
+        pl.muzzle = { t: 0, dx: pl.facing, dy: 0, x: b.x + pl.facing * tipX, y: b.y + tipY };
         pl.fireCd = P.FIRE_CD;
       }
     }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeSave, DEFAULTS } from '../../web/engine/save.js';
+import { makeSave, DEFAULTS, SFX_PICKS_V } from '../../web/engine/save.js';
 
 function fakeStorage(seed = {}) {
   const m = new Map(Object.entries(seed));
@@ -44,6 +44,49 @@ test('wowUnlocked is a flat top-level flag that survives a reload', () => {
   const reloaded = makeSave(store);
   assert.equal(reloaded.data.wowUnlocked, true);
   assert.equal(reloaded.data.best.gauntlet, 900);
+});
+
+test('sfxPicks round-trips whole, and a picks-free save reads as no picks', () => {
+  const store = fakeStorage();
+  const s = makeSave(store);
+  assert.deepEqual(s.data.sfxPicks, {});          // fresh save: all defaults
+  // Whole-object writes, like `audio`: the sound test always patches the map,
+  // stamping the current generation (see SFX_PICKS_V) — that stamp is what
+  // lets the picks survive the reload.
+  s.patch({ sfxPicks: { v: SFX_PICKS_V, coin: 'b' } });
+  s.patch({ sfxPicks: { v: SFX_PICKS_V, coin: 'b', hurt: 'b' } });
+  s.patch({ best: { gauntlet: 100 } });           // unrelated patch must not clear it
+  assert.deepEqual(makeSave(store).data.sfxPicks,
+                   { v: SFX_PICKS_V, coin: 'b', hurt: 'b' });
+});
+
+test('picks from an older sound generation are discarded at load', () => {
+  // SFX v2 renumbered what the candidate letters MEAN, so a pick banked
+  // before the marker existed (or against a stale one) points at a different
+  // sound than the player chose. Absent or wrong generation → all defaults.
+  for (const picks of [{ coin: 'b' }, { v: 1, coin: 'b' }, { v: 99, coin: 'b' }]) {
+    const s = makeSave(fakeStorage({ suchblast_v1: JSON.stringify({ v: 1, sfxPicks: picks }) }));
+    assert.deepEqual(s.data.sfxPicks, {}, JSON.stringify(picks));
+  }
+  const ok = makeSave(fakeStorage({ suchblast_v1:
+    JSON.stringify({ v: 1, sfxPicks: { v: SFX_PICKS_V, coin: 'b' } }) }));
+  assert.deepEqual(ok.data.sfxPicks, { v: SFX_PICKS_V, coin: 'b' });
+});
+
+test('a v1 save written before the sound test existed loads with no picks', () => {
+  const s = makeSave(fakeStorage({ suchblast_v1: JSON.stringify({ v: 1, wowUnlocked: true }) }));
+  assert.deepEqual(s.data.sfxPicks, {});
+  assert.equal(s.data.wowUnlocked, true);         // the old keys still land
+});
+
+test('a hand-mangled sfxPicks shape falls back to empty, values pass through', () => {
+  // Shape is save.js's job; VALUES are sfx.js's (its resolver falls back
+  // per-entry) — so a junk value survives the read and a junk shape does not.
+  const bad = makeSave(fakeStorage({ suchblast_v1: JSON.stringify({ v: 1, sfxPicks: 'coin' }) }));
+  assert.deepEqual(bad.data.sfxPicks, {});
+  const odd = makeSave(fakeStorage({ suchblast_v1:
+    JSON.stringify({ v: 1, sfxPicks: { v: SFX_PICKS_V, coin: 42 } }) }));
+  assert.deepEqual(odd.data.sfxPicks, { v: SFX_PICKS_V, coin: 42 });
 });
 
 test('partial best patches merge, not replace', () => {
