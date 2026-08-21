@@ -1,0 +1,138 @@
+// The "SHARE — press S" line on the two end screens, and everything that
+// happens after you press it. Shared by win.js and wowend.js so the gauntlet
+// and the zone can never drift into two different share flows.
+//
+// THE KEY. KeyS is bound to the 'down' action in engine/input.js — down is the
+// verb key: it is how you shoot the ground. On these two screens there is no
+// world to shoot, nothing reads 'down', and the only other bound keys are R
+// (again) and M (mute). So the prompt reads "press S" to the player and the
+// code reads input.pressed('down'), which is the same physical key. No new
+// KEYMAP entry, and no risk of stealing a key from the sim: this scene never
+// runs while a player is holding down to slide.
+//
+// NO NETWORK. Pressing S writes ONE string — the run's link — to the
+// clipboard. The URL points at the unfurl worker, but the GAME never fetches
+// it: the card the reader sees comes from the link's own OpenGraph unfurl.
+// (It used to also copy the card PNG; chat apps pasted the picture and
+// dropped the link. See copyShare.)
+import { drawText } from '../engine/font.js';
+import { copyShare, shareUrl, signedShareUrl, shareText } from './share.js';
+
+const CX = 320;                   // VW/2 — both end screens are 640 wide
+const OK_T = 3.0;                 // how long "very copied." stays up
+const ARM_T = 0.5;                // no share fires before this — see update()
+
+/**
+ * The share line's tap band: one definition for both end screens, so the two
+ * can never drift. `y` is the line's text-box top (what render() is handed),
+ * `need` is the 44 CSS px floor expressed in virtual px (tapNeed, from
+ * main.js — the owner of scale/dpr); the 30vpx minimum keeps the band at
+ * least text-plus-padding tall where a big screen makes `need` tiny.
+ */
+export function shareTapBand(y, need = 0) {
+  const c = y + 7;                // centre of the scale-2 text box
+  const h = Math.max(30, need);
+  return { top: c - h / 2, bot: c + h / 2 };
+}
+
+/**
+ * @param run {score, kills, deaths, mode} — the finished run, already tallied.
+ * @param copy — injectable for tests; defaults to the real clipboard path.
+ */
+export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
+  // The URL starts as the legacy readable shape and becomes the `?r=<token>`
+  // form as soon as the HMAC lands — signing is async, this constructor is
+  // not, and the scene builds its UI once. Signing is milliseconds; a player
+  // cannot press S before it lands. Where subtle doesn't exist (http:// off
+  // localhost) the token carries sig "0" and unfurls generic — see share.js.
+  let url = shareUrl(run);
+  signedShareUrl(run).then((u) => { url = u; }).catch(() => {});
+  let status = 'idle';            // idle | busy | ok | fail
+  let okT = 0;
+  let armT = 0;                   // scene age; the share can't fire before ARM_T
+
+  async function fire() {
+    if (status === 'busy') return;
+    status = 'busy';
+    try {
+      await copy(run);
+      status = 'ok'; okT = 0;
+    } catch {
+      // Clipboard denied, or no clipboard at all (http:// on a non-localhost
+      // origin has none). The URL goes on screen instead — a player can read
+      // it off and type it, which is worse but is not nothing.
+      status = 'fail';
+      manualPrompt();
+    }
+  }
+
+  // ...and the URL also goes into a native prompt(), which is the one text box
+  // that exists on every browser and platform without a clipboard API: its
+  // contents are pre-selected, so the OS's own copy works on it. Only ever
+  // reached from the catch above, i.e. only when the real write is gone.
+  //
+  // Deferred by one frame ON PURPOSE. prompt() blocks the page dead, so calling
+  // it inline would freeze the display on the frame BEFORE the fallback URL was
+  // drawn — dismiss the box and the screen would still say "press S". The
+  // loop's own rAF is already queued ahead of this one, so its render lands
+  // first and the dialog opens over a screen that already shows the URL.
+  function manualPrompt() {
+    if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+    const ask = () => { try { window.prompt('very manual. copy this:', url); } catch { /* ignore */ } };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(ask); else ask();
+  }
+
+  return {
+    /** Call from the scene's update. Returns true if a share was started. */
+    update(dt, input) {
+      if (status === 'ok' && (okT += dt) > OK_T) status = 'idle';
+      armT += dt;
+      // Same arming beat the scenes give the tap path: KeyS is the `down`
+      // action, and a down-drag still settling from the run's final moment
+      // must not fire a share the instant the screen arrives.
+      if (armT > ARM_T && input.pressed('down') && status !== 'busy') {
+        sfx?.play('uiclick');
+        fire();
+        return true;
+      }
+      return false;
+    },
+
+    /** The keypress flow, for pointer/touch button paths. Same guard, same sound. */
+    tap() {
+      if (status === 'busy') return;
+      sfx?.play('uiclick');
+      fire();
+    },
+
+    /** One line at `y`, plus whatever the last press left behind. */
+    render(ctx, y) {
+      if (status === 'ok') {
+        ctx.fillStyle = '#eec548';
+        drawText(ctx, 'link copied. paste it. much unfurl.',
+                 CX, y, { align: 'center', scale: 2 });
+        return;
+      }
+      if (status === 'fail') {
+        ctx.fillStyle = '#e2413f';
+        drawText(ctx, 'no clipboard. very manual:', CX, y - 12, { align: 'center' });
+        ctx.fillStyle = '#8fa';
+        // The bitmap font is CAPS-only, so the URL comes out shouted. The host
+        // survives that (case-insensitive) and the worker lower-cases its query
+        // keys, so a retyped URL still reaches the game — but the r= token is
+        // base64url and case-SENSITIVE, so a shouted retype unfurls generic
+        // rather than the run. Accepted: this path is the last-ditch fallback,
+        // and generic still links the game.
+        drawText(ctx, url, CX, y + 1, { align: 'center' });
+        return;
+      }
+      ctx.fillStyle = '#8fa';
+      drawText(ctx, 'SHARE — press S', CX, y, { align: 'center', scale: 2 });
+    },
+
+    // Test hook. The e2e prefers reading the real clipboard, but headless
+    // permission grants are a per-browser lottery, so the payload the game
+    // BELIEVES it copied is exposed here as the fallback assertion surface.
+    state: () => ({ shareUrl: url, shareText: shareText(run, url), shareStatus: status }),
+  };
+}

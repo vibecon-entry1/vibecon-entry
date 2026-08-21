@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<link rel="icon" type="image/png" href="assets/brand/circle-icon-100.png">
+<title>SUCH BLAST</title>
+
+<!-- Unfurl. This is the STATIC baseline: any plain link to the game gets the
+     hero card. A link to a RUN goes through share-worker/ instead, which emits
+     the same tags with that run's score and its tier card.
+
+     og:image must be absolute — a scraper has no page context to resolve a
+     relative path against. The URL below is the GitHub Pages address this repo
+     publishes to; it 404s until Pages is flipped on, which is fine because no
+     scraper visits before the link exists. If the Pages URL ever changes, this
+     tag and share-worker/worker.js's PAGES constant both have to move. -->
+<meta property="og:title" content="SUCH BLAST">
+<meta property="og:description" content="the gun is your legs. much blast. a VibeCon 2026 game.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vibecon-entry1.github.io/vibecon-entry/">
+<meta property="og:image" content="https://vibecon-entry1.github.io/vibecon-entry/share/hero.png?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SUCH BLAST — much game. very mars.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SUCH BLAST">
+<meta name="twitter:description" content="the gun is your legs. much blast. a VibeCon 2026 game.">
+<meta name="twitter:image" content="https://vibecon-entry1.github.io/vibecon-entry/share/hero.png?v=2">
+<meta name="description" content="the gun is your legs. much blast. a VibeCon 2026 game.">
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b12; overflow: hidden; }
+  /* touch-action none: the canvas IS the controller — no scroll, no pinch, no
+     double-tap zoom may ever win a gesture race against a live thumb. */
+  #screen { position: absolute; inset: 0; margin: auto; image-rendering: pixelated;
+            touch-action: none; -webkit-user-select: none; user-select: none;
+            -webkit-touch-callout: none; }
+  #err { color: #e8e0d0; font: 16px monospace; text-align: center; margin-top: 20vh;
+         display: none; white-space: pre-line; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="err"></div>
+<!-- BUILD STAMP / cache-busting. The `?v=` below is the game's single build
+     version: engine/version.js reads it off this tag and appends it to every
+     mutable asset fetch (atlas, audio, manifest, stickers), so a returning
+     player's cache can never mix an old main.js with a new atlas again.
+     DEPLOY STEP: bump the value (any new string) whenever web/assets/,
+     web/assets/audio/ or the brand stickers change. One line, nothing else. -->
+<script type="module" src="main.js?v=b6"></script>
+</body>
+</html>

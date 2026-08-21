@@ -1,0 +1,327 @@
+// Title + intro cards. The first thing a player sees, and the only scene that
+// isn't the game: the painted sunset backdrop (atlas 'title' cell), the logo,
+// and a pulsing prompt. X walks the intro one line at a time, then hands off
+// to play. The old seeded starfield is gone with the night sky — the backdrop
+// is a static cell, so screenshots stay diffable for free.
+import { getSticker, BRAND } from '../../engine/sticker.js';
+import { animFrame } from '../../engine/assets.js';
+// Screen text goes through the 5x7 bitmap font, not canvas fillText: see the
+// header of engine/font.js for why. Everything below positions by the TOP of
+// the text box, so the old fillText baselines were each shifted up by the
+// glyph height at that scale.
+import { drawText, drawTextShadow, measure } from '../../engine/font.js';
+
+const VW = 640, VH = 360;
+
+// RocketRide, parked in the bottom-right corner. Sized and placed so the whole
+// bob range clears the centred legend block (which ends around x=470) and the
+// spark trail still has ~20px of sky below it to fall through.
+const RR = { x: 522, y: 228, size: 112, bob: 4 };
+
+// Thruster sparks: four 2px embers that fall out from under the rocket and
+// respawn at the top of their own little track. Phases are FIXED, not random,
+// for the same reason the starfield is seeded — the title screen has to be
+// diffable between screenshots.
+const SPARKS = [
+  { dx: 34, phase: 0.00, speed: 0.85, len: 34, c: '#eec548' },
+  { dx: 46, phase: 0.37, speed: 1.05, len: 30, c: '#aee6ff' },
+  { dx: 56, phase: 0.62, speed: 0.72, len: 38, c: '#eec548' },
+  { dx: 42, phase: 0.85, speed: 1.25, len: 26, c: '#ffe100' },
+];
+
+// The stickers are fly-THROUGH animations: the doge rockets in from off-frame
+// and out again, so for a good part of every loop the 512px source is almost
+// entirely transparent. A hard-edged rounded rect behind that reads as an empty
+// UI box waiting for content — verified on screen, it looked broken. A radial
+// falloff gives the art the same contrast against the starfield while having no
+// edge to look empty: when the frame is bare, there is simply a slightly darker
+// patch of sky.
+function softPlate(ctx, cx, cy, r) {
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, 'rgba(11,11,18,0.72)');
+  g.addColorStop(0.62, 'rgba(11,11,18,0.55)');
+  g.addColorStop(1, 'rgba(11,11,18,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+}
+
+const INTRO = [
+  'aliens very rude.',
+  'ship is that way.',
+  'much blast.',
+];
+
+const LEGEND = [
+  // Spelled DOWN rather than an arrow glyph: the pixel font has no ↓ either,
+  // and an unauthored glyph renders as a tofu box by design.
+  'arrows/WASD move  ·  X fire  ·  DOWN+X hop  ·  DOWN+move slide',
+  'Esc pause  ·  R restart  ·  M mute',
+];
+
+// `save` is read-only here: the title only ever DISPLAYS the banked best.
+// main.js's win-scene factory is still the one and only writer.
+export function makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+                            touchUI, tapNeed }) {
+  // The title pool starts the moment this scene exists. Before the player's
+  // first keypress the jukebox just records the intent and main.js's unlock
+  // listener starts it — so the music comes up on the same press that walks the
+  // first intro card, not a scene later.
+  jukebox?.playPool('title');
+
+  // Cached: bouncing off the title and back (R from the win screen) must not
+  // open a second decoder for the same 512px cartoon.
+  const rocket = getSticker(BRAND.rocketride);
+
+  // The corner mascot's IN-BUFFER layers: vignette first (so the cartoon's
+  // dark linework doesn't dissolve into the starfield), then the embers on
+  // top. The video draw itself lives in drawRocketOverlay below — it has to
+  // run on the final screen canvas at device resolution, post-blit, or the
+  // 512px art gets squashed into this 640x360 buffer and re-stretched soft.
+  // Same bob/t math in both halves keeps the plate/embers (buffer) and the
+  // art (overlay) aligned under each other despite drawing in two different
+  // passes.
+  function drawRocketBuffer(ctx, t) {
+    const bob = Math.round(Math.sin(t * 1.1) * RR.bob);
+    softPlate(ctx, RR.x + RR.size / 2, RR.y + RR.size / 2 + bob, RR.size * 0.66);
+
+    // Embers. Each rides a 0..1 sawtooth down its own `len`-pixel track and
+    // fades out over the last third, so respawn is a fade-in, not a pop.
+    for (const s of SPARKS) {
+      const u = (t * s.speed + s.phase) % 1;
+      const y = RR.y + bob + RR.size - 8 + u * s.len;
+      ctx.globalAlpha = u < 0.15 ? u / 0.15 : (u > 0.7 ? (1 - u) / 0.3 : 1);
+      ctx.fillStyle = s.c;
+      ctx.fillRect(RR.x + s.dx, Math.round(y), 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Overlay: the sticker itself, drawn at device resolution post-blit. See
+  // main.js's render() for the S (device-px-per-virtual-px) contract.
+  function drawRocketOverlay(sctx, S, t) {
+    const bob = Math.round(Math.sin(t * 1.1) * RR.bob);
+    rocket.drawScaled(sctx, S, RR.x, RR.y + bob, RR.size);
+  }
+
+  // phase: 'title' → 'intro0' → 'intro1' → 'intro2' → play
+  let phase = 'title';
+  // Mirrors main.js's display mode purely so the settings line has something to
+  // print; main.js stays the owner of both fit() and the save write.
+  let display = save?.data?.display ?? 'crisp';
+  // Read ONCE at scene construction, like every other save read here: nothing
+  // can unlock wow while the title is on screen.
+  const unlocked = !!save?.data?.wowUnlocked;
+  // Hoisted from render: the WOW line's y depends on it, and the tap plate's
+  // hit box has to sit exactly where the line is drawn.
+  const bestG = save?.data?.best?.gauntlet ?? 0;
+  let t = 0;
+
+  // --- tap plates ------------------------------------------------------------
+  // The two title settings a phone has no key for. Geometry is shared by the
+  // hit test in update() and the plate draw in render(), so the thing you see
+  // IS the thing you hit; the hit boxes get the same 44 CSS px floor as the
+  // shell's own buttons (tapNeed comes down from main.js, the owner of
+  // scale/dpr). Labels swap their key names for tap words when the touch UI
+  // is live — a keyboard title keeps its clean text look, plates included.
+  const onTouch = () => !!touchUI?.();
+  const wowLabel = () => onTouch() ? 'WOW ZONE — much tap' : 'WOW ZONE — press W';
+  const wowRect = () => {
+    const w = measure(wowLabel(), 2) + 16;
+    return { x: VW / 2 - w / 2, y: (bestG > 0 ? 254 : 230) - 4, w, h: 22 };
+  };
+  const dispLabel = () => `DISPLAY: ${display.toUpperCase()}${onTouch() ? ' · tap' : ' · press D'}`;
+  const dispRect = () => {
+    const w = measure(dispLabel()) + 12;
+    return { x: VW / 2 - w / 2, y: 300 - 4, w, h: 15 };
+  };
+  const hitPlate = (v, r) => {
+    const need = tapNeed?.() ?? 0;
+    const px = Math.max(0, (need - r.w) / 2), py = Math.max(0, (need - r.h) / 2);
+    return v.x >= r.x - px && v.x < r.x + r.w + px && v.y >= r.y - py && v.y < r.y + r.h + py;
+  };
+  const plateDist = (v, r) => Math.hypot(v.x - (r.x + r.w / 2), v.y - (r.y + r.h / 2));
+  function drawPlate(ctx, r) {
+    ctx.fillStyle = 'rgba(11,11,18,0.55)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#3a3350';                  // same rule colour as the pause plate
+    ctx.fillRect(r.x, r.y, r.w, 1);
+    ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1);
+    ctx.fillRect(r.x, r.y, 1, r.h);
+    ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+  }
+  // ---------------------------------------------------------------------------
+  let intro = -1;
+
+  return {
+    update(dt) {
+      t += dt;
+      // One switch for both engines — main.js owns it (see toggleMute there).
+      if (input.pressed('mute')) toggleMute?.();
+      // D is also WASD's 'right', which means nothing on the title screen —
+      // see the KEYMAP note in engine/input.js. Handled ONLY here: no other
+      // scene reads 'display', so walking right in play can never re-fit the
+      // canvas mid-jump.
+      if (input.pressed('display')) display = toggleDisplay?.() ?? display;
+      // W = WOW ZONE, and only once the gauntlet has been finished (the win
+      // scene banks the flag). Checked before the fire edge so a player who
+      // mashes both gets the mode they asked for; unlocked or not, this is the
+      // ONLY scene that reads 'wowzone'.
+      if (unlocked && input.pressed('wowzone')) {
+        sfx?.play('uiclick');
+        go('play', { mode: 'wow' });    // main.js rolls the seed — see wowSeed there
+        return;
+      }
+      // A tap ANYWHERE advances, same as fire — the title has no zones and a
+      // phone player's first touch has to work before they know the layout —
+      // EXCEPT on a plate: a plate consumes its tap, so poking a button can
+      // never also skip a card.
+      let tapAdvance = false;
+      const taps = input.taps?.() ?? [];
+      if (taps.length) {
+        const v = taps[0];
+        // On tiny/high-dpr fits the 44 CSS px floor inflates both hit boxes
+        // past the gap between the two lines, so — like the shell's claim() —
+        // an overlap resolves to the nearest plate CENTRE: two abutting
+        // targets stay two targets, and a display tap can never launch wow.
+        const hits = [];
+        if (phase === 'title' && unlocked && hitPlate(v, wowRect())) hits.push(['wow', wowRect()]);
+        if (phase === 'title' && hitPlate(v, dispRect())) hits.push(['display', dispRect()]);
+        hits.sort((a, b) => plateDist(v, a[1]) - plateDist(v, b[1]));
+        if (hits[0]?.[0] === 'wow') {
+          sfx?.play('uiclick');
+          go('play', { mode: 'wow' });    // same path as the W key above
+          return;
+        } else if (hits[0]?.[0] === 'display') {
+          sfx?.play('uiclick');
+          display = toggleDisplay?.() ?? display;
+          // Consume the whole frame, not just the tap: a centred plate sits in
+          // the fire half of the canvas, so the same touch also raised a fire
+          // edge — falling through would toggle AND burn an intro card.
+          return;
+        } else tapAdvance = true;
+      }
+      if (!input.pressed('fire') && !tapAdvance) return;
+      sfx?.play('uiclick');            // the only sound the title makes
+      intro++;
+      if (intro >= INTRO.length) { go('play'); return; }
+      phase = `intro${intro}`;
+    },
+
+    render(ctx) {
+      // The painted backdrop: same planet the run opens on, sun and all.
+      atlas.drawCentered(ctx, 'title', atlas.anims.title.frames[0], VW / 2, VH / 2);
+      // Intro cards keep the backdrop but dim it — one line of text against
+      // the full sunset was unreadable at the bright end of the sky.
+      if (phase !== 'title') {
+        ctx.fillStyle = 'rgba(11,11,18,0.62)'; ctx.fillRect(0, 0, VW, VH);
+      }
+
+      const C = { align: 'center' };
+      if (phase === 'title') {
+        drawTextShadow(ctx, 'SUCH BLAST', VW / 2, 104, { ...C, scale: 4 }, '#eec548', '#2a1c33');
+
+        // Deep crimson, not the old lilac: the strapline sits right on the
+        // backdrop's sun and pale lilac dissolved into it.
+        ctx.fillStyle = '#5a230f';
+        drawText(ctx, 'a very mars. much escape.', VW / 2, 146, C);
+
+        ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, onTouch() ? 'MUST START — very tap' : 'MUST START — press X',
+                 VW / 2, 206, { ...C, scale: 2 });
+        ctx.globalAlpha = 1;
+
+        // Banked best, under the start prompt. Hidden entirely on a fresh save:
+        // 'BEST WOW: 0' reads as a taunt, not a record.
+        if (bestG > 0) {
+          ctx.fillStyle = '#eec548';
+          drawText(ctx, `BEST WOW: ${bestG}`, VW / 2, 230, { ...C, scale: 2 });
+        }
+
+        // WOW ZONE, under the best score. Gold and pulsing on its own beat
+        // (offset from the start prompt's, so the two don't strobe in unison
+        // and turn the lower half of the screen into a metronome). Absent
+        // entirely until the gauntlet is finished — an unlocked-later line
+        // would just be a locked box teasing content.
+        if (unlocked) {
+          // Flat gold on a SHALLOW pulse (0.82..1.0), decided by looking at it.
+          // A drop shadow was tried first, to give the line more weight than the
+          // flat gold BEST WOW row above it — it made things worse: at any alpha
+          // below 1 the shadow dulls the gold toward brown, which is what a
+          // pulse spends most of its cycle at. A 0.7 floor without the shadow
+          // was still muddy at the trough. What the two golds are actually told
+          // apart by is the shimmer and the fact that this one names a key.
+          if (onTouch()) drawPlate(ctx, wowRect());
+          ctx.globalAlpha = 0.82 + 0.18 * Math.sin(t * 4 + 1.6);
+          ctx.fillStyle = '#eec548';
+          drawText(ctx, wowLabel(), VW / 2, bestG > 0 ? 254 : 230,
+                   { ...C, scale: 2 });
+          ctx.globalAlpha = 1;
+          // The zone's own banked best, on its own line and dimmer. 'BEST WOW'
+          // above is the CAMPAIGN score ('wow' being the currency); this one
+          // says ZONE so the two records can't be read as the same number.
+          const bz = save?.data?.best?.wow ?? 0;
+          if (bz > 0) {
+            ctx.fillStyle = '#8a7db0';
+            drawText(ctx, `BEST ZONE: ${bz}`, VW / 2, bestG > 0 ? 272 : 248, C);
+          }
+        }
+
+        // Quiet plate under the settings + legend block: the backdrop's lower
+        // third is busy painted terrain now, and the dim grey legend sank
+        // straight into it. Full-width band, same page-black family as every
+        // other plate.
+        ctx.fillStyle = 'rgba(11,11,18,0.5)';
+        ctx.fillRect(0, 292, VW, 48);
+
+        // Settings line, above the control legend and set apart from it by
+        // colour: the key name is lit like the other prompts, the current value
+        // is not, so the eye lands on the thing you can press.
+        const label = dispLabel();
+        const lx = VW / 2 - measure(label) / 2;
+        if (onTouch()) drawPlate(ctx, dispRect());
+        ctx.fillStyle = '#6f6a86';
+        drawText(ctx, label, lx, 300);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, display.toUpperCase(), lx + measure('DISPLAY: '), 300);
+
+        ctx.fillStyle = '#6f6a86';
+        LEGEND.forEach((l, i) => drawText(ctx, l, VW / 2, 316 + i * 11, C));
+
+        // The hero, staged lower-left with a soft contact shadow — the
+        // approved title mock (assets-wow/production/mocks/title.png) places
+        // him exactly here and the shipped screen had silently dropped him.
+        // The OFFICIAL sprite drawn live by the scene (idle loop), never
+        // baked into title.png: the backdrop stays pure environment art and
+        // the doge stays pixel-identical to his in-game self. Drawn after
+        // the legend plate so his boots read over it, like the mock's
+        // uncovered ground. Ellipse, not rects: softPlate already put
+        // anti-aliased gradients on this screen, and a soft shadow is the
+        // one thing a hard pixel stack sells worse.
+        ctx.fillStyle = 'rgba(20,6,8,0.43)';
+        ctx.beginPath();
+        ctx.ellipse(102, 348, 22, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        atlas.drawFeet(ctx, 'stand', animFrame(atlas.anims.stand, t), 102, 348);
+
+        drawRocketBuffer(ctx, t);
+      } else {
+        // intro card: one line, doge-paced, with a quiet advance hint.
+        drawTextShadow(ctx, INTRO[intro], VW / 2, 160, { ...C, scale: 3 }, '#e8e0d0', '#2a1c33');
+        ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4);
+        ctx.fillStyle = '#8fa';
+        drawText(ctx, onTouch() ? 'very tap' : 'press X', VW / 2, 294, C);
+        ctx.globalAlpha = 1;
+      }
+    },
+
+    // Overlay: sticker video only, at device resolution. Only drawn during the
+    // 'title' phase, matching the buffer half's guard in render() above — the
+    // intro cards show no rocket.
+    renderOverlay(sctx, S) {
+      if (phase === 'title') drawRocketOverlay(sctx, S, t);
+    },
+
+    state: () => ({ phase, wowUnlocked: unlocked }),   // display is reported by main.js, its owner
+  };
+}
