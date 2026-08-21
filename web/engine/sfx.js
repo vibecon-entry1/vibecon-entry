@@ -197,6 +197,23 @@ export function envelopeTimes(p) {
   return { attack: a, sustain, decay: d, peakAt: a, releaseAt: a + sustain, total };
 }
 
+/**
+ * Coin combo (juice pass S1): rapid successive pickups climb in pitch, one
+ * semitone per coin banked inside the window, capped, reset by any gap. Pure
+ * and exported for the unit suite; the engine below just threads a clock
+ * through it. Deterministic from pickup TIMING alone — no randomness, no sim
+ * state, and the muted/silent builds advance it identically so what the mix
+ * would have played never depends on whether anyone could hear it.
+ */
+export const COMBO = { window: 1.5, cap: 12 };            // seconds, semitones
+export function comboAdvance(state, now) {
+  const streak = state && now - state.last <= COMBO.window
+    ? Math.min(state.streak + 1, COMBO.cap) : 0;
+  return { last: now, streak };
+}
+/** Equal-tempered: each streak step is one semitone of playbackRate. */
+export const comboRate = streak => Math.pow(2, streak / 12);
+
 // WebAudio's exponentialRampToValueAtTime throws on a zero/negative target, and
 // a gain that ramps to exactly 0 is the common way to hit that. Everything here
 // ramps toward this floor instead and then hard-stops the node.
@@ -215,6 +232,11 @@ export function makeSfx({
   enabled = true,
   CtxCtor = typeof AudioContext !== 'undefined' ? AudioContext
           : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null,
+  // Combo clock, injectable for the unit suite. Defaults to the audio
+  // context's own clock (sample-accurate, and what the voices schedule
+  // against anyway) with a wall-clock stand-in before unlock/in the silent
+  // build so streak bookkeeping stays live everywhere.
+  clock = null,
 } = {}) {
   let inert = !enabled || !CtxCtor;
   let ctx = null, master = null, noiseBuf = null;
@@ -229,15 +251,17 @@ export function makeSfx({
   let loaded = 0;
 
   /**
-   * Fetch+decode one rendered file into the buffer map, at most once. Every
-   * failure mode — network, HTTP status, decoder — is swallowed whole: the
-   * synth fallback keeps playing and a later call may simply try again (the
-   * guard is dropped on failure ON PURPOSE, so a flaky connection heals).
-   * Never runs before unlock(): it needs the ctx for decodeAudioData, and
-   * inert (the ?test build) bails before any fetch happens at all.
+   * Fetch+decode one rendered file into the buffer map — ONE attempt per file
+   * per session. Every failure mode (network, HTTP status, decoder) is
+   * swallowed whole and NOT retried: the trigger sites include play() itself,
+   * so a dropped guard would turn a browser with no AAC decoder into a fetch
+   * per pew — a storm, not a heal. The synth fallback carries the session and
+   * the next page load starts fresh. Never runs before unlock(): it needs the
+   * ctx for decodeAudioData, and inert (the ?test build) bails before any
+   * fetch happens at all.
    */
   function fetchBuf(file) {
-    if (inert || !ctx || !file || buffers.has(file) || fetching.has(file)) return;
+    if (inert || !ctx || !file || fetching.has(file)) return;
     fetching.add(file);
     fetch(stamp(SFX_BASE + file))
       .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`)))
@@ -246,7 +270,7 @@ export function makeSfx({
         buffers.set(file, buf);
         if (DEFAULT_FILES.has(file)) loaded++;
       })
-      .catch(() => { fetching.delete(file); });
+      .catch(() => { /* stays a synth voice this session */ });
   }
   // Diagnostics for the live probe: a bounded log of what the game ASKED for,
   // recorded even in the silent build. Bounded because a full run fires
@@ -256,6 +280,12 @@ export function makeSfx({
   const LOG_MAX = 64;
 
   const warn = msg => { if (!warned) { warned = true; console.warn(`[sfx] ${msg}`); } };
+
+  // --- coin combo (S1) -------------------------------------------------------
+  let combo = { last: -Infinity, streak: 0 };
+  const now = () => clock ? clock()
+    : ctx ? ctx.currentTime
+    : typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000;
 
   function gain() { return muted ? 0 : MASTER; }
 
@@ -350,6 +380,14 @@ export function makeSfx({
     // pick-persistence e2e has to see. Default plays keep the bare name.
     log.push(r.variant === 'a' ? name : `${name}#${r.variant}`);
     if (log.length > LOG_MAX) log.shift();
+    // Coin combo: advanced ABOVE the mute/inert bail, for the same reason the
+    // log is — the streak is a fact about what the game asked for, and its
+    // pitch on unmute must match what a hearing player would have gotten.
+    let rate = 1;
+    if (name === 'coin') {
+      combo = comboAdvance(combo, now());
+      rate = comboRate(combo.streak);
+    }
     // Muted still counts as a play: the log is what the GAME asked for, and the
     // probe needs it to line up with the events regardless of the mix.
     if (inert || !ctx || muted) return;
@@ -365,11 +403,14 @@ export function makeSfx({
       // the first poke warms them for every poke after), and how a file that
       // failed at unlock gets another chance.
       const buf = p.file ? buffers.get(p.file) : null;
-      if (buf) { bufferVoice(buf, t0, p.gain ?? 1); return; }
+      if (buf) { bufferVoice(buf, t0, p.gain ?? 1, rate); return; }
       if (p.file) fetchBuf(p.file);
       const env = envelopeTimes(p);
       if (env.total <= 0) return;
-      const plan = p.notes?.length ? { steps: p.notes } : { sweep: [p.f0, p.f1] };
+      // The combo rate bends the synth fallback identically: every frequency
+      // scales, so the recipe steps up the same semitones the render does.
+      const plan = p.notes?.length ? { steps: rate === 1 ? p.notes : p.notes.map(n => n * rate) }
+                                   : { sweep: [p.f0 * rate, p.f1 * rate] };
       voice(p.wave, plan, t0, p.volume, env);
       if (p.noise > 0) voice('noise', plan, t0, p.volume * p.noise, env);
     } catch {
@@ -430,6 +471,8 @@ export function makeSfx({
       // Preload health for the live probe: how many of the 14 default
       // rendered files have decoded. 0 in the silent build, by construction.
       loaded,
+      // The live coin-combo streak (S1) — observability for probes and specs.
+      combo: combo.streak,
     }),
   };
 }
