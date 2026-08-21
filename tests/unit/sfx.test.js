@@ -11,7 +11,8 @@ import { SOUNDS, CANDIDATES, WAVES, MASTER, envelopeTimes, makeSfx, resolvePatch
 // without a patch, play() silently no-ops — this list is the guard against that
 // happening quietly.
 const REQUIRED = ['pew', 'hop', 'boost', 'burst', 'coin', 'hurt', 'ded',
-                  'killpop', 'bosshit', 'bossdown', 'minionpop', 'uiclick'];
+                  'killpop', 'bosshit', 'bossdown', 'minionpop', 'uiclick',
+                  'takeoff', 'afktick'];        // the two SFX v2 additions
 
 test('the param table covers every wired event and nothing else', () => {
   assert.deepEqual(Object.keys(SOUNDS).sort(), [...REQUIRED].sort());
@@ -172,8 +173,8 @@ test('resolvePatch: junk is tolerated, never trusted', () => {
   assert.equal(resolvePatch('no-such-sound', { 'no-such-sound': 'b' }), null);
   // Unknown/garbage variant values fall back to the default — a hand-edited
   // save must not be able to schedule a patch that does not exist.
-  for (const junk of ['z', 'c', 42, {}, [], true]) {
-    const r = resolvePatch('pew', { pew: junk });     // pew has no 'c' on purpose
+  for (const junk of ['z', 'd', 42, {}, [], true]) {
+    const r = resolvePatch('pew', { pew: junk });   // 'd': one past the b/c scheme
     assert.equal(r.patch, SOUNDS.pew, `pew pick ${JSON.stringify(junk)} must fall back`);
     assert.equal(r.variant, 'a');
   }

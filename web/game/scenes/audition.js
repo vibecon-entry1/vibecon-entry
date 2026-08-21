@@ -1,6 +1,6 @@
-// Sound check. A hidden list screen: every synthesized sound in the game, each
-// with its candidate recipes side by side — A is the shipped default, B/C are
-// the alternates that survived the recipe review (engine/sfx.js CANDIDATES).
+// Sound check. A hidden list screen: every sound in the game, each with its
+// rendered candidates side by side — A is the shipped winner, B/C are the
+// rendered runners-up (engine/sfx.js CANDIDATES; lazy-fetched on first poke).
 // Poke a candidate to hear it, keep the one you like; keeps persist in the
 // save (sfxPicks) and the engine resolves pick-over-default on every play from
 // then on. Not reachable from any visible menu — main.js owns the way in, the
@@ -9,6 +9,7 @@
 // The scene never touches the recipes themselves: it reads two exported tables
 // and writes ONE save field. All the audio plumbing stays in sfx.js.
 import { SOUNDS, CANDIDATES } from '../../engine/sfx.js';
+import { SFX_PICKS_V } from '../../engine/save.js';
 import { drawText, drawTextShadow } from '../../engine/font.js';
 
 const VW = 640, VH = 360;
@@ -18,7 +19,11 @@ const VW = 640, VH = 360;
 // you hit. Cells are 56x15 plates 80px apart; the 44 CSS px tap floor inflates
 // them into each other and across rows, so taps resolve to the nearest cell
 // CENTRE (the shell's claim() idiom) and every cell stays its own target.
-const ROW_Y0 = 60, ROW_H = 19;
+// ROW_H tightened 19 → 17 when SFX v2 grew the list to 14 rows (takeoff,
+// afktick): at 19 the last row ran into the footer legend. Tap targets keep
+// their 44 CSS px floor — hits resolve to the NEAREST cell centre, so rows
+// only need to be distinct, not 44px apart.
+const ROW_Y0 = 60, ROW_H = 17;
 const NAME_X = 76;
 const CELL_X = 306, CELL_W = 56, CELL_STEP = 80, CELL_H = 15;
 const LETTERS = ['A', 'B', 'C'];
@@ -57,7 +62,11 @@ export function makeAudition({ input, save, sfx, go, touchUI, tapNeed }) {
 
   function keep() {
     // Whole-object write, like the jukebox writes `audio` — see save.js.
-    save?.patch({ sfxPicks: { ...picks(), [names[row]]: variants[row][col] } });
+    // Every keep stamps the CURRENT pick generation: picks banked against an
+    // older sound set (the letters meant different sounds) are discarded at
+    // load, so the stamp is what keeps these ones alive across reloads.
+    save?.patch({ sfxPicks: { ...picks(), v: SFX_PICKS_V,
+                              [names[row]]: variants[row][col] } });
     audition();
   }
 

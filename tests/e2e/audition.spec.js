@@ -63,9 +63,10 @@ test('a kept pick persists across reload and retunes the next real trigger', asy
   await page.keyboard.press('X');               // keep it
   await page.waitForFunction(() =>
     window.__blast.state().picks?.uiclick === 'b', null, { timeout: 5000 });
-  // Banked in the save, not just in scene state.
+  // Banked in the save, not just in scene state — stamped with the pick
+  // GENERATION (save.js SFX_PICKS_V): an unstamped map is discarded at load.
   expect(await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('suchblast_v1')).sfxPicks)).toEqual({ uiclick: 'b' });
+    JSON.parse(localStorage.getItem('suchblast_v1')).sfxPicks)).toEqual({ v: 2, uiclick: 'b' });
 
   // Cold reload: the pick survives, and the NEXT thing the game itself plays
   // (the title's advance click) resolves through it.

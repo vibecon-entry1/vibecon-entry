@@ -167,6 +167,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   const AFK_OUT = 300;           // ...and before the run is taken away
   let idleT = 0;                 // seconds since the last input of any kind
   let outT = -1;                 // -1 = not fired; >= 0 = seconds since it fired
+  let afkSec = -1;               // last countdown second an afktick sounded on
   // Free-running scene clock for the decorative bands below. Deliberately its
   // own accumulator rather than timeS: that one is the RUN clock and stops for
   // the pause and the extraction, and ambient motion that freezes with the
@@ -446,12 +447,21 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     // Raw touch presence first: a finger inside the move deadzone (or a tap
     // still settling) emits no action for the loop below to see, but a thumb
     // on the glass answers "is anybody there" as surely as a held key.
-    if (input.touchActive?.()) { idleT = 0; return; }
+    if (input.touchActive?.()) { idleT = 0; afkSec = -1; return; }
     const act = input.actions();
     // touched(), not the held value: a key tapped and released between two
     // frames is still somebody being there.
-    for (const k in act) if (act[k] || input.touched(k)) { idleT = 0; return; }
+    for (const k in act) if (act[k] || input.touched(k)) { idleT = 0; afkSec = -1; return; }
     idleT += dt;
+    // SFX v2: one dry tick per countdown second while the warning is up —
+    // keyed off the same ceil the readout draws, so tick and digit agree.
+    // Sits HERE (above the pause bail, like the clock itself) because the
+    // countdown renders over the pause veil: what you can see, you can hear.
+    // afkSec resets with the clock, so each incident starts its own count.
+    if (idleT >= AFK_WARN && outT < 0) {
+      const sec = Math.ceil(AFK_OUT - idleT);
+      if (sec !== afkSec) { afkSec = sec; sfx?.play('afktick'); }
+    }
     if (idleT >= AFK_OUT && outT < 0) afkOut();
   }
 
@@ -835,6 +845,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         takeoff = 0;
         jukebox?.stopMusic();
         jukebox?.playOneShot('fanfare');   // fanfare rings through the takeoff into the win screen
+        // SFX v2: the ship's engine roar under the fanfare. Rendered
+        // rumble-forward on purpose so the two never fight; its ~3s tail
+        // rings past the 2.5s cutscene into the win screen's silence.
+        sfx?.play('takeoff');
       }
     },
 
