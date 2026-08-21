@@ -349,6 +349,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // through. This winds it forward directly so a spec can assert the
       // countdown and the death itself in a couple of seconds.
       idle(seconds) { idleT = seconds; },
+      // Wind the free-running ambient clock (flyer schedule rides on it): the
+      // scheduling windows are ~22s, which is real-time nobody sits through.
+      amb(seconds) { ambT = seconds; },
       warp(x) {
         player.body.x = x;
         player.checkpoint = { x, y: player.body.y };
@@ -911,6 +914,42 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         if (warm > 0.01 && hazeTop > 0) {
           ctx.fillStyle = `rgba(56,6,15,${warm.toFixed(3)})`;
           ctx.fillRect(0, 0, VW, Math.min(360, hazeTop));
+        }
+      }
+      // Ambient flyer (juice pass V4): a rare distant silhouette crossing the
+      // upper sky. The SCHEDULE is a hash of the time-segment index — one
+      // ~22s window in three carries a crossing, height/direction/flap all
+      // dealt off the same hash — so every session sees the same birds at the
+      // same moments and two machines agree. Screen-space, high in the sky
+      // band (y < ~100, far above the playfield), 7px of dark silhouette:
+      // unmistakably scenery, not a threat. Faded out with the dread blend so
+      // nothing shares the boss's sky, and gauntlet-only (wow keeps its own
+      // untouched sky).
+      if (!wow && dr < 0.5) {
+        const SEG = 22;
+        const k = Math.floor(ambT / SEG);
+        const h = hash2(k, 6011);
+        if (h % 3 === 0) {
+          const p = (ambT - k * SEG) / SEG;             // 0..1 across the window
+          const dir = (h >>> 3) & 1 ? 1 : -1;
+          const bx = Math.round(dir > 0 ? -8 + p * (VW + 16) : VW + 8 - p * (VW + 16));
+          const by = Math.round(24 + (h >>> 4) % 64 +
+                                Math.sin(ambT * 0.9 + k) * 3);   // lazy glide bob
+          const flap = Math.floor(ambT * 2.6) % 2;      // slow two-frame wingbeat
+          ctx.globalAlpha = (1 - dr * 2) * 0.8;
+          ctx.fillStyle = '#38060f';
+          ctx.fillRect(bx - 1, by, 3, 1);               // body
+          if (flap) { ctx.fillRect(bx - 3, by - 1, 2, 1); ctx.fillRect(bx + 2, by - 1, 2, 1); }
+          else      { ctx.fillRect(bx - 3, by + 1, 2, 1); ctx.fillRect(bx + 2, by + 1, 2, 1); }
+          // Some windows deal a companion trailing behind and slightly above.
+          if ((h >>> 9) & 1) {
+            ctx.fillRect(bx - dir * 11 - 1, by - 5, 3, 1);
+            if (!flap) { ctx.fillRect(bx - dir * 11 - 3, by - 6, 2, 1);
+                         ctx.fillRect(bx - dir * 11 + 2, by - 6, 2, 1); }
+            else      { ctx.fillRect(bx - dir * 11 - 3, by - 4, 2, 1);
+                         ctx.fillRect(bx - dir * 11 + 2, by - 4, 2, 1); }
+          }
+          ctx.globalAlpha = 1;
         }
       }
       // Hangs in the same far sky, on the same slow factors, so it sits behind
