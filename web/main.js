@@ -419,8 +419,10 @@ async function boot() {
   scenes.viewer = () => makeViewer({ atlas, input });
   // opts carries the WOW ZONE entry ({ mode: 'wow', seed }); gauntlet passes
   // nothing and makePlay's defaults handle it.
+  // touchUI rides along for one render-time decision: the tutorial signs
+  // speak in the live input's verbs (see TOUCH_SIGNS in play.js).
   scenes.play = (opts = {}) => makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute,
-                                          xOn: () => xMode,
+                                          xOn: () => xMode, touchUI,
                                           ...opts, seed: opts.seed ?? wowSeed() });
   // toggleDisplay is handed to the title scene rather than read from a global:
   // the title is the only place the setting is offered, and this keeps main.js
@@ -447,7 +449,8 @@ async function boot() {
     if (!save.data.wowUnlocked) save.patch({ wowUnlocked: true });
     // Fanfare lives here rather than in win.js for the same reason the best
     // score does: the win scene stays a pure layout of numbers it was handed.
-    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx });
+    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx,
+                     tapNeed });
   };
 
   // The wow best is banked here for the same reason the gauntlet's is: ONE
@@ -458,7 +461,7 @@ async function boot() {
     const prevBest = save.data.best.wow;
     if (breakdown.score > prevBest) save.patch({ best: { wow: breakdown.score } });
     return makeWowEnd({ breakdown, best: Math.max(prevBest, breakdown.score),
-                        input, go, sfx });
+                        input, go, sfx, tapNeed });
   };
 
   // --- test hook -----------------------------------------------------------

@@ -17,6 +17,20 @@ import { copyShare, shareUrl, shareText, renderShareCanvas } from './share.js';
 
 const CX = 320;                   // VW/2 — both end screens are 640 wide
 const OK_T = 3.0;                 // how long "very copied." stays up
+const ARM_T = 0.5;                // no share fires before this — see update()
+
+/**
+ * The share line's tap band: one definition for both end screens, so the two
+ * can never drift. `y` is the line's text-box top (what render() is handed),
+ * `need` is the 44 CSS px floor expressed in virtual px (tapNeed, from
+ * main.js — the owner of scale/dpr); the 30vpx minimum keeps the band at
+ * least text-plus-padding tall where a big screen makes `need` tiny.
+ */
+export function shareTapBand(y, need = 0) {
+  const c = y + 7;                // centre of the scale-2 text box
+  const h = Math.max(30, need);
+  return { top: c - h / 2, bot: c + h / 2 };
+}
 
 /**
  * @param run {score, kills, deaths, mode} — the finished run, already tallied.
@@ -27,6 +41,7 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
   let status = 'idle';            // idle | busy | ok | fail
   let withImage = false;
   let okT = 0;
+  let armT = 0;                   // scene age; the share can't fire before ARM_T
   let canvas = null;              // built on first press, never before
 
   async function fire() {
@@ -68,7 +83,11 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
     /** Call from the scene's update. Returns true if a share was started. */
     update(dt, input) {
       if (status === 'ok' && (okT += dt) > OK_T) status = 'idle';
-      if (input.pressed('down') && status !== 'busy') {
+      armT += dt;
+      // Same arming beat the scenes give the tap path: KeyS is the `down`
+      // action, and a down-drag still settling from the run's final moment
+      // must not fire a share the instant the screen arrives.
+      if (armT > ARM_T && input.pressed('down') && status !== 'busy') {
         sfx?.play('uiclick');
         fire();
         return true;

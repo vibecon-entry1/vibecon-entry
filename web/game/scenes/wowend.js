@@ -7,11 +7,11 @@
 // score. No sticker and no fanfare: this is a death screen, and the ded jingle
 // play.js fired on the corpse frame is still ringing when we arrive.
 import { drawText, drawTextShadow } from '../../engine/font.js';
-import { makeSharePrompt } from '../shareui.js';
+import { makeSharePrompt, shareTapBand } from '../shareui.js';
 
 const VW = 640, VH = 360;
 
-export function makeWowEnd({ breakdown, best, input, go, sfx }) {
+export function makeWowEnd({ breakdown, best, input, go, sfx, tapNeed }) {
   const { score, kills, coins, timeS, chunks, seed } = breakdown;
   // Ties count as records, same call win.js makes and for the same reason:
   // matching your own best still earns the line, and the alternative is a
@@ -49,7 +49,8 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
       // else is the primary action. Same 0.5s arming beat, same reason.
       const taps = input.taps?.() ?? [];
       if (t > 0.5 && taps.length) {
-        if (Math.abs(taps[0].y - (SHARE_Y + 7)) <= 22) share.tap();   // ±22 around the text centre
+        const band = shareTapBand(SHARE_Y, tapNeed?.());
+        if (taps[0].y >= band.top && taps[0].y <= band.bot) share.tap();
         else { sfx?.play('uiclick'); go('title'); }
       }
     },

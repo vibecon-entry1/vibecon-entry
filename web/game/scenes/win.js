@@ -8,7 +8,7 @@ import { getSticker, BRAND } from '../../engine/sticker.js';
 import { drawText, drawTextShadow } from '../../engine/font.js';
 // Share is the same flow on both end screens — see shareui.js for the KeyS /
 // 'down' key note and for why the game never touches the network.
-import { makeSharePrompt } from '../shareui.js';
+import { makeSharePrompt, shareTapBand } from '../shareui.js';
 
 const VW = 640, VH = 360;
 
@@ -63,7 +63,7 @@ function makeConfetti() {
 }
 const CONFETTI_G = 520;                       // px/s^2
 
-export function makeWin({ breakdown, best, input, go, sfx }) {
+export function makeWin({ breakdown, best, input, go, sfx, tapNeed }) {
   const { kills, coins, deaths, timeS, timeBonus, score } = breakdown;
   // main.js resolves `best` to max(previous, this run) before building us, so a
   // record is "we ARE the best". An exact tie with a previous best reads as a
@@ -148,7 +148,8 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
       // moment can't skip the screen it just earned.
       const taps = input.taps?.() ?? [];
       if (t > 0.5 && taps.length) {
-        if (Math.abs(taps[0].y - (SHARE_Y + 7)) <= 22) share.tap();   // ±22 around the text centre
+        const band = shareTapBand(SHARE_Y, tapNeed?.());
+        if (taps[0].y >= band.top && taps[0].y <= band.bot) share.tap();
         else { sfx?.play('uiclick'); go('title'); }
       }
     },
