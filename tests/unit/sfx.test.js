@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SOUNDS, WAVES, MASTER, envelopeTimes, makeSfx } from '../../web/engine/sfx.js';
+import { SOUNDS, CANDIDATES, WAVES, MASTER, envelopeTimes, makeSfx, resolvePatch }
+  from '../../web/engine/sfx.js';
 
 // The synthesis itself is browser-only (AudioContext), exactly like input.js's
 // DOM half: what CAN be tested offline is the param table's integrity and the
@@ -16,28 +17,42 @@ test('the param table covers every wired event and nothing else', () => {
   assert.deepEqual(Object.keys(SOUNDS).sort(), [...REQUIRED].sort());
 });
 
+// One rulebook for every patch the engine could ever be asked to schedule —
+// the shipped table AND the sound test's candidates go through it.
+function assertPlayable(name, p) {
+  assert.ok(WAVES.includes(p.wave), `${name}: bad wave ${p.wave}`);
+  assert.ok(p.duration > 0, `${name}: duration must be > 0`);
+  // Sanity band, not a style rule: anything past a second is a music cue, and
+  // anything under 20ms is a click nobody hears.
+  assert.ok(p.duration >= 0.02 && p.duration <= 1.0, `${name}: duration ${p.duration} out of band`);
+  assert.ok(p.f0 > 0 && p.f1 > 0, `${name}: freqs must be > 0`);
+  // Audible band. An exponential ramp to <= 0 throws in WebAudio, and
+  // anything above ~16k is inaudible on most hardware.
+  for (const f of [p.f0, p.f1])
+    assert.ok(f >= 20 && f <= 16000, `${name}: freq ${f} outside the audible band`);
+  assert.ok(p.attack >= 0 && p.decay >= 0, `${name}: negative envelope segment`);
+  assert.ok(p.volume > 0 && p.volume <= 1, `${name}: volume ${p.volume} out of range`);
+  if ('noise' in p) assert.ok(p.noise > 0 && p.noise <= 1, `${name}: noise mix out of range`);
+  if ('notes' in p) {
+    assert.ok(Array.isArray(p.notes) && p.notes.length >= 2, `${name}: notes must step at least twice`);
+    for (const hz of p.notes) assert.ok(hz >= 20 && hz <= 16000, `${name}: note ${hz} out of band`);
+    // f0/f1 mirror the sequence so the table reads uniformly and the
+    // validation above covers stepped patches too.
+    assert.equal(p.f0, p.notes[0], `${name}: f0 must mirror notes[0]`);
+    assert.equal(p.f1, p.notes[p.notes.length - 1], `${name}: f1 must mirror the last note`);
+  }
+}
+
 test('every patch is playable: valid wave, positive duration, positive freqs', () => {
-  for (const [name, p] of Object.entries(SOUNDS)) {
-    assert.ok(WAVES.includes(p.wave), `${name}: bad wave ${p.wave}`);
-    assert.ok(p.duration > 0, `${name}: duration must be > 0`);
-    // Sanity band, not a style rule: anything past a second is a music cue, and
-    // anything under 20ms is a click nobody hears.
-    assert.ok(p.duration >= 0.02 && p.duration <= 1.0, `${name}: duration ${p.duration} out of band`);
-    assert.ok(p.f0 > 0 && p.f1 > 0, `${name}: freqs must be > 0`);
-    // Audible band. An exponential ramp to <= 0 throws in WebAudio, and
-    // anything above ~16k is inaudible on most hardware.
-    for (const f of [p.f0, p.f1])
-      assert.ok(f >= 20 && f <= 16000, `${name}: freq ${f} outside the audible band`);
-    assert.ok(p.attack >= 0 && p.decay >= 0, `${name}: negative envelope segment`);
-    assert.ok(p.volume > 0 && p.volume <= 1, `${name}: volume ${p.volume} out of range`);
-    if ('noise' in p) assert.ok(p.noise > 0 && p.noise <= 1, `${name}: noise mix out of range`);
-    if ('notes' in p) {
-      assert.ok(Array.isArray(p.notes) && p.notes.length >= 2, `${name}: notes must step at least twice`);
-      for (const hz of p.notes) assert.ok(hz >= 20 && hz <= 16000, `${name}: note ${hz} out of band`);
-      // f0/f1 mirror the sequence so the table reads uniformly and the
-      // validation above covers stepped patches too.
-      assert.equal(p.f0, p.notes[0], `${name}: f0 must mirror notes[0]`);
-      assert.equal(p.f1, p.notes[p.notes.length - 1], `${name}: f1 must mirror the last note`);
+  for (const [name, p] of Object.entries(SOUNDS)) assertPlayable(name, p);
+});
+
+test('every audition candidate is a playable patch for a real sound', () => {
+  for (const [name, alts] of Object.entries(CANDIDATES)) {
+    assert.ok(SOUNDS[name], `${name}: candidate for a sound that does not exist`);
+    for (const [v, p] of Object.entries(alts)) {
+      assert.ok(v === 'b' || v === 'c', `${name}: variant id ${v} outside the b/c scheme`);
+      assertPlayable(`${name}#${v}`, p);
     }
   }
 });
@@ -133,6 +148,50 @@ test('mute reads from the save and reaches the master gain node', () => {
   assert.equal(sfx.current().master, MASTER);         // unmuted: under the music
   assert.equal(sfx.current().ready, true);
   assert.equal(sfx.current().state, 'running');
+});
+
+test('resolvePatch: pick overrides default; everything else falls through', () => {
+  // No picks at all — the pre-sound-test save shape — is the default.
+  for (const picks of [undefined, null, {}]) {
+    const r = resolvePatch('coin', picks);
+    assert.equal(r.patch, SOUNDS.coin);
+    assert.equal(r.variant, 'a');
+  }
+  // A real pick resolves to the candidate patch, tagged with its id.
+  const b = resolvePatch('coin', { coin: 'b' });
+  assert.equal(b.patch, CANDIDATES.coin.b);
+  assert.equal(b.variant, 'b');
+  // An explicit 'a' means the default, same as no pick.
+  assert.equal(resolvePatch('coin', { coin: 'a' }).patch, SOUNDS.coin);
+  // A pick for one sound never leaks onto another.
+  assert.equal(resolvePatch('pew', { coin: 'b' }).patch, SOUNDS.pew);
+});
+
+test('resolvePatch: junk is tolerated, never trusted', () => {
+  // Unknown sound: null, exactly like play()'s no-op contract for bad names.
+  assert.equal(resolvePatch('no-such-sound', { 'no-such-sound': 'b' }), null);
+  // Unknown/garbage variant values fall back to the default — a hand-edited
+  // save must not be able to schedule a patch that does not exist.
+  for (const junk of ['z', 'c', 42, {}, [], true]) {
+    const r = resolvePatch('pew', { pew: junk });     // pew has no 'c' on purpose
+    assert.equal(r.patch, SOUNDS.pew, `pew pick ${JSON.stringify(junk)} must fall back`);
+    assert.equal(r.variant, 'a');
+  }
+  // A picks field that is not an object at all is treated as absent.
+  for (const junk of ['b', 42, true]) {
+    assert.equal(resolvePatch('coin', junk).patch, SOUNDS.coin);
+  }
+});
+
+test('play() resolves the persisted pick and tags the log with it', () => {
+  const save = { data: { audio: {}, sfxPicks: { coin: 'b', pew: 'nope' } } };
+  const sfx = makeSfx({ save, enabled: false });
+  sfx.play('coin');                     // pick applies
+  sfx.play('pew');                      // junk pick falls back to default
+  sfx.play('hop');                      // no pick at all
+  sfx.play('coin', 'a');                // explicit preview trumps the pick
+  sfx.play('hop', 'c');                 // explicit candidate preview
+  assert.deepEqual(sfx.current().log, ['coin#b', 'pew', 'hop', 'coin', 'hop#c']);
 });
 
 test('the play log is bounded so a long run cannot grow it forever', () => {

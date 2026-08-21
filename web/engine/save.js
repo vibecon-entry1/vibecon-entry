@@ -9,6 +9,12 @@ const KEY = 'suchblast_v1';
 export const DEFAULTS = {
   v: 1, best: { gauntlet: 0, wow: 0 }, wowUnlocked: false, muted: false,
   audio: { lastFirst: {}, muted: false },
+  // Per-sound recipe picks from the sound test, name → candidate id. Same
+  // whole-object write rule as `audio`: the one writer always patches the
+  // complete map. Empty means "all defaults", and so does a save written
+  // before the field existed — sfx.js's resolver treats absent and unknown
+  // entries identically, so nothing here needs a version bump.
+  sfxPicks: {},
   // 'crisp' = integer device-pixel scale (letterboxed, every game pixel is a
   // whole number of hardware pixels). 'fill' = fractional scale that fills the
   // window. Flat string, so patch()'s plain spread handles it with no new merge
@@ -31,6 +37,13 @@ export function makeSave(storage) {
       // than being trusted — a hand-edited localStorage shouldn't be able to
       // put fit() into a mode it has no branch for.
       if (data.display !== 'crisp' && data.display !== 'fill') data.display = DEFAULTS.display;
+      // Added after v1 shipped, same tolerant read as `audio`: absent → empty.
+      // Only the SHAPE is enforced here (a non-object would crash the spread
+      // in the writer); the VALUES stay unvalidated on purpose — sfx.js falls
+      // back per-entry, and save.js knowing the sound list would be a second
+      // copy of it to keep in sync.
+      data.sfxPicks = typeof parsed.sfxPicks === 'object' && parsed.sfxPicks !== null
+        ? { ...parsed.sfxPicks } : structuredClone(DEFAULTS.sfxPicks);
     }
   } catch { /* corrupt or unavailable → defaults */ }
   return {
@@ -39,6 +52,7 @@ export function makeSave(storage) {
       const best = p.best ? { ...data.best, ...p.best } : data.best;
       data = { ...data, ...p, best };
       if (!data.audio) data.audio = structuredClone(DEFAULTS.audio);   // old save, new schema
+      if (!data.sfxPicks) data.sfxPicks = structuredClone(DEFAULTS.sfxPicks);   // ditto
       try { storage.setItem(KEY, JSON.stringify(data)); } catch { /* private mode etc. */ }
     },
   };
