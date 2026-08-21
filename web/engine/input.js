@@ -11,17 +11,23 @@
 // the player is told about by name on the title screen.
 const KEYMAP = {
   ArrowLeft: 'left', KeyA: 'left',
+  // 'up' is MENU-ONLY: the sim never reads it (the verb goes UP by shooting
+  // DOWN), so mapping ArrowUp costs nothing in play and gives list screens a
+  // way to walk backwards. Deliberately NOT KeyW — that key is the title's
+  // wowzone entry below.
+  ArrowUp: 'up',
   ArrowRight: 'right', KeyD: ['right', 'display'],
   ArrowDown: 'down', KeyS: 'down',
   KeyX: 'fire', KeyZ: 'fire', Space: 'fire',
   Escape: 'pause', KeyR: 'retry', KeyM: 'mute', F1: 'debug',
-  // W is the one WASD key with no movement meaning (there is no 'up' action —
-  // the verb goes UP by shooting DOWN), which makes it the natural free key for
-  // the title screen's WOW ZONE entry. Unlike KeyD it needs no array form: only
-  // one action ever claims it.
+  // W is the one WASD key with no movement meaning (the sim has no upward
+  // input — the verb goes UP by shooting DOWN, and the 'up' action above is
+  // menu-only), which makes it the natural free key for the title screen's
+  // WOW ZONE entry. Unlike KeyD it needs no array form: only one action ever
+  // claims it.
   KeyW: 'wowzone',
 };
-const ACTIONS = ['left', 'right', 'down', 'fire', 'pause', 'retry', 'mute', 'debug',
+const ACTIONS = ['left', 'right', 'down', 'up', 'fire', 'pause', 'retry', 'mute', 'debug',
                  'display', 'wowzone'];
 const actionsFor = (code) => {
   const a = KEYMAP[code];

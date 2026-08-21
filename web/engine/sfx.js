@@ -81,6 +81,57 @@ export const SOUNDS = {
   uiclick:   { wave: 'square',   f0: 880,  f1: 660,  duration: 0.045, attack: 0.002, decay: 0.035, volume: 0.30 },
 };
 
+/**
+ * Audition candidates: the hidden sound-test's B/C options per sound. Same
+ * patch vocabulary as SOUNDS — variant 'a' IS the SOUNDS entry and is never
+ * listed here. 'b' is the previously-shipped recipe (or the first alternate,
+ * where the shipped one already won and stayed the default); 'c' is a second
+ * alternate where one survived review. pew and hurt have no 'c' on purpose:
+ * their remaining alternates were reviewed as not-shippable, and a sound test
+ * offering a known-bad option is a trap, not a choice.
+ */
+export const CANDIDATES = {
+  pew:       { b: { wave: 'square',   f0: 880,  f1: 440,  duration: 0.08, attack: 0.004, decay: 0.06, volume: 0.30 } },
+  hop:       { b: { wave: 'triangle', f0: 240,  f1: 620,  duration: 0.13, attack: 0.006, decay: 0.10, volume: 0.44, noise: 0.08 },
+               c: { wave: 'square',   f0: 330,  f1: 660,  duration: 0.10, attack: 0.005, decay: 0.08, volume: 0.36, notes: [330, 494, 660] } },
+  boost:     { b: { wave: 'triangle', f0: 200,  f1: 660,  duration: 0.15, attack: 0.010, decay: 0.11, volume: 0.46, noise: 0.15 },
+               c: { wave: 'sawtooth', f0: 150,  f1: 620,  duration: 0.16, attack: 0.010, decay: 0.12, volume: 0.42, noise: 0.22 } },
+  burst:     { b: { wave: 'sawtooth', f0: 150,  f1: 90,   duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.50, noise: 0.30 },
+               c: { wave: 'square',   f0: 140,  f1: 65,   duration: 0.13, attack: 0.004, decay: 0.10, volume: 0.50, noise: 0.35 } },
+  coin:      { b: { wave: 'square',   f0: 1320, f1: 1760, duration: 0.09, attack: 0.004, decay: 0.05, volume: 0.30, notes: [1320, 1760] },
+               c: { wave: 'triangle', f0: 1568, f1: 2349, duration: 0.11, attack: 0.003, decay: 0.06, volume: 0.36, notes: [1568, 1976, 2349] } },
+  hurt:      { b: { wave: 'sawtooth', f0: 220,  f1: 110,  duration: 0.18, attack: 0.005, decay: 0.14, volume: 0.50, noise: 0.60 } },
+  ded:       { b: { wave: 'square',   f0: 440,  f1: 220,  duration: 0.50, attack: 0.005, decay: 0.12, volume: 0.40, notes: [440, 330, 220] },
+               c: { wave: 'triangle', f0: 494,  f1: 220,  duration: 0.62, attack: 0.006, decay: 0.20, volume: 0.46, notes: [494, 370, 294, 220], noise: 0.08 } },
+  killpop:   { b: { wave: 'square',   f0: 660,  f1: 110,  duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.40 },
+               c: { wave: 'square',   f0: 780,  f1: 90,   duration: 0.14, attack: 0.003, decay: 0.10, volume: 0.42, noise: 0.18 } },
+  bosshit:   { b: { wave: 'sawtooth', f0: 110,  f1: 70,   duration: 0.10, attack: 0.004, decay: 0.07, volume: 0.50 },
+               c: { wave: 'square',   f0: 100,  f1: 58,   duration: 0.10, attack: 0.003, decay: 0.075, volume: 0.50, noise: 0.12 } },
+  bossdown:  { b: { wave: 'square',   f0: 110,  f1: 880,  duration: 0.60, attack: 0.080, decay: 0.35, volume: 0.55, noise: 0.50 },
+               c: { wave: 'sawtooth', f0: 110,  f1: 880,  duration: 0.72, attack: 0.060, decay: 0.40, volume: 0.52, noise: 0.45, notes: [110, 220, 440, 880] } },
+  minionpop: { b: { wave: 'square',   f0: 880,  f1: 1568, duration: 0.08, attack: 0.002, decay: 0.06, volume: 0.30, noise: 0.08 },
+               c: { wave: 'triangle', f0: 1046, f1: 1480, duration: 0.06, attack: 0.002, decay: 0.045, volume: 0.36 } },
+  uiclick:   { b: { wave: 'square',   f0: 660,  f1: 660,  duration: 0.04, attack: 0.002, decay: 0.03, volume: 0.30 },
+               c: { wave: 'triangle', f0: 990,  f1: 990,  duration: 0.035, attack: 0.001, decay: 0.028, volume: 0.38 } },
+};
+
+/**
+ * Pick resolution: the player's persisted per-sound choices (save.data.sfxPicks,
+ * absent on every save written before the sound test existed) override the
+ * default table. Pure and exported for the unit suite. Tolerance is the whole
+ * point: an unknown sound is null (play() already no-ops those), and a pick
+ * that names no candidate — junk value, hand-edited save, a candidate that was
+ * later removed — falls back to the default rather than being trusted.
+ * Returns { patch, variant } with variant 'a' meaning "the SOUNDS entry".
+ */
+export function resolvePatch(name, picks) {
+  const base = SOUNDS[name];
+  if (!base) return null;
+  const v = picks && typeof picks === 'object' ? picks[name] : null;
+  const alt = v && v !== 'a' ? CANDIDATES[name]?.[v] : null;
+  return alt ? { patch: alt, variant: v } : { patch: base, variant: 'a' };
+}
+
 export const WAVES = ['square', 'triangle', 'sawtooth', 'noise'];
 
 /**
@@ -200,11 +251,20 @@ export function makeSfx({
     src.onended = () => { try { src.disconnect(); g.disconnect(); } catch { /* already gone */ } };
   }
 
-  function play(name) {
-    const p = SOUNDS[name];
-    if (!p) return;
+  // `variant` is the sound test's preview channel: an explicit candidate id
+  // trumps the persisted pick for this one play, so the screen can audition
+  // 'b' while your saved pick is 'a'. Every normal caller passes only a name
+  // and gets pick-override → default resolution against the LIVE save — a pick
+  // banked mid-session is audible on the very next trigger, no reload.
+  function play(name, variant) {
+    const r = resolvePatch(name, variant ? { [name]: variant } : save?.data?.sfxPicks);
+    if (!r) return;
+    const p = r.patch;
     plays++;
-    log.push(name);
+    // Non-default resolutions are tagged in the log ('coin#b'): the ?test hook
+    // reads this, and "which recipe would have played" is exactly what the
+    // pick-persistence e2e has to see. Default plays keep the bare name.
+    log.push(r.variant === 'a' ? name : `${name}#${r.variant}`);
     if (log.length > LOG_MAX) log.shift();
     // Muted still counts as a play: the log is what the GAME asked for, and the
     // probe needs it to line up with the events regardless of the mix.

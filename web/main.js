@@ -11,6 +11,7 @@ import { makePlay } from './game/scenes/play.js';
 import { makeTitle } from './game/scenes/title.js';
 import { makeWin } from './game/scenes/win.js';
 import { makeWowEnd } from './game/scenes/wowend.js';
+import { makeAudition } from './game/scenes/audition.js';
 import { drawText, drawTextShadow } from './engine/font.js';
 import { fitScale } from './engine/fit.js';
 import { P } from './game/physics.js';
@@ -416,6 +417,22 @@ async function boot() {
       seqI = e.code === SEQ9[0] ? 1 : 0;
     }
   });
+  // A second order-of-arrival watcher, same idiom as the one above and
+  // deliberately independent of it (the two share no keys, so neither ever
+  // resets the other's progress). This one only means something on the title
+  // screen, where every key in it is unbound and typing it does nothing
+  // visible until the last one lands.
+  const SEQ8 = ['KeyP', 'KeyI', 'KeyC', 'KeyK', 'KeyT', 'KeyO', 'KeyN', 'KeyE'];
+  let seqJ = 0;
+  addEventListener('keydown', e => {
+    if (e.code === SEQ8[seqJ]) {
+      if (++seqJ < SEQ8.length) return;
+      seqJ = 0;
+      if (sceneName === 'title') go('audition');
+    } else {
+      seqJ = e.code === SEQ8[0] ? 1 : 0;
+    }
+  });
   scenes.viewer = () => makeViewer({ atlas, input });
   // opts carries the WOW ZONE entry ({ mode: 'wow', seed }); gauntlet passes
   // nothing and makePlay's defaults handle it.
@@ -437,6 +454,9 @@ async function boot() {
   // while main.js stays the single owner of scale/dpr and the coarse gate.
   scenes.title = () => makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
                                    touchUI, tapNeed });
+  // The sound check. No visible menu leads here — the watcher above is the
+  // only door, and it only opens off the title.
+  scenes.audition = () => makeAudition({ input, save, sfx, go, touchUI, tapNeed });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
