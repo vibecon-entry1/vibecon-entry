@@ -195,6 +195,74 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // next cycle while a player who ignores them never faces more than MINION_CAP.
   let sawSummon = false;
   const fx = [];                          // explode puffs: { x, y, t } — t < 0 = staggered wait
+  // --- juice particles (V2) --------------------------------------------------
+  // Landing/slide dust and enemy-pop debris. PURE RENDER DRESSING: nothing in
+  // here is ever read by the sim, and the randomness is a render-side
+  // mulberry32 seeded off the spawn coordinate + a scene-local spawn counter —
+  // never Math.random, never sim state, so two machines running the same tape
+  // kick up the same dust. Fixed pool, ring-overwritten: the budget can never
+  // grow, a burst frame just recycles the oldest speck.
+  const PART_MAX = 64;
+  const parts = Array.from({ length: PART_MAX },
+    () => ({ on: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, grav: 0, cols: null }));
+  let partIdx = 0, partSpawns = 0;
+  const mulberry32 = s => () => {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  // Exact palette entries (assets-wow/production/PALETTE.json): sandy floor
+  // tones for dust, the enemies' dark-red-to-ember family for shards.
+  const DUST_COLS = ['#b76028', '#cd611a', '#ea9f3a'];
+  const DEBRIS_COLS = ['#4f1212', '#7d3118', '#e46016', '#94261d'];
+  /** kind: dust drifts up and dies fast; debris pops out and falls. */
+  function spawnParts(kind, x, y, n, kickX = 0) {
+    const rnd = mulberry32(hash2(Math.round(x), Math.round(y)) ^ partSpawns++);
+    for (let i = 0; i < n; i++) {
+      const p = parts[partIdx]; partIdx = (partIdx + 1) % PART_MAX;
+      p.on = true; p.t = 0;
+      p.x = x + (rnd() - 0.5) * 14;
+      p.y = y - rnd() * 4;
+      if (kind === 0) {                    // dust puff
+        p.vx = (rnd() - 0.5) * 46 + kickX;
+        p.vy = -14 - rnd() * 26;
+        p.grav = -30;                      // buoyant: it thins as it lifts
+        p.life = 0.28 + rnd() * 0.16;
+        p.cols = DUST_COLS;
+      } else {                             // debris shard
+        p.vx = (rnd() - 0.5) * 170;
+        p.vy = -60 - rnd() * 120;
+        p.grav = 520;
+        p.life = 0.34 + rnd() * 0.2;
+        p.cols = DEBRIS_COLS;
+      }
+    }
+  }
+  function tickParts(dt) {
+    for (const p of parts) {
+      if (!p.on) continue;
+      p.t += dt;
+      if (p.t >= p.life) { p.on = false; continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt;
+    }
+  }
+  /** 3-frame life: 3px → 2px → 1px, fading over the last third. Culled. */
+  function drawParts(ctx) {
+    const px0 = cam.x - 8, px1 = cam.x + VW + 8;
+    let dimmed = false;
+    for (const p of parts) {
+      if (!p.on || p.x < px0 || p.x > px1) continue;
+      const ph = p.t / p.life;                       // 0..1 through its life
+      const size = ph < 0.34 ? 3 : ph < 0.67 ? 2 : 1;
+      if (ph >= 0.67 && !dimmed) { ctx.globalAlpha = 0.6; dimmed = true; }
+      else if (ph < 0.67 && dimmed) { ctx.globalAlpha = 1; dimmed = false; }
+      ctx.fillStyle = p.cols[(p.x * 7 + p.y * 3 & 0x7fffffff) % p.cols.length | 0];
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), size, size);
+    }
+    if (dimmed) ctx.globalAlpha = 1;
+  }
+  let slideDustT = 0;                     // slide-trail emitter metronome
   const MINION_CAP = 4;                   // live boss-summoned minions at once
   // Floor top at the trigger column, scanned out of the level rather than
   // hardcoded: the arena's authored row count is a chunks.js detail, and the
@@ -328,6 +396,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       fx[i].t += dt;
       if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
     }
+    tickParts(dt);                 // leftover dust settles during the cutscene
     popups.update(dt);
     cam.follow(level.shipPad.x, level.shipPad.y - liftY, 0, dt, level);
     if (takeoff >= 2.5) go('win', breakdown());
@@ -658,6 +727,18 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         fx[i].t += dt;
         if (animDone(atlas.anims.explode, fx[i].t)) fx.splice(i, 1);
       }
+      // Juice particles (V2): tick the pool, breathe the slide trail. Render
+      // dressing only — see the pool block up top.
+      tickParts(dt);
+      if (player.state === 'slide' && player.coyote > 0) {
+        slideDustT += dt;
+        while (slideDustT >= 0.06) {
+          slideDustT -= 0.06;
+          // Heel-side, kicked opposite the travel so the trail streams behind.
+          spawnParts(0, player.body.x - player.facing * 10, player.body.y, 2,
+                     -player.facing * 30);
+        }
+      } else slideDustT = 0;
 
       playerBolts.forEachHittable(b => {
         if (boss && boss.on && boss.hitTest(b)) {
@@ -680,6 +761,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           killCredited++;
           player.airCharges = P.AIR_CHARGES;            // kills refill the tank
           popups.spawn(dead.x, dead.y - 30, '+100');
+          spawnParts(1, dead.x, dead.y - 14, 6);      // V2: pop debris shards
           cam.shake(5, 0.2);
           hitstop = Math.max(hitstop, 0.05);
         });
@@ -697,7 +779,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         sfx?.play('coin'); score.add('coin'); popups.spawn(c.x, c.y, '+10');
       });
 
-      if (wasAirborne && player.coyote > 0) { score.onLand(); flightWows = 0; }
+      if (wasAirborne && player.coyote > 0) {
+        score.onLand(); flightWows = 0;
+        spawnParts(0, player.body.x, player.body.y, 6);   // V2: landing dust
+      }
       const evs = score.takeEvents();
       if (evs.length) {
         flightWows = Math.min(flightWows + evs.length, 3);
@@ -1084,6 +1169,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         if (f.t < 0) continue;
         atlas.drawCentered(ctx, 'explode', animFrame(atlas.anims.explode, f.t), f.x, f.y);
       }
+      // (6c2) juice particles: dust + debris, under the player so a puff can
+      // never sit ON the hero and muddy a read. Pool-capped and culled.
+      drawParts(ctx);
 
       // (6d) the ship. Always drawn on its pad — before the gate opens it is
       // simply hundreds of tiles off to the right, so no gating is needed.
@@ -1277,6 +1365,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       timeS: Math.floor(timeS), killCount: killCredited + (bossKilled ? 1 : 0), takeoff: takeoff >= 0,
       mode, seed, chunkIndex, maxChunk,
       idleT, countdownOn: idleT >= AFK_WARN && outT < 0,
+      // Juice-pass observability: live particles in the render pool (V2).
+      parts: parts.reduce((n, p) => n + (p.on ? 1 : 0), 0),
     }),
   };
 }
