@@ -65,6 +65,8 @@ S           SHARE your run (end screens) — copies a link + a score card
 Esc         such pause.    R  very restart    M  mute    D  display mode
 ```
 
+**on phone** 📱 — left thumb drags = move (drag ↓ = slide). right thumb taps = blast (drag ↓ while holding = hop/boost). every button is a fat tappable plate. landscape only — very rotate. much thumb.
+
 3 hearts. pits cost a heart. 0 hearts = u ded (aliens come back, score gets docked — very fair). beatable in under 4 minutes (VibeCon requires entries playable in 1–5 — such compliance). your first clear will not be under 4 minutes.
 
 ## very tech
