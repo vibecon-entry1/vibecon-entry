@@ -14,8 +14,13 @@ to ~2:1, so nothing that matters goes within MARGIN of an edge.
 
 The type is the GAME's 5x7 bitmap font, parsed straight out of
 web/engine/font.js — one source of truth, so a glyph fixed in the game is fixed
-on the cards. The Mars strip is the game's own parallax band painters from
-genart.py at card scale. Deterministic: fixed seeds, same bytes every run.
+on the cards. The backdrop is the GAME's own production art — the banded
+sunset sky, the slatted sun, the mesa/rock strips, the flora and monument
+silhouettes, and the organic masonry floor band, all pasted straight from
+assets-wow/production/*.png (the exact pixels web/assets/atlas.png ships) and
+composed with the same layer order + horizon offsets play.js uses, at the
+game's native 1px-into-2px scale. A card next to a fresh screenshot is the
+same Mars. Deterministic: fixed seeds, same bytes every run.
 """
 from PIL import Image, ImageDraw
 from pathlib import Path
@@ -23,18 +28,24 @@ import random
 import re
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from genart import (sheet, mesa_band, rock_band, star_field,
-                    ROCK, ROCK_DK, ROCK_LT, DIRT, GOLD, WHITE, NAVY)
-
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / 'web' / 'share'
 FONT_JS = ROOT / 'web' / 'engine' / 'font.js'
 ICON = ROOT / 'web' / 'assets' / 'brand' / 'circle-icon-100.png'
+PROD = ROOT / 'assets-wow' / 'production'
 
 W, H = 1200, 630
+K = 2                             # game pixel scale: compose 600x315, x2
+NW, NH = W // K, H // K
 MARGIN = 64                       # nothing that matters crosses this
-BG, SHADOW = '#0b0b12', '#2a1c33'
+
+# Locked palette entries (assets-wow/production/PALETTE.json) + the game's own
+# warm-white mote color (play.js DECO_COL). No color here is new.
+INK = '#38060f'                   # the dusk-glaze maroon — dark ink on bright sky
+INK_DEEP = '#27030b'
+CREAM = '#fffdf0'                 # warm white (in-game deco mote)
+GOLD = '#f9d281'                  # crust highlight gold
+HAZE = '#3b190f'                  # far-ground haze fill (play.js uses this hex)
 
 # Tier ladder, in thousands of WOW. 0 is the "such attempt" card a sub-1k (or
 # negative — the score CAN go negative) run unfurls into. The worker picks the
@@ -100,74 +111,117 @@ def fit_scale(text, max_w, want):
     return s
 
 
-def sky(im):
-    """Night-side gradient: a purple bruise at the top fading to page black."""
+# --- the production art, loaded once ----------------------------------------
+def prod(name):
+    return Image.open(PROD / f'{name}.png').convert('RGBA')
+
+
+SKY, SUN, MESAS, ROCKS = prod('sky'), prod('sun'), prod('mesas'), prod('rocks')
+TILESTRIP = prod('tiles')                       # 133 16x16 frames in a row
+FLORA = [prod(f'flora_{i}') for i in (0, 1, 2, 5)]   # play.js's shelf picks
+# The repeating ancient-monument family (play.js LANDMARKS). prop1/prop2 are
+# the one-of-each story props and never appear here.
+MONUMENTS = [prod(n) for n in ('prop_head', 'prop_obelisk', 'prop_mgate', 'prop_ribs')]
+
+STRIP_W = SKY.width                             # 640: all bands tile at this
+
+
+def paste_wrapped(im, src, off, y, width=NW):
+    """Paste a horizontal slice of a tiling 640-wide band, starting at source
+    column `off`, exactly the two source-rect cuts play.js's band() makes."""
+    off = off % STRIP_W
+    w1 = min(width, STRIP_W - off)
+    im.alpha_composite(src.crop((off, 0, off + w1, src.height)), (0, y))
+    if w1 < width:
+        im.alpha_composite(src.crop((0, 0, width - w1, src.height)), (w1, y))
+
+
+def tile_frame(i):
+    return TILESTRIP.crop((i * 16, 0, i * 16 + 16, 16))
+
+
+# --- the backdrop: play.js's render pass at rest camera ----------------------
+# Same layer order and the same horizon arithmetic as the game (restLine is the
+# skyline rest height; mesa bottoms sit +4 below it, rocks +10, the haze crop
+# -10, exactly play.js's bias values), with the floor slab as three courses of
+# the organic masonry band: the sunlit surface crust and two ember-veined fill
+# courses below it.
+SLAB_H = 48                                     # 3 x 16px courses
+SLAB_TOP = NH - SLAB_H                          # 267
+REST = SLAB_TOP - 10                            # skyline rest height
+
+
+def mars(im, rng):
+    # Sky: the exact visible slice, cropped at the haze line like drawSky.
+    haze_top = REST - 10
+    paste_wrapped(im, SKY.crop((0, 0, STRIP_W, haze_top)), rng.randrange(STRIP_W), 0)
+
+    # The slatted sun, one placement, sinking behind the mesa band — the
+    # late-run sky, which is the one worth bragging over.
+    im.alpha_composite(SUN, (rng.randrange(150, 380), rng.randrange(80, 104)))
+
+    # Far mesas, then the haze shelf fill, then the near rock ridge.
+    m_off, r_off = rng.randrange(STRIP_W), rng.randrange(STRIP_W)
+    paste_wrapped(im, MESAS, m_off, REST + 4 - MESAS.height)
     d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, W, H], fill=BG)
-    top = (60, 36, 72)
-    for y in range(0, 340):
-        k = (1 - y / 340) ** 2
-        d.rectangle([0, y, W, y], fill=(int(11 + (top[0] - 11) * k),
-                                        int(11 + (top[1] - 11) * k),
-                                        int(11 + (top[2] - 11) * k)))
+    d.rectangle([0, haze_top + 8, NW, SLAB_TOP], fill=HAZE)
+    paste_wrapped(im, ROCKS, r_off, REST + 10 - ROCKS.height)
 
+    # Shelf dressing, feet on the haze line like the game's flora/monument
+    # pass: a monument silhouette and a sparse hedge of flora.
+    mon = MONUMENTS[rng.randrange(len(MONUMENTS))]
+    mx = rng.randrange(40, NW - 140)
+    im.alpha_composite(mon, (mx, SLAB_TOP - 4 - mon.height))
+    for _ in range(4):
+        f = FLORA[rng.randrange(len(FLORA))]
+        fx = rng.randrange(0, NW - 30)
+        if abs(fx - mx) < 50:
+            continue                            # gaps in the hedge
+        im.alpha_composite(f, (fx, SLAB_TOP - 12 - f.height))
 
-def mars(im):
-    """The bottom third: stars, two silhouette bands, a lit ground slab. Same
-    painters the game's parallax strips are cut from, scaled up so a butte is a
-    butte at 1200 wide instead of a row of pebbles."""
-    rng = random.Random(2026)
-    stars = sheet(W, H)
-    star_field(stars, rng, 260, 430, big=0.16)
-    im.alpha_composite(stars)
-
-    GROUND = 96                                  # slab height at the bottom
-    # Both bands are placed by their BOTTOM edge, a little below the ground
-    # line, so the slab eats their feet and they read as standing behind it
-    # rather than floating on it — the same trick the in-game parallax plays.
-    # Band heights are one notch taller than the tallest thing the painter can
-    # draw at this scale, so a butte keeps its flat top instead of running off
-    # the top of its own strip.
-    mesas = mesa_band(sheet(W, 200), rng, s=1.8)
-    im.alpha_composite(mesas, (0, H - GROUND + 18 - 200))
-    rocks = rock_band(sheet(W, 120), rng, s=2.0)
-    im.alpha_composite(rocks, (0, H - GROUND + 14 - 120))
-
-    d = ImageDraw.Draw(im)
-    d.rectangle([0, H - GROUND, W, H], fill=ROCK)
-    d.rectangle([0, H - GROUND, W, H - GROUND + 5], fill=ROCK_LT)   # lit top lip
-    d.rectangle([0, H - GROUND + 6, W, H - GROUND + 8], fill=DIRT)  # oxide seam
-    rng2 = random.Random(7)
-    for _ in range(700):                          # rock speckle, same as tiles()
-        x, y = rng2.randrange(W), rng2.randrange(H - GROUND + 10, H)
-        d.rectangle([x, y, x + 2, y + 2], fill=ROCK_DK)
+    # The floor: organic masonry, straight off the production tileset — the
+    # surface crust course (frames 0..15 by x phase) over depth-1 and depth-2
+    # fill courses (frame 16 + (d-1)*16 + phase), phase-aligned so the stone
+    # band runs continuously just like pickTileFrame lays it in the level.
+    phase0 = rng.randrange(16)
+    for tx in range(0, NW // 16 + 1):
+        p = (tx + phase0) % 16
+        im.alpha_composite(tile_frame(p), (tx * 16, SLAB_TOP))
+        im.alpha_composite(tile_frame(16 + p), (tx * 16, SLAB_TOP + 16))
+        im.alpha_composite(tile_frame(32 + p), (tx * 16, SLAB_TOP + 32))
 
 
 def icon(im):
-    """The circle icon, nearest-upscaled, bottom-right — off the ground slab so
-    it reads as a stamp on the sky rather than a rock."""
+    """The circle icon, bottom-right, standing on the masonry slab like a
+    stamp — clear of the safe margin and the sub line."""
     src = Image.open(ICON).convert('RGBA')
     size = 132
     im.alpha_composite(src.resize((size, size), Image.LANCZOS),
                        (W - MARGIN - size, H - 84 - size - 22))
 
 
-def card(headline, sub, path):
-    im = sheet(W, H)
-    sky(im)
-    mars(im)
+def card(headline, sub, path, seed):
+    # Backdrop at game-native 600x315, seeded per card so every tier stands at
+    # its own spot along the run, then x2 nearest — the game's own pixel scale.
+    native = Image.new('RGBA', (NW, NH), (0, 0, 0, 0))
+    mars(native, random.Random(seed))
+    im = native.resize((W, H), Image.NEAREST)
     icon(im)
     d = ImageDraw.Draw(im)
 
-    draw_text(d, 'SUCH BLAST', W / 2, 62, 10, WHITE, 'center', SHADOW)
+    # Dark ink on the bright sky, the way the mesas sit on it — with a cream
+    # kick under the headline so it pops at thumbnail size.
+    draw_text(d, 'SUCH BLAST', W / 2, 62, 10, INK, 'center', GOLD)
 
     # The headline is the whole point of the card: as big as the safe width
-    # allows, gold, with the drop shadow the game's own titles use.
+    # allows, warm white over its own long dusk shadow.
     hs = fit_scale(headline, W - 2 * MARGIN, 20)
-    draw_text(d, headline, W / 2, 190, hs, GOLD, 'center', SHADOW)
+    draw_text(d, headline, W / 2, 190, hs, CREAM, 'center', INK)
 
+    # Cream over ink like the headline: the sub line falls where the sky hands
+    # off to the mesa band, and it has to read on both.
     ss = fit_scale(sub, W - 2 * MARGIN - 180, 5)
-    draw_text(d, sub, W / 2, 190 + GH * hs + 46, ss, '#c9bde8', 'center', SHADOW)
+    draw_text(d, sub, W / 2, 190 + GH * hs + 46, ss, GOLD, 'center', INK_DEEP)
 
     im.convert('RGB').save(path)
     return path
@@ -178,8 +232,8 @@ def main():
     made = []
     for t in TIERS:
         head = 'SUCH ATTEMPT' if t == 0 else f'{t}K+ WOW'
-        made.append(card(head, 'the gun is your legs.', OUT / f'card-{t}.png'))
-    made.append(card('MUCH GAME. VERY MARS.', 'the gun is your legs.', OUT / 'hero.png'))
+        made.append(card(head, 'the gun is your legs.', OUT / f'card-{t}.png', 2026 + t))
+    made.append(card('MUCH GAME. VERY MARS.', 'the gun is your legs.', OUT / 'hero.png', 1488))
     print('cards:', ', '.join(p.name for p in made))
     for p in made:
         assert Image.open(p).size == (W, H), p
