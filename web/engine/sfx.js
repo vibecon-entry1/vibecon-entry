@@ -47,32 +47,38 @@ export const MASTER = 0.5;
  */
 export const SOUNDS = {
   // The gun. Short, dry, and deliberately the quietest thing here: it fires
-  // several times a second and anything fatter turns into a buzzsaw.
-  pew:       { wave: 'square',   f0: 880,  f1: 440,  duration: 0.08, attack: 0.004, decay: 0.06, volume: 0.30 },
+  // several times a second and anything fatter turns into a buzzsaw. Ultra-short
+  // sawtooth — no high end left to fatigue at rapid fire.
+  pew:       { wave: 'sawtooth', f0: 960,  f1: 420,  duration: 0.065, attack: 0.002, decay: 0.05, volume: 0.28 },
   // Down-shot off the ground: an UP-chirp, because the body goes up.
   hop:       { wave: 'triangle', f0: 300,  f1: 520,  duration: 0.12, attack: 0.008, decay: 0.09, volume: 0.42 },
-  // Mid-air boost: same gesture, wider sweep, a breath of noise for thrust.
-  boost:     { wave: 'triangle', f0: 200,  f1: 660,  duration: 0.15, attack: 0.010, decay: 0.11, volume: 0.46, noise: 0.15 },
+  // Mid-air boost: same gesture, wider sweep, a bigger noise swell for thrust
+  // with some body to it.
+  boost:     { wave: 'triangle', f0: 170,  f1: 780,  duration: 0.19, attack: 0.012, decay: 0.14, volume: 0.48, noise: 0.28 },
   // Slide-burst chord: a downward saw punch. The only shot that MOVES you
-  // horizontally, so it reads as a shove rather than a shot.
-  burst:     { wave: 'sawtooth', f0: 150,  f1: 90,   duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.50, noise: 0.30 },
-  // Pickup: bright, stepped, above everything else in the mix's frequency range
-  // so it survives being played on top of a kill and a landing.
-  coin:      { wave: 'square',   f0: 1320, f1: 1760, duration: 0.09, attack: 0.004, decay: 0.05, volume: 0.30, notes: [1320, 1760] },
-  // Taking damage: noise-forward, pitch falling. Must not be confusable with
-  // any shot, so it is the one sound where noise dominates the tone.
-  hurt:      { wave: 'sawtooth', f0: 220,  f1: 110,  duration: 0.18, attack: 0.005, decay: 0.14, volume: 0.50, noise: 0.60 },
-  // Death: three descending squares. The only sound long enough to be a jingle.
-  ded:       { wave: 'square',   f0: 440,  f1: 220,  duration: 0.50, attack: 0.005, decay: 0.12, volume: 0.40, notes: [440, 330, 220] },
-  killpop:   { wave: 'square',   f0: 660,  f1: 110,  duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.40 },
-  bosshit:   { wave: 'sawtooth', f0: 110,  f1: 70,   duration: 0.10, attack: 0.004, decay: 0.07, volume: 0.50 },
-  // Boss down: the one BIG sound. Slow noise swell under a square rising two
+  // horizontally, so the heavy low-end noise sells it as a shove, not a shot.
+  burst:     { wave: 'sawtooth', f0: 190,  f1: 60,   duration: 0.15, attack: 0.003, decay: 0.11, volume: 0.52, noise: 0.45 },
+  // Pickup: bright, stepped a full octave (C6→C7), above everything else in the
+  // mix's frequency range so it survives a kill and a landing on top of it.
+  coin:      { wave: 'square',   f0: 1047, f1: 2093, duration: 0.12, attack: 0.003, decay: 0.07, volume: 0.30, notes: [1047, 2093] },
+  // Taking damage: a stepped FALLING square under heavy noise. Must not be
+  // confusable with any shot — the steps make it unmistakable.
+  hurt:      { wave: 'square',   f0: 220,  f1: 92,   duration: 0.16, attack: 0.004, decay: 0.12, volume: 0.50, noise: 0.50, notes: [220, 156, 92] },
+  // Death: four descending squares, properly sad. The only jingle in the set.
+  ded:       { wave: 'square',   f0: 523,  f1: 262,  duration: 0.70, attack: 0.005, decay: 0.16, volume: 0.40, notes: [523, 392, 330, 262] },
+  // Kill: tight transient, a whisper of noise — it plays hundreds of times.
+  killpop:   { wave: 'sawtooth', f0: 620,  f1: 120,  duration: 0.11, attack: 0.003, decay: 0.085, volume: 0.40, noise: 0.10 },
+  // Boss taking a hit: a dull heavy thud, no transient click to clash with the
+  // player's own fire on the same frame.
+  bosshit:   { wave: 'sawtooth', f0: 140,  f1: 50,   duration: 0.13, attack: 0.003, decay: 0.09, volume: 0.52, noise: 0.22 },
+  // Boss down: the one BIG sound. Slow noise swell under a square rising three
   // and a half octaves — long attack on purpose, it is a payoff not a hit.
-  bossdown:  { wave: 'square',   f0: 110,  f1: 880,  duration: 0.60, attack: 0.080, decay: 0.35, volume: 0.55, noise: 0.50 },
+  bossdown:  { wave: 'square',   f0: 90,   f1: 990,  duration: 0.80, attack: 0.100, decay: 0.45, volume: 0.55, noise: 0.65 },
   // Boss-summoned minion: a smaller, higher killpop so a minion death is
   // audibly not a roster kill.
   minionpop: { wave: 'square',   f0: 990,  f1: 1320, duration: 0.07, attack: 0.003, decay: 0.05, volume: 0.30 },
-  uiclick:   { wave: 'square',   f0: 660,  f1: 660,  duration: 0.04, attack: 0.002, decay: 0.03, volume: 0.30 },
+  // UI: a short down-step, atonal and non-grating.
+  uiclick:   { wave: 'square',   f0: 880,  f1: 660,  duration: 0.045, attack: 0.002, decay: 0.035, volume: 0.30 },
 };
 
 export const WAVES = ['square', 'triangle', 'sawtooth', 'noise'];
