@@ -82,6 +82,18 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
   Cloudflare worker (`share-worker/`, deployed with two curls and no wrangler)
   that rewrites the OpenGraph tags to that run's score
 
+## very smol
+
+| thing | size |
+|---|---|
+| the entire game code (unminified, every comment intact) | ~320 KB |
+| the sprite atlas (every frame of everything) | 84 KB |
+| share cards + banner | ~400 KB |
+| soundtrack (14 tracks) | ~33 MB — **streams on demand, loads nothing up front** |
+| what your browser downloads before you're playing | well under 1 MB |
+
+no bundler. no minifier. no engine. the whole playable game is smaller than one modern webpage's cookie banner. such diet.
+
 ## run it yourself
 
 ```bash
