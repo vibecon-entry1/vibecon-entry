@@ -1,0 +1,124 @@
+{
+  "label": "round2",
+  "model": "audio review",
+  "calls": 9,
+  "sounds": {
+    "hop": {
+      "scores": {
+        "a": 5,
+        "b": 9,
+        "c": 4
+      },
+      "best": "b",
+      "notes": {
+        "a": "Sounds like a basic synthesized pitch-bend chirp with minimal layering. Lacks physical weight and transient definition to cut through active music and gunfire. To upgrade: add a crisp mechanical/impact transient layer (1-3 ms attack around 2.5-4 kHz), introduce a subtle pneumatic or mechanical release body around 200-400 Hz, and soften the pitch envelope tail to prevent repetitive synth fatigue.",
+        "b": "Top-shelf execution. Excellent balance of a punchy initial mechanical pop and a clean, springy pitch-lift tail. The layered high-frequency transient cuts through dense mixes, while the pitch contour clearly communicates upward momentum without feeling harsh or repetitive.",
+        "c": "Too soft, dull, and muffled. The attack transient is mushy and lacks the high-frequency snap required to survive beneath constant gunfire and energetic BGM. To fix: sharpen the attack curve (under 5 ms), scoop out muddy low-mids around 250-450 Hz, and layer a bright, metallic or air-burst transient in the 3-6 kHz range for readibility."
+      }
+    },
+    "boost": {
+      "scores": {
+        "a": 3,
+        "b": 4,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Basic 8-bit style chiptune pitch slide. Lacks any organic airy texture, sub-body, or modern layering. Extremely thin and harsh, which will fatigue the listener quickly given the high repetition rate. Replace completely with a combination of filtered air/wind noise sweeps and a short mid-range transient.",
+        "b": "Synth-driven pitch-sweep with a bit more low-mid presence than A, but still sounds like a bare synthesizer preset rather than a multi-layered sound design asset. Lacks airy thrust and modern transient punch. Needs a realistic wind/air puff layer, a subtle sub punch around 120-200 Hz, and a smoother high-frequency roll-off above 8 kHz.",
+        "c": "Fits the brief well with a pleasant airy thrust, clean transient, and smooth tail. Holds up well to repetition without becoming grating and will sit nicely under music. To elevate to top-shelf console quality (9+), add a tiny bit more low-mid weight around 180-250 Hz for downward impact, and gently notch out 3-4 kHz slightly to reserve room for gunfire transients."
+      }
+    },
+    "burst": {
+      "scores": {
+        "a": 9,
+        "b": 3,
+        "c": 5
+      },
+      "best": "a",
+      "notes": {
+        "a": "Outstanding punch and low-end weight. The transient is sharp and well-defined without harshness, and the sub-thump gives an immediate physical shove feel that will cut through energetic music cleanly.",
+        "b": "Fails the brief entirely. Sounds like a bare synth pitch-down sweep rather than a physical shove. Lacks any sub weight (needs a punchy sub impact at 60-100Hz) and snappy transient. Replace the tonal sweep with a layered pneumatic/impact transient.",
+        "c": "Weak impact with an abrupt, thin tail. Lacks the weight needed for a movement mechanic and will easily get buried under gameplay music. Boost 80-150Hz by 3-4dB, lengthen the tail envelope to ~180ms, and layer a heavier low-frequency transient to convey physical force."
+      }
+    },
+    "ded": {
+      "scores": {
+        "a": 7,
+        "b": 3,
+        "c": 4
+      },
+      "best": "a",
+      "notes": {
+        "a": "Clean, well-articulated descending phrase with good transient clarity and a tasteful tail. To reach top-shelf console polish (9+), layer a warm low-mid bass pad (150–280 Hz) underneath the pluck to anchor the sad emotion, and add a subtle high-shelf stereo delay (above 5 kHz) so the tail blooms nicely during the full-stop screen freeze.",
+        "b": "Sounds like a bare, unlayered 8-bit square wave oscillator. The transient attack is raw and clicky, lacking production depth. Needs complete multi-layering: add a soft acoustic/analog synth body underneath, tame the harsh 2–4 kHz square harmonics, and add a smooth diffusion reverb tail to eliminate the abrupt chiptune feel.",
+        "c": "Plays as a pitch-sliding synth bend rather than a distinct melodic jingle, giving it a somewhat comical cartoon feel rather than a poignant death beat. The attack is mushy with no clear transient definition. Re-sequence into discrete melodic notes, sharpen the initial attack around 1.5–3 kHz, and replace the bend with a warm, descending harmonized phrase."
+      }
+    },
+    "bosshit": {
+      "scores": {
+        "a": 9,
+        "b": 4,
+        "c": 3
+      },
+      "best": "a",
+      "notes": {
+        "a": "Hits the brief precisely. Excellent rounded attack without a sharp high-frequency transient (leaving 2kHz+ clear for player weapon fire), supported by a rich, weight-heavy sub-bass thump in the 60-100Hz range. Feels multi-layered, polished, and will sit solidly beneath intense combat.",
+        "b": "Lacks the sub-bass foundation and low-mid authority required for a boss impact. Sounds like a single filtered oscillator with a weak tail. To fix: add a sub-layer pitched around 50-80Hz, extend the decay envelope by 50-80ms, and boost 150-250Hz for chest-thump impact.",
+        "c": "Directly contradicts the prompt requirement: features a prominent high-mid transient click (2kHz-4kHz snap) that will clutter player gunshot transients on impact frames, while missing almost all sub-100Hz energy required for a heavy boss."
+      }
+    },
+    "bossdown": {
+      "scores": {
+        "a": 4,
+        "b": 2,
+        "c": 7
+      },
+      "best": "c",
+      "notes": {
+        "a": "Lacks any low-end weight, explosive impact, or transient punch. It reads purely as an arcade pickup or stage-clear chime rather than a boss payoff. Needs a heavy sub-boom (40-60 Hz, 500ms decay) and an explosive mechanical/shatter transient layer beneath the musical tone.",
+        "b": "A basic retro pitch-down zap with zero weight, scale, or triumphant feeling. Completely placeholder quality for a boss climax. Needs a total redesign with a multi-layered impact transient, low-frequency impact weight, and a long decaying triumph/reverb tail.",
+        "c": "Captures the explosion impact and triumphant musical tail well, with great mix clarity in the high frequencies. To elevate it from solid commercial (7) to top-shelf console (9+), add a deeper sub-impact layer (40-50 Hz) for physical weight and extend the decay with subtle debris/sparkle reverb tail."
+      }
+    },
+    "minionpop": {
+      "scores": {
+        "a": 9,
+        "b": 4,
+        "c": 5
+      },
+      "best": "a",
+      "notes": {
+        "a": "Excellent execution. Perfect transient snap with a clean organic squish/bubble layer pitched high enough to clearly communicate 'minor minion'. Cuts through dense mixes effortlessly without cluttering the mid-range or fatiguing the ears during rapid kills.",
+        "b": "Sounds like a bare synth pitch-sweep oscillator from an 8-bit asset pack. Lacks depth, organic texture, and visual feedback satisfaction. To improve: layer a high-frequency organic transient (like a tiny wet bubble pop or small snap) and dip the tonal tail decay time down to under 50ms.",
+        "c": "Too muffled and boxy. The transient lacks sharp attack definition and the frequency profile is congested in the 300-600 Hz range. To fix: add a high-pass filter around 250 Hz, boost the 3-5 kHz transient attack for mix punch, and tighten the tail envelope."
+      }
+    },
+    "takeoff": {
+      "scores": {
+        "a": 4,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Overly tonal synth pitch sweep that climbs directly through 400 Hz–2.5 kHz, which will severely mask the win fanfare's melody. Lacks weight and low-end power below 80 Hz. To improve: notch out 500 Hz–1.5 kHz, replace the synth pitch glide with filtered white/pink noise layers, and add a dedicated sub-bass rumble layer.",
+        "b": "Strong noise-forward design with deep sub-rumble and crisp high-end exhaust air that leaves the mid-range open for the fanfare. Reads cleanly as a rocket/ship thrust. To reach top-shelf quality, soften the abrupt tail at 2.4s with a smoother 200ms exponential fade-out and boost the initial sub impact around 50–70 Hz.",
+        "c": "Sounds like a basic monophonic oscillator glide rather than a rich sound-designed engine takeoff. Highly tonal pitch sweep creates extreme harmonic friction with any music. Needs heavy layering: strip out the synth tone, add real jet/rocket noise textures, and build a sub-100 Hz rumble envelope."
+      }
+    },
+    "afktick": {
+      "scores": {
+        "a": 7,
+        "b": 4,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Clean, organic tick with excellent transient control and low listener fatigue. However, it leans slightly too neutral/woodblock rather than ominous. To improve, add a subtle pitch-dropped low element (100-150Hz decay over 40ms) underneath and notch out 2kHz by 2dB to reduce the hollow percussion tone.",
+        "b": "Highly fatiguing FM synth beep that fails the 3-minute repetition requirement. The persistent tonal center will clash with music leads and irritate the player quickly. To fix: strip the sustained tonal tail, damp the envelope to under 35ms, and soften the 3kHz-4kHz peak with a steep high-shelf roll-off.",
+        "c": "Best fit for an extended AFK timer. The dark, muted low-mid character carries a subtle sense of dread without causing high-frequency ear fatigue. It sits neatly under heavy gameplay transients. To push it to a 9+, add a tiny unpitched high-frequency click (+1.5dB at 2.5kHz, 5ms attack) to guarantee it cuts through heavy music basslines."
+      }
+    }
+  }
+}

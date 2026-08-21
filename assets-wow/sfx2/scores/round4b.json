@@ -1,0 +1,59 @@
+{
+  "label": "round4b",
+  "model": "audio review",
+  "calls": 4,
+  "sounds": {
+    "boost": {
+      "scores": {
+        "a": 5,
+        "b": 8,
+        "c": 3
+      },
+      "best": "b",
+      "notes": {
+        "a": "Lacks the low-mid weight (180-350 Hz) and airy noise texture required for a convincing thrust boost. Sounds like a basic pitch-swept synth patch. Add a 15ms sub-punch layer and a stereo-widened white/pink noise burst filtered with a smooth high-pass around 1 kHz.",
+        "b": "Strong candidate with a clean noise transient and solid punch that decays quickly (<250ms), giving it high repetition tolerance. Sits well in the mix without ear fatigue. To reach top-tier console polish, add a subtle sub-layer (<90 Hz) for weight and implement ±3% pitch randomization on trigger.",
+        "c": "Far too harsh and thin. The aggressive pitch chirp creates a piercing spike around 4-7 kHz that will cause immediate listener fatigue when spammed. Completely lacks body and air. Filter out the sharp digital transient, lower the overall pitch by an octave, and introduce a dedicated low-mid noise envelope."
+      }
+    },
+    "ded": {
+      "scores": {
+        "a": 9,
+        "b": 4,
+        "c": 3
+      },
+      "best": "a",
+      "notes": {
+        "a": "Excellent execution. The descending melodic phrase carries clear sad emotion with crisp transient attacks and a smooth, elegant reverb decay tail. Fits the full-stop death moment perfectly without sounding harsh in the upper mids.",
+        "b": "Too fast and dry. Sounds like a primitive bare-oscillator 8-bit arpeggio rather than a polished death jingle. Needs a softened attack envelope (15ms pad), discrete emotional intervals, and a warm body layer in the 250-500Hz region with a 1-second reverb tail to let it breathe.",
+        "c": "The continuous pitch-bend slide gives it a cartoonish/goofy tone rather than a tragic death moment. Needs discrete note steps instead of a pitch sweep, higher transient clarity in the 2-4kHz band, and layering with a soft warm pad to remove the hollow synth timbre."
+      }
+    },
+    "bossdown": {
+      "scores": {
+        "a": 5,
+        "b": 4,
+        "c": 7
+      },
+      "best": "c",
+      "notes": {
+        "a": "Lacks any weight or explosive impact body; plays purely as a synth victory chime layer. To turn this into a boss payoff, layer a punchy low-end impact (60–100 Hz punch with a 40 Hz sub drop), add a transient debris/crackles layer, and extend the tail reverbs in the 8–12 kHz spectrum for cinematic scale.",
+        "b": "Sounds like a retro laser synth drop or player damage sound rather than a triumphant boss defeat. The descending pitch envelope creates a sense of loss or powered-down defeat. Redesign with an ascending or resonant triumphant layer, add a heavy impact transient, and remove the harsh descending mid-range synth buzz.",
+        "c": "Strongest candidate with a snappy initial transient and a bright, triumphant metallic chime tail that cuts cleanly over dense music. To hit top-shelf polish (9+), add a deep sub-bass body layer (30–60 Hz) that sustains for 1.5–2 seconds, incorporate subtle mechanical explosion debris in the mid-highs, and utilize a sidechain trigger to duck music and gameplay audio during the impact."
+      }
+    },
+    "afktick": {
+      "scores": {
+        "a": 6,
+        "b": 5,
+        "c": 8
+      },
+      "best": "c",
+      "notes": {
+        "a": "Soft and non-fatiguing with zero ear strain, but the transient is too muted and dark. In a dense mix with energetic music and gunfire, it will get completely buried unless pushed too high in gain. Production fix: Add a subtle, tightly-gated high-mid transient layer (3-5 kHz, 5-10ms decay) and gently saturate the 300-600 Hz range to give it more presence without losing its dry quality.",
+        "b": "Cuts through a busy mix easily, but the transient is far too sharp and resonant in the 4-7 kHz region. Hearing this once per second for up to three minutes will cause severe ear fatigue. Production fix: Apply a steep high-shelf cut above 5 kHz, dampen the resonant tail, and add a weighted low-mid element (150-300 Hz) to shift the tone from annoying click to ominous tick.",
+        "c": "The most polished candidate. Excellent balance between transient clarity and low-fatigue auditioning, with a clean layered feel (transient snap + subtle body). It carries enough mid-frequency weight to cut over music without being harsh. To polish further: Notch 2.5 kHz by 1-2 dB to guard against repetition fatigue over 3 minutes, and add subtle (+/- 15 cents) pitch randomization on play."
+      }
+    }
+  }
+}
