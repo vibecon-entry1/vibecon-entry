@@ -68,7 +68,9 @@ test('the static og:image points at a card that exists', () => {
   const m = /<meta property="og:image" content="([^"]+)">/.exec(html);
   assert.ok(m, 'no og:image');
   assert.ok(m[1].startsWith('https://'), 'og:image must be absolute');
-  assert.ok(m[1].endsWith('/share/hero.png'));
+  // Pathname, not the raw string: the URL carries a ?v= cache-bust for the
+  // scrapers, and the probe is about WHICH file it points at, not the query.
+  assert.ok(new URL(m[1]).pathname.endsWith('/share/hero.png'));
   assert.match(html, /twitter:card" content="summary_large_image"/);
 });
 
