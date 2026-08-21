@@ -5,8 +5,9 @@
 // page and never runs the game's JS — so a run link points here instead, and
 // this hands the scraper tags built from the query string.
 //
-// GET /?s=SCORE&k=KILLS&d=DEATHS&m=g|w  →  200 text/html with the tags
-// anything else                          →  405
+// GET /?s=SCORE&k=KILLS&d=DEATHS&m=g|w&g=SIG  →  200 text/html, the run's tags
+// ...with g missing or wrong                   →  200, the generic no-score tags
+// anything but GET                             →  405
 //
 // It stores nothing and logs nothing: the whole state of a share is in the URL
 // the player copied, which is why this can be a single stateless file with no
@@ -14,7 +15,8 @@
 // Cloudflare REST API (see DEPLOY.md) — there is no wrangler in this repo.
 //
 // NO SECRETS IN THIS FILE. It is public source and the deployed script is
-// world-readable at its own URL.
+// world-readable at its own URL. The HMAC key below is deliberately not a
+// secret — see THE SIGNATURE.
 
 // Where the committed cards live. Must match web/index.html's og:image host —
 // if the Pages URL moves, both change together.
@@ -37,6 +39,25 @@ function clampInt(raw, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// THE SIGNATURE. `g=` is the first 10 hex chars of HMAC-SHA256 over "s.k.d.m"
+// (the clamped params, that order, dot-joined) — same construction, same
+// split-assembled key as web/game/share.js. SPEED BUMP, NOT A LOCK: both files
+// are public, so anyone can read the key and forge a link; the point is only
+// that editing a score out of a URL stops working without doing that. A bad or
+// missing g is NOT an error — the link still unfurls, just into the generic
+// no-score page — so every pre-signature link in the wild degrades gracefully.
+const KEY = ['much-', 'auth-', 'very-', 'wow'].join('');
+
+const canonical = (p) => `${p.s}.${p.k}.${p.d}.${p.m}`;
+
+async function signParams(p) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(KEY),
+                                            { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(canonical(p))));
+  return Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 10);
+}
+
 function tierFor(score) {
   const k = score / 1000;
   let t = TIERS[0];
@@ -52,11 +73,27 @@ const esc = (s) => String(s)
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-function page({ s, k, d, m }) {
-  const title = `i got ${s} WOW in SUCH BLAST`;
-  const desc = `${k} kills · ${d} deaths · ${m === 'w' ? 'WOW ZONE' : 'gauntlet'} · ` +
-               `the gun is your legs.`;
-  const img = `${PAGES}/share/card-${tierFor(s)}.png?v=2`;  // bump to bust scraper og caches on art changes
+// The two shapes a link can unfurl into. A run whose signature checks out gets
+// its score; anything else — no g, wrong g, or a pre-signature link — gets the
+// same tags the static page carries: game title, hero card, no score claim.
+function scorePage({ s, k, d, m }) {
+  return page({
+    title: `i got ${s} WOW in SUCH BLAST`,
+    desc: `${k} kills · ${d} deaths · ${m === 'w' ? 'WOW ZONE' : 'gauntlet'} · ` +
+          `the gun is your legs.`,
+    img: `${PAGES}/share/card-${tierFor(s)}.png?v=2`,  // bump to bust scraper og caches on art changes
+  });
+}
+
+function genericPage() {
+  return page({
+    title: 'SUCH BLAST — much game. very mars.',
+    desc: 'the gun is your legs. much blast. a VibeCon 2026 game.',
+    img: `${PAGES}/share/hero.png?v=2`,
+  });
+}
+
+function page({ title, desc, img }) {
   const self = `${PAGES}/`;
   return `<!doctype html>
 <html lang="en">
@@ -92,7 +129,7 @@ a{color:#eec548}</style>
 }
 
 export default {
-  fetch(request) {
+  async fetch(request) {
     if (request.method !== 'GET') {
       return new Response('wow. very method not allowed.', {
         status: 405,
@@ -111,7 +148,12 @@ export default {
       d: clampInt(q.get('d'), 0, S_MAX),
       m: m === 'w' ? 'w' : 'g',
     };
-    return new Response(page(run), {
+    // Signature check. Lower-cased like every other value — the manual-copy
+    // path shouts the URL in a CAPS-only font, and hex is case-insensitive to
+    // a human retyping it.
+    const g = (q.get('g') || '').toLowerCase();
+    const good = g !== '' && g === await signParams(run);
+    return new Response(good ? scorePage(run) : genericPage(), {
       status: 200,
       headers: {
         'content-type': 'text/html; charset=utf-8',

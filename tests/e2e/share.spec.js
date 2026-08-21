@@ -21,6 +21,15 @@ import { boot, runTape } from './helpers.mjs';
 
 const WORKER = 'https://sb-share.vibecon-entry.workers.dev/';
 
+// The URL carries a g= signature (share.js). Signing is async — the scene
+// builds with the unsigned shape and the g= lands a beat later — so specs wait
+// for it before comparing URLs. localhost is a secure context, so crypto.subtle
+// exists here and the signed shape is the one a player actually copies.
+const SIG = /&g=[0-9a-f]{10}$/;
+const waitForSig = (page) =>
+  page.waitForFunction(() => /&g=[0-9a-f]{10}$/.test(window.__blast.state().shareUrl),
+                       null, { timeout: 5000 });
+
 async function grantClipboard(context) {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'],
                                  { origin: 'http://localhost:8123' });
@@ -54,17 +63,20 @@ test('win screen: S copies this run to the clipboard', async ({ page, context })
   await page.waitForFunction(() => window.__blast.state().scene === 'win', null,
                              { timeout: 20000 });
 
+  await waitForSig(page);
   const before = await page.evaluate(() => window.__blast.state());
   expect(before.shareStatus).toBe('idle');
   expect(before.shareUrl).toContain(WORKER);
   expect(before.shareUrl).toContain(`s=${before.finalScore}`);
   expect(before.shareUrl).toContain('m=g');          // gauntlet
+  expect(before.shareUrl).toMatch(SIG);              // the tamper signature
 
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain(`s=${before.finalScore}`);  // the score rides IN the url
   expect(clip).toContain(WORKER);
+  expect(clip).toMatch(SIG);                         // ...signed, so it unfurls the score
   expect(clip).toBe(before.shareUrl);                // the bare link, nothing else
   // ...and no image representation on the clipboard beside it: an image is
   // exactly what made chat apps drop the link.
@@ -96,15 +108,18 @@ test('wowend: S copies the zone run, mode and all', async ({ page, context }) =>
   await page.waitForFunction(() => window.__blast.state().scene === 'wowend', null,
                              { timeout: 15000 });
 
+  await waitForSig(page);
   const before = await page.evaluate(() => window.__blast.state());
   expect(before.shareUrl).toContain('m=w');          // the zone, not the gauntlet
   expect(before.shareUrl).toContain('d=1');          // the death that ended it
+  expect(before.shareUrl).toMatch(SIG);
 
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain(`s=${before.finalScore}`);
   expect(clip).toContain(WORKER);
+  expect(clip).toMatch(SIG);
   expect(clip).toBe(before.shareUrl);
   await page.screenshot({ path: 'tests/artifacts/share-wowend.png' });
   expect(errors).toEqual([]);
@@ -134,6 +149,7 @@ test('no clipboard: the URL goes on screen instead', async ({ page, context }) =
   await page.waitForFunction(() => window.__blast.state().scene === 'wowend', null,
                              { timeout: 15000 });
 
+  await waitForSig(page);   // sig lands before any press, so prompt === state url
   expect(await pressShare(page)).toBe('fail');
   const st = await page.evaluate(() => window.__blast.state());
   await page.waitForFunction(() => window.__prompts.length > 0, null, { timeout: 5000 });

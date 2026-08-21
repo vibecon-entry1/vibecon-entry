@@ -52,9 +52,50 @@ export function shareUrl(run) {
   return `${WORKER}?s=${p.s}&k=${p.k}&d=${p.d}&m=${p.m}`;
 }
 
-/** What lands in the clipboard. The URL is last so every client links it. */
-export function shareText(run) {
-  return `i got ${shareParams(run).s} WOW in SUCH BLAST. ${shareUrl(run)}`;
+// --- the signature ----------------------------------------------------------
+// A share URL carries `g=` — the first 10 hex chars of HMAC-SHA256 over the
+// canonical string "s.k.d.m" (the four params, that order, dot-joined). The
+// worker recomputes it and serves the generic no-score page when it doesn't
+// match, so editing a score out of a copied URL stops producing a bragging
+// unfurl.
+//
+// SPEED BUMP, NOT A LOCK. This repo is public, so the key below is readable by
+// anyone who cares to look; the split is only so the URL can't be forged by
+// pattern-matching one string out of the source. The bar being raised is
+// exactly "edit a number in the URL" → "read the source and compute an HMAC".
+const KEY = ['much-', 'auth-', 'very-', 'wow'].join('');
+
+/** The exact bytes the signature covers. One definition, pinned by tests. */
+export function canonical(p) {
+  return `${p.s}.${p.k}.${p.d}.${p.m}`;
+}
+
+/** 10-hex-char HMAC of the canonical string, or null where crypto.subtle
+ *  doesn't exist (http:// off localhost) — the URL then goes out unsigned and
+ *  unfurls generic, which beats crashing the share. */
+export async function signParams(p, subtle = globalThis.crypto?.subtle) {
+  if (!subtle) return null;
+  try {
+    const enc = new TextEncoder();
+    const key = await subtle.importKey('raw', enc.encode(KEY),
+                                       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = new Uint8Array(await subtle.sign('HMAC', key, enc.encode(canonical(p))));
+    return Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 10);
+  } catch {
+    return null;
+  }
+}
+
+/** shareUrl plus its `g=` signature; the bare URL when signing isn't possible. */
+export async function signedShareUrl(run, subtle) {
+  const g = await signParams(shareParams(run), subtle);
+  return g ? `${shareUrl(run)}&g=${g}` : shareUrl(run);
+}
+
+/** What lands in the clipboard. The URL is last so every client links it.
+ *  Pass the (signed) url when you have one; defaults to the unsigned shape. */
+export function shareText(run, url = shareUrl(run)) {
+  return `i got ${shareParams(run).s} WOW in SUCH BLAST. ${url}`;
 }
 
 // --- the live card ----------------------------------------------------------
@@ -164,7 +205,7 @@ export function drawShareCard(ctx, run) {
  * which is what the caller shows the manual-copy fallback for.
  */
 export async function copyShare(run, { clipboard = navigator.clipboard } = {}) {
-  const url = shareUrl(run);
+  const url = await signedShareUrl(run);
   if (!clipboard?.writeText) throw new Error('no clipboard');
   await clipboard.writeText(url);
   return { text: url, url };

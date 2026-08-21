@@ -16,7 +16,7 @@
 // (It used to also copy the card PNG; chat apps pasted the picture and
 // dropped the link. See copyShare.)
 import { drawText } from '../engine/font.js';
-import { copyShare, shareUrl, shareText } from './share.js';
+import { copyShare, shareUrl, signedShareUrl, shareText } from './share.js';
 
 const CX = 320;                   // VW/2 — both end screens are 640 wide
 const OK_T = 3.0;                 // how long "very copied." stays up
@@ -40,7 +40,13 @@ export function shareTapBand(y, need = 0) {
  * @param copy — injectable for tests; defaults to the real clipboard path.
  */
 export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
-  const url = shareUrl(run);
+  // The URL starts as the unsigned shape and picks up its `g=` signature as
+  // soon as crypto.subtle answers — HMAC signing is async, this constructor is
+  // not, and the scene builds its UI once. Signing is milliseconds; a player
+  // cannot press S before it lands. Where subtle doesn't exist (http:// off
+  // localhost) the URL simply stays unsigned and unfurls generic — see share.js.
+  let url = shareUrl(run);
+  signedShareUrl(run).then((u) => { url = u; }).catch(() => {});
   let status = 'idle';            // idle | busy | ok | fail
   let okT = 0;
   let armT = 0;                   // scene age; the share can't fire before ARM_T
@@ -125,6 +131,6 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
     // Test hook. The e2e prefers reading the real clipboard, but headless
     // permission grants are a per-browser lottery, so the payload the game
     // BELIEVES it copied is exposed here as the fallback assertion surface.
-    state: () => ({ shareUrl: url, shareText: shareText(run), shareStatus: status }),
+    state: () => ({ shareUrl: url, shareText: shareText(run, url), shareStatus: status }),
   };
 }
