@@ -745,18 +745,34 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       };
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
       const dr = dread(cam.x);
+      // OVERDRAW BUDGET. The old starfield sky was mostly transparent pixels
+      // and rasterized for almost nothing; the production skies are opaque
+      // 640x360 cells, and a naive draw-twice-for-the-seam pattern doubles
+      // their raster cost. So the sky is drawn as exactly the VISIBLE slice:
+      // two source-rect cuts that stitch the wrap seam edge to edge, cropped
+      // at the haze line below which the haze fill + floor cover every pixel
+      // anyway. hazeTop is computed here (it belongs to the rocks band drawn
+      // later) because the sky needs the crop line first. The sky sits pinned
+      // to the top of the frame: its old 0.05 vertical drift is gone, which
+      // with an OPAQUE sky would have opened a bare strip above it in flight.
+      const hazeTop = restLine + 10 + drift(0.20) - 20;
+      const drawSky = (name) => {
+        const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
+        const h = Math.min(a.ch, Math.max(0, hazeTop));
+        const off = Math.round(wrap(cam.x * 0.10, VW));
+        const w1 = Math.min(VW, a.cw - off);
+        ctx.drawImage(atlas.img, f.x + off, f.y, w1, h, 0, 0, w1, h);
+        if (w1 < VW) ctx.drawImage(atlas.img, f.x, f.y, VW - w1, h, w1, 0, VW - w1, h);
+      };
       // Arena dread: the boss sky fades over the sunset as the camera closes
       // on the arena and back out on the victory lap — a blend, never a pop.
       // At the blend's ENDS only one sky is drawn: the whole boss fight sits
-      // at dr === 1, and four full-frame sky draws a frame there is exactly
-      // the kind of cost the perf gate exists to catch.
-      const baseSky = dr >= 1 ? 'sky_boss' : skyName;
-      drawLayer(ctx, baseSky, sox, drift(0.05));      // sky: pinned to the top
-      drawLayer(ctx, baseSky, sox + VW, drift(0.05));
+      // at dr === 1, and doubled sky raster there is exactly the kind of cost
+      // the perf gate exists to catch.
+      drawSky(dr >= 1 ? 'sky_boss' : skyName);
       if (dr > 0 && dr < 1) {
         ctx.globalAlpha = dr;
-        drawLayer(ctx, 'sky_boss', sox, drift(0.05));
-        drawLayer(ctx, 'sky_boss', sox + VW, drift(0.05));
+        drawSky('sky_boss');
         ctx.globalAlpha = 1;
       }
       // The sun. A single-placement cameo — NEVER baked into (or wrapped with)
@@ -781,8 +797,12 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // real floor drops away faster than the parallax does, and without this
       // you get a strip of bare sky wedged between the rocks and the ground.
       const rocksBottom = restLine + 10 + drift(0.20);
+      // Capped at the floor slab's screen line (the world tiles + pit-void
+      // strip are opaque from there down), not the screen bottom: the old
+      // full-height fill was ~120 rows of pure overdraw at rest camera.
       ctx.fillStyle = '#3b190f';
-      ctx.fillRect(0, rocksBottom - 20, VW, VH - rocksBottom + 20);
+      ctx.fillRect(0, rocksBottom - 20, VW,
+                   Math.min(VH, level.h - 8 * TILE - cam.y + 1) - rocksBottom + 20);
       for (const p of ROCK_PROPS) drawProp(ctx, p, drift);
       band('par_rocks', 0.60, 0.20, 10);
       for (const p of SHELF_PROPS) drawProp(ctx, p, drift);
