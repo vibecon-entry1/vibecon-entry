@@ -42,6 +42,12 @@
 <body>
 <canvas id="screen"></canvas>
 <div id="err"></div>
-<script type="module" src="main.js"></script>
+<!-- BUILD STAMP / cache-busting. The `?v=` below is the game's single build
+     version: engine/version.js reads it off this tag and appends it to every
+     mutable asset fetch (atlas, audio, manifest, stickers), so a returning
+     player's cache can never mix an old main.js with a new atlas again.
+     DEPLOY STEP: bump the value (any new string) whenever web/assets/,
+     web/assets/audio/ or the brand stickers change. One line, nothing else. -->
+<script type="module" src="main.js?v=b6"></script>
 </body>
 </html>

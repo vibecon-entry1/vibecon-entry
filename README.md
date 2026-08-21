@@ -102,6 +102,12 @@ npm run serve      # → http://localhost:8123
 npm test           # 172 unit + 46 e2e browser tests, much green
 ```
 
+deploying (GitHub Pages serves `web/` as-is): whenever a deploy changes any
+fetched asset — `web/assets/` (atlas), `web/assets/audio/`, the brand stickers —
+bump the `?v=` build stamp on the module entry in `web/index.html`. one line;
+it cache-busts every asset fetch so a returning player's browser can never mix
+an old script with a new atlas. very fresh.
+
 ## built with much AI
 
 this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans made the calls; the models made the commits:

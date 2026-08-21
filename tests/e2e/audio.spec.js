@@ -13,14 +13,17 @@ import { test, expect } from '@playwright/test';
 // the only entry that builds a live jukebox (?test builds a silent one so the
 // tape-driven specs don't stream a run track on every synthetic keypress).
 
-/** Request URLs for actual audio media, ignoring the tiny manifest.json. */
+/** Request URLs for actual audio media, ignoring the tiny manifest.json.
+ * Tracks PATHNAMES: every asset fetch now carries the `?v=` build stamp
+ * (engine/version.js), so suffix tests against the full URL would silently
+ * stop matching and turn the mp3 guard into a vacuous pass. */
 function audioTracker(page) {
   const mp3 = [], any = [];
   page.on('request', r => {
-    const u = r.url();
-    if (!u.includes('/assets/audio/')) return;
-    any.push(u);
-    if (u.endsWith('.mp3')) mp3.push(u);
+    const u = new URL(r.url());
+    if (!u.pathname.includes('/assets/audio/')) return;
+    any.push(u.pathname);
+    if (u.pathname.endsWith('.mp3')) mp3.push(u.pathname);
   });
   return { mp3, any };
 }
@@ -44,7 +47,7 @@ test('boot with no gesture: jukebox armed, zero mp3 bytes fetched, clean console
   expect(st.pending).toBe('title');      // title scene's intent is recorded...
   expect(st.pool).toBe(null);            // ...but nothing is playing
   expect(req.mp3).toEqual([]);           // THE guard: no music bytes before a gesture
-  expect(req.any).toEqual([`http://localhost:8123/assets/audio/manifest.json`]);
+  expect(req.any).toEqual(['/assets/audio/manifest.json']);
   expect(errors).toEqual([]);
 });
 

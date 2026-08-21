@@ -1,4 +1,5 @@
 // Atlas loading + animation math + the two draw anchors (feet / centered).
+import { stamp } from './version.js';
 export function animFrame(anim, t) {
   const n = anim.frames.length;
   const i = Math.floor(t * anim.fps);
@@ -25,8 +26,8 @@ async function fetchRetry(url, tries = 3) {
 }
 
 export async function loadAtlas(base = 'assets/') {
-  const meta = await (await fetchRetry(base + 'atlas.json')).json();
-  const blob = await (await fetchRetry(base + 'atlas.png')).blob();
+  const meta = await (await fetchRetry(stamp(base + 'atlas.json'))).json();
+  const blob = await (await fetchRetry(stamp(base + 'atlas.png'))).blob();
   const img = await createImageBitmap(blob);
   return new Atlas(img, meta);
 }
