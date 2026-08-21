@@ -63,7 +63,8 @@ const LEGEND = [
 
 // `save` is read-only here: the title only ever DISPLAYS the banked best.
 // main.js's win-scene factory is still the one and only writer.
-export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay }) {
+export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+                            touchUI, tapNeed }) {
   // The title pool starts the moment this scene exists. Before the player's
   // first keypress the jukebox just records the intent and main.js's unlock
   // listener starts it — so the music comes up on the same press that walks the
@@ -113,7 +114,44 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
   // Read ONCE at scene construction, like every other save read here: nothing
   // can unlock wow while the title is on screen.
   const unlocked = !!save?.data?.wowUnlocked;
+  // Hoisted from render: the WOW line's y depends on it, and the tap plate's
+  // hit box has to sit exactly where the line is drawn.
+  const bestG = save?.data?.best?.gauntlet ?? 0;
   let t = 0;
+
+  // --- tap plates ------------------------------------------------------------
+  // The two title settings a phone has no key for. Geometry is shared by the
+  // hit test in update() and the plate draw in render(), so the thing you see
+  // IS the thing you hit; the hit boxes get the same 44 CSS px floor as the
+  // shell's own buttons (tapNeed comes down from main.js, the owner of
+  // scale/dpr). Labels swap their key names for tap words when the touch UI
+  // is live — a keyboard title keeps its clean text look, plates included.
+  const onTouch = () => !!touchUI?.();
+  const wowLabel = () => onTouch() ? 'WOW ZONE — much tap' : 'WOW ZONE — press W';
+  const wowRect = () => {
+    const w = measure(wowLabel(), 2) + 16;
+    return { x: VW / 2 - w / 2, y: (bestG > 0 ? 254 : 230) - 4, w, h: 22 };
+  };
+  const dispLabel = () => `DISPLAY: ${display.toUpperCase()}${onTouch() ? ' · tap' : ' · press D'}`;
+  const dispRect = () => {
+    const w = measure(dispLabel()) + 12;
+    return { x: VW / 2 - w / 2, y: 300 - 4, w, h: 15 };
+  };
+  const hitPlate = (v, r) => {
+    const need = tapNeed?.() ?? 0;
+    const px = Math.max(0, (need - r.w) / 2), py = Math.max(0, (need - r.h) / 2);
+    return v.x >= r.x - px && v.x < r.x + r.w + px && v.y >= r.y - py && v.y < r.y + r.h + py;
+  };
+  function drawPlate(ctx, r) {
+    ctx.fillStyle = 'rgba(11,11,18,0.55)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#3a3350';                  // same rule colour as the pause plate
+    ctx.fillRect(r.x, r.y, r.w, 1);
+    ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1);
+    ctx.fillRect(r.x, r.y, 1, r.h);
+    ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+  }
+  // ---------------------------------------------------------------------------
   let intro = -1;
 
   // Deterministic star field: a tiny LCG, not Math.random, so every boot draws
@@ -144,9 +182,28 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
         go('play', { mode: 'wow' });    // main.js rolls the seed — see wowSeed there
         return;
       }
-      // A tap ANYWHERE advances, same as fire: the title has no zones — a
-      // phone player's first touch has to work before they know the layout.
-      if (!input.pressed('fire') && !(input.taps?.().length > 0)) return;
+      // A tap ANYWHERE advances, same as fire — the title has no zones and a
+      // phone player's first touch has to work before they know the layout —
+      // EXCEPT on a plate: a plate consumes its tap, so poking a button can
+      // never also skip a card.
+      let tapAdvance = false;
+      const taps = input.taps?.() ?? [];
+      if (taps.length) {
+        const v = taps[0];
+        if (phase === 'title' && unlocked && hitPlate(v, wowRect())) {
+          sfx?.play('uiclick');
+          go('play', { mode: 'wow' });    // same path as the W key above
+          return;
+        } else if (phase === 'title' && hitPlate(v, dispRect())) {
+          sfx?.play('uiclick');
+          display = toggleDisplay?.() ?? display;
+          // Consume the whole frame, not just the tap: a centred plate sits in
+          // the fire half of the canvas, so the same touch also raised a fire
+          // edge — falling through would toggle AND burn an intro card.
+          return;
+        } else tapAdvance = true;
+      }
+      if (!input.pressed('fire') && !tapAdvance) return;
       sfx?.play('uiclick');            // the only sound the title makes
       intro++;
       if (intro >= INTRO.length) { go('play'); return; }
@@ -177,15 +234,15 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
 
         ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4);
         ctx.fillStyle = '#8fa';
-        drawText(ctx, 'MUST START — press X', VW / 2, 206, { ...C, scale: 2 });
+        drawText(ctx, onTouch() ? 'MUST START — very tap' : 'MUST START — press X',
+                 VW / 2, 206, { ...C, scale: 2 });
         ctx.globalAlpha = 1;
 
         // Banked best, under the start prompt. Hidden entirely on a fresh save:
         // 'BEST WOW: 0' reads as a taunt, not a record.
-        const best = save?.data?.best?.gauntlet ?? 0;
-        if (best > 0) {
+        if (bestG > 0) {
           ctx.fillStyle = '#eec548';
-          drawText(ctx, `BEST WOW: ${best}`, VW / 2, 230, { ...C, scale: 2 });
+          drawText(ctx, `BEST WOW: ${bestG}`, VW / 2, 230, { ...C, scale: 2 });
         }
 
         // WOW ZONE, under the best score. Gold and pulsing on its own beat
@@ -201,9 +258,10 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
           // pulse spends most of its cycle at. A 0.7 floor without the shadow
           // was still muddy at the trough. What the two golds are actually told
           // apart by is the shimmer and the fact that this one names a key.
+          if (onTouch()) drawPlate(ctx, wowRect());
           ctx.globalAlpha = 0.82 + 0.18 * Math.sin(t * 4 + 1.6);
           ctx.fillStyle = '#eec548';
-          drawText(ctx, 'WOW ZONE — press W', VW / 2, best > 0 ? 254 : 230,
+          drawText(ctx, wowLabel(), VW / 2, bestG > 0 ? 254 : 230,
                    { ...C, scale: 2 });
           ctx.globalAlpha = 1;
           // The zone's own banked best, on its own line and dimmer. 'BEST WOW'
@@ -212,15 +270,16 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
           const bz = save?.data?.best?.wow ?? 0;
           if (bz > 0) {
             ctx.fillStyle = '#8a7db0';
-            drawText(ctx, `BEST ZONE: ${bz}`, VW / 2, best > 0 ? 272 : 248, C);
+            drawText(ctx, `BEST ZONE: ${bz}`, VW / 2, bestG > 0 ? 272 : 248, C);
           }
         }
 
         // Settings line, above the control legend and set apart from it by
         // colour: the key name is lit like the other prompts, the current value
         // is not, so the eye lands on the thing you can press.
-        const label = `DISPLAY: ${display.toUpperCase()} · press D`;
+        const label = dispLabel();
         const lx = VW / 2 - measure(label) / 2;
+        if (onTouch()) drawPlate(ctx, dispRect());
         ctx.fillStyle = '#6f6a86';
         drawText(ctx, label, lx, 300);
         ctx.fillStyle = '#8fa';
@@ -235,7 +294,7 @@ export function makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDis
         drawTextShadow(ctx, INTRO[intro], VW / 2, 160, { ...C, scale: 3 }, '#e8e0d0', '#2a1c33');
         ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4);
         ctx.fillStyle = '#8fa';
-        drawText(ctx, 'press X', VW / 2, 294, C);
+        drawText(ctx, onTouch() ? 'very tap' : 'press X', VW / 2, 294, C);
         ctx.globalAlpha = 1;
       }
     },

@@ -142,3 +142,43 @@ test('title: a tap anywhere walks the intro and starts the run', async ({ page }
   expect((await st(page)).scene).toBe('play');
   expect(errors).toEqual([]);
 });
+
+test('title: the wow plate enters the zone once unlocked', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  // Seed the unlock the way the win scene banks it; v matches so the save
+  // loads, the rest falls back to defaults (fresh best → the line sits at 230).
+  await page.addInitScript(() => localStorage.setItem('suchblast_v1',
+    JSON.stringify({ v: 1, wowUnlocked: true })));
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  expect((await st(page)).wowUnlocked).toBe(true);
+  const t = await touchRig(page);
+  await t.tap(320, 237);                        // the WOW ZONE plate
+  await page.waitForFunction(() => window.__blast.state().scene === 'play' &&
+                                   window.__blast.state().mode === 'wow',
+                             null, { timeout: 10000 });
+  expect(errors).toEqual([]);
+});
+
+test('title: the display plate flips crisp/fill and never skips a card', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto('http://localhost:8123/');
+  await page.waitForFunction(() => window.__blast?.ready === true, null, { timeout: 15000 });
+  expect((await st(page)).display).toBe('crisp');
+  let t = await touchRig(page);
+  await t.tap(320, 303);                        // the DISPLAY plate
+  await page.waitForFunction(() => window.__blast.state().display === 'fill',
+                             null, { timeout: 5000 });
+  // Consumed, not an advance: still the title, no intro card burned.
+  expect((await st(page)).phase).toBe('title');
+  // The toggle re-fit the canvas, so the virtual→CSS map is stale — re-rig.
+  t = await touchRig(page);
+  await t.tap(320, 303);
+  await page.waitForFunction(() => window.__blast.state().display === 'crisp',
+                             null, { timeout: 5000 });
+  expect((await st(page)).phase).toBe('title');
+  await page.screenshot({ path: 'tests/artifacts/touch-title-plates.png' });
+  expect(errors).toEqual([]);
+});

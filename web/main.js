@@ -194,8 +194,10 @@ function drawPauseButton(ctx) {
 // which sits around 0.6–1.1 on phones, so the DRAWN plate can be ~13 CSS px.
 // The HIT box is therefore inflated to a 44 CSS px floor at press time —
 // computed per press because scale and dpr change with every fit().
+const tapNeed = () => 44 * (devicePixelRatio || 1) / scale;   // 44 CSS px, in virtual px
+
 function hitExpanded(v, r) {
-  const need = 44 * (devicePixelRatio || 1) / scale;    // 44 CSS px, in virtual px
+  const need = tapNeed();
   const px = Math.max(0, (need - r.w) / 2), py = Math.max(0, (need - r.h) / 2);
   return v.x >= r.x - px && v.x < r.x + r.w + px &&
          v.y >= r.y - py && v.y < r.y + r.h + py;
@@ -428,7 +430,11 @@ async function boot() {
     save.patch({ display: mode });
     return mode;
   };
-  scenes.title = () => makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay });
+  // touchUI/tapNeed ride along so the title can offer TAP plates (wow entry,
+  // display toggle) with the same 44 CSS px floor as the shell's own buttons,
+  // while main.js stays the single owner of scale/dpr and the coarse gate.
+  scenes.title = () => makeTitle({ input, go, save, jukebox, sfx, toggleMute, toggleDisplay,
+                                   touchUI, tapNeed });
   // The ONLY place a best score is written. The win scene reads two resolved
   // numbers and never touches save, so replaying the results screen can't
   // re-bank a score.
