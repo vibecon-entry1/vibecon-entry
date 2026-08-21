@@ -331,6 +331,10 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // tape count as presence too, and a key HELD across many frames keeps the
   // clock at zero instead of only resetting it on the press edge.
   function idleTick(dt) {
+    // Raw touch presence first: a finger inside the move deadzone (or a tap
+    // still settling) emits no action for the loop below to see, but a thumb
+    // on the glass answers "is anybody there" as surely as a held key.
+    if (input.touchActive?.()) { idleT = 0; return; }
     const act = input.actions();
     // touched(), not the held value: a key tapped and released between two
     // frames is still somebody being there.
@@ -967,6 +971,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       x: player.body.x, y: player.body.y, vx: player.body.vx, vy: player.body.vy,
       h: player.body.h,                       // pose/hitbox height: 44 stand, 32 duck, 24 slide
       pstate: player.state, charges: player.airCharges, deaths: player.deaths,
+      slideT: player.slideT,                  // e2e drives the chord off ESTABLISHED, not a stopwatch
       hp: player.hp, iframes: player.iframes,
       paused, hitstop, bullets: playerBolts.count(), shots: playerBolts.fired(),
       score: score.value(), enemies: enemies.count(), coins: coins.remaining(),

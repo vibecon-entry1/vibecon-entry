@@ -245,3 +245,18 @@ test('touch: virtual tape still overrides a live thumb', () => {
   input.setVirtual(null);
   assert.equal(input.actions().fire, true);
 });
+
+test('touch: a finger inside the deadzone is still presence (afk clock)', () => {
+  const { input, el } = touchRig();
+  assert.equal(input.touchActive(), false);
+  el.fire('pointerdown', { pointerId: 1, clientX: 100, clientY: 200 });
+  el.fire('pointermove', { pointerId: 1, clientX: 104, clientY: 200 });
+  const a = input.actions();
+  assert.deepEqual([a.left, a.right, a.down, a.fire],
+                   [false, false, false, false]);          // no intent yet...
+  assert.equal(input.touchActive(), true);                 // ...but somebody is there
+  el.fire('pointerup', { pointerId: 1, clientX: 104, clientY: 200 });
+  assert.equal(input.touchActive(), true);                 // the completed tap counts this frame
+  input.endFrame();
+  assert.equal(input.touchActive(), false);
+});

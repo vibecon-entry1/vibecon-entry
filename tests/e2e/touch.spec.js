@@ -34,23 +34,27 @@ test('slide: drag down-forward seats the slide; a second thumb bursts', async ({
   // The chord needs an ESTABLISHED slide (>= 0.12s seated) at the moment the
   // fire tick lands — a held fire thumb autofires and always catches the next
   // slide fresh (that's the hop, by design), so this taps like a human does:
-  // seat the slide, beat, tap. Bounded retries because the slide itself
-  // decays out from under a slow frame.
+  // seat the slide, wait for the STATE to say established (slideT is exposed
+  // for exactly this — no stopwatch racing the sim under load), tap. Bounded
+  // retries because the slide itself decays out from under a slow frame.
   let burst = false;
   for (let i = 0; i < 8 && !burst; i++) {
     await t.drag(1, [120, 160], [180, 220]);    // right + down = slide
-    const seated = await page.waitForFunction(() => window.__blast.state().h === 24,
-                                              null, { timeout: 5000 }).then(() => true);
-    await page.waitForTimeout(200);             // past the 0.12s establishment line
+    const seated = await page.waitForFunction(() => {
+      const s = window.__blast.state();
+      return s.pstate === 'slide' && s.slideT >= 0.15;
+    }, null, { timeout: 5000 }).then(() => true, () => false);
     await t.send('touchStart', [[180, 220, 1], [520, 200, 2]]);   // fire thumb down
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(120);
     await t.send('touchEnd', [[180, 220, 1]]);  // fire thumb up, move thumb stays
     // The burst is the one fire path that pushes vx past slide speed.
     burst = seated && await page.waitForFunction(() => {
       const s = window.__blast.state();
       return s.shots > 0 && Math.abs(s.vx) > window.__blast.P.SLIDE_SPEED + 40;
-    }, null, { timeout: 700 }).then(() => true, () => false);
+    }, null, { timeout: 800 }).then(() => true, () => false);
     await t.endAll();
+    if (!burst) await page.waitForFunction(() => window.__blast.state().pstate !== 'slide',
+                                           null, { timeout: 2000 }).catch(() => {});
   }
   expect(burst).toBe(true);
   expect(errors).toEqual([]);

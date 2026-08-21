@@ -161,6 +161,11 @@ export function createInput(target = window) {
     taps() { return uiTaps; },
     /** Allocation-free "has a finger ever landed" — polled every frame by the shell. */
     touchSeen() { return touchSeen; },
+    // A finger on the glass right now, or a tap completed this frame. This is
+    // PRESENCE, not intent: a thumb resting inside the move deadzone emits no
+    // action at all, but somebody is unmistakably there — the afk clock reads
+    // this so it cannot count a resting player as an absent one.
+    touchActive() { return track.size > 0 || uiTaps.length > 0; },
     beginFrame() { pollGamepad(); },
     endFrame() {
       Object.assign(prev, this.actions());
