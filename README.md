@@ -100,7 +100,7 @@ this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans
 | mechanical fixes, scaffolding, docs | Claude Haiku 4.5 |
 | soundtrack | Suno |
 
-all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 30+ real bugs before any human ever hit them. such process.
+all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 40+ real bugs before any human ever hit them. such process.
 
 ## very credits
 
