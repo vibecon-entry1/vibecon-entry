@@ -303,75 +303,146 @@ def build_strip(name, size, palimg):
     return quantize_to(im, palimg)
 
 def build_tiles(palimg, base_sheet):
-    """10-frame 16px tileset sampled from the picked sheet's own ground band.
-    frames: 0 surface, 1 fill, 2 edgeL (surface, pit on the LEFT), 3 edgeR
-    (surface, pit on the RIGHT), 4 underside, 5 surface_v1, 6 surface_v2,
-    7 fill_v1, 8 pitwallL (pit on the LEFT), 9 pitwallR.
-    Interior fills are contrast-calmed so the 16px repeat stops strobing."""
-    g = base_sheet.convert('RGB')
-    edge = g.crop((0, 268, VW, 272))                    # lit edge + ember row
-    def stone(x0, y0): return g.crop((x0, y0, x0 + 16, y0 + 16))
-    def calm(t, k):
-        """Blend a tile toward its own mean color by k (kills busy repeats)."""
-        r = g_ = b = 0
-        px = t.load()
-        for y in range(16):
-            for x in range(16):
-                c = px[x, y]; r += c[0]; g_ += c[1]; b += c[2]
-        m = (r // 256, g_ // 256, b // 256)
-        o = t.copy(); op = o.load()
-        for y in range(16):
-            for x in range(16):
-                c = px[x, y]
-                op[x, y] = tuple(round(c[i] + (m[i] - c[i]) * k) for i in range(3))
-        return o
+    """10-frame 16px tileset — TRUE MASONRY, rebuilt to the APPROVED direction
+    sheet (hybrid_b): chunky stone-block courses with dark mortar seams, ember
+    cracks glowing in the joints, and a strong lit crust edge. The first
+    production build silently simplified this to a calmed near-flat fill (the
+    mock passed review, the sheet's material didn't ship) — caught in the
+    user playtest round. Block/mortar/crack colors are the sheet's own floor
+    band colors (sampled + verified against the native re-render), and every
+    tile is drawn on one fixed joint grid so any frame meshes with any
+    neighbour: courses are 8px, vertical joints sit at the same x per course
+    across all frames, so the bond runs unbroken across tile boundaries.
+    frames: 0 surface, 1 fill, 2 edgeL (pit on the LEFT), 3 edgeR, 4
+    underside, 5/6 surface variants, 7 fill variant, 8 pitwallL, 9 pitwallR."""
+    # Sheet floor colors (from the native re-render's floor band, see the fix
+    # round's sampling): block bodies, lit block tops, mortar darks, embers.
+    BLOCKS = [(118, 6, 19), (100, 4, 22), (109, 10, 21), (125, 49, 24)]
+    MORTAR = (46, 9, 19)
+    EMBER = [(225, 97, 26), (188, 80, 24), (234, 159, 58)]
+    CRUST_HI = (251, 214, 128)
+    lit = lambda c, k: tuple(min(255, int(v * k + 10)) for v in c)
+    drk = lambda c, k: tuple(max(0, int(v * k)) for v in c)
+
+    # Lit block tops, sampled straight off the sheet's stones rather than
+    # derived: the sheet lights its crimson blocks with an ORANGE-brown edge,
+    # and multiplying the base red never lands there.
+    TOPLIT = [(156, 57, 23), (134, 42, 20), (122, 39, 23)]
+
+    def block(d, rng, x0, x1, y0, y1, dim):
+        """One chunky stone block: mottled crimson body, orange-lit top,
+        shadowed bottom, 2px-notched (rounded) corners like the sheet's."""
+        base = drk(BLOCKS[rng.randrange(len(BLOCKS))], dim)
+        top = drk(TOPLIT[rng.randrange(len(TOPLIT))], dim)
+        d.rectangle([x0, y0, x1, y1], fill=base)
+        d.rectangle([x0, y0, x1, y0], fill=top)
+        d.rectangle([x0 + 2, y0 + 1, x1 - 2, y0 + 1], fill=lit(base, 1.16))
+        d.rectangle([x0, y1, x1, y1], fill=drk(base, 0.66))
+        for cx, cy, dx2, dy2 in ((x0, y0, 1, 0), (x1, y0, -1, 0),
+                                 (x0, y1, 1, 0), (x1, y1, -1, 0)):
+            d.point((cx, cy), fill=drk(base, 0.6))             # 2px round corner
+            d.point((cx + dx2, cy + dy2), fill=drk(base, 0.82))
+        for _ in range(5):                                     # body mottle
+            nx = rng.randint(x0 + 1, max(x0 + 1, x1 - 2))
+            ny = rng.randint(y0 + 2, max(y0 + 2, y1 - 1))
+            d.rectangle([nx, ny, nx + 1, ny], fill=drk(base, 0.85))
+        if rng.random() < 0.6:
+            d.point((rng.randint(x0 + 1, x1 - 1), rng.randint(y0 + 2, y1 - 1)),
+                    fill=lit(base, 1.2))
+
+    def crack(d, rng, x, y0, y1):
+        """Ember crack glowing in a joint: bright gold core, ember ends,
+        a jink or two on the way down — the sheet's signature detail."""
+        y = y0
+        while y <= y1:
+            e = EMBER[2] if y0 < y < y1 and rng.random() < 0.45 else \
+                EMBER[rng.randrange(2)]
+            d.point((x % 16, y), fill=e)
+            if rng.random() < 0.35:
+                x += rng.choice([-1, 1])
+            y += 1
+
+    def masonry(seed, dim=1.0, cracks=0, top=0, bot=15, split=False):
+        """One 16px course: a single chunky stone per tile (mortar seam on
+        the right column + bottom row, so neighbours share 1px joints), or a
+        split pair on the variant frames — block widths then read 8..16px
+        against the hash-scattered variants, like the sheet's mixed sizes."""
+        t = Image.new('RGB', (16, 16))
+        d = ImageDraw.Draw(t)
+        rng = random.Random(seed)
+        d.rectangle([0, top, 15, bot], fill=MORTAR)
+        if split:
+            mid = (top + bot) // 2
+            block(d, rng, 0, 14, top, mid - 1, dim)
+            block(d, rng, 0, 14, mid + 1, bot - 1, dim)
+        else:
+            block(d, rng, 0, 14, top, bot - 1, dim)
+        joint = 15
+        for _ in range(cracks):
+            cx = joint if rng.random() < 0.7 else 15
+            cy = rng.randint(top, max(top, bot - 6))
+            crack(d, rng, cx, cy, min(bot - 1, cy + rng.randint(3, 6)))
+        return t
+
+    def surface(seed, cracks=1, embers=2):
+        """Surface tile: the sheet's strong lit crust — a bumpy bright-gold
+        lip, an ember row broken by dark cracks — over a shortened course."""
+        t = masonry(seed, 1.05, cracks, top=4, bot=15, split=seed == 17)
+        d = ImageDraw.Draw(t)
+        rng = random.Random(seed ^ 0x5eed)
+        d.rectangle([0, 0, 15, 0], fill=CRUST_HI)
+        d.rectangle([0, 1, 15, 1], fill=(240, 176, 74))
+        d.rectangle([0, 2, 15, 2], fill=(224, 129, 38))
+        d.rectangle([0, 3, 15, 3], fill=(148, 73, 35))
+        for _ in range(2):                                     # bumpy lip
+            bx = rng.randrange(16)
+            d.point((bx, 1), fill=CRUST_HI)
+        for _ in range(3):                                     # crust cracks
+            cx = rng.randrange(16)
+            d.point((cx, 2), fill=(61, 10, 18))
+            if rng.random() < 0.6:
+                d.point((cx, 3), fill=(33, 5, 16))
+        for _ in range(embers):                                # crust embers
+            d.point((rng.randrange(16), 3), fill=EMBER[rng.randrange(3)])
+        return t
+
     im = Image.new('RGBA', (160, 16), (0, 0, 0, 0))
     def put(i, tile): im.paste(tile.convert('RGBA'), (i * 16, 0))
-    def surface(x0, sx, sy):
-        t = calm(stone(sx, sy), 0.35)
-        t.paste(edge.crop((x0, 0, x0 + 16, 4)), (0, 0))
-        px = t.load()                                    # punch the crust light
-        for y in range(2):
-            for x in range(16):
-                c = px[x, y]
-                px[x, y] = tuple(min(255, int(v * 1.3 + 14)) for v in c)
-        return t
-    put(0, surface(48, 96, 292))
-    put(5, surface(200, 260, 300))
-    put(6, surface(420, 470, 296))
-    def flat_fill(sx, sy, ember=False):
-        t = calm(stone(sx, sy), 1.0)                     # flat mean color
-        base = t.load()[0, 0]
-        d = ImageDraw.Draw(t)
-        dark = tuple(max(0, int(v * 0.88)) for v in base)
-        d.line([2, 5, 7, 5], fill=dark)                  # whisper sediment
-        d.line([9, 12, 14, 12], fill=dark)
-        if ember:
-            d.point([(12, 3)], fill='#8a3a1a')
-        return t
-    put(1, flat_fill(140, 300))
-    put(7, flat_fill(380, 308, ember=True))
+
+    put(0, surface(3, cracks=2, embers=2))
+    put(5, surface(17, cracks=2, embers=3))                    # worn: more ember
+    v6 = surface(29, cracks=1, embers=2)                       # worn: cracked block
+    d6 = ImageDraw.Draw(v6)
+    d6.line([4, 6, 6, 9], fill=MORTAR)
+    d6.point((5, 7), fill=EMBER[0])
+    put(6, v6)
+    put(1, masonry(7, 0.92))                                   # quiet fill
+    put(7, masonry(23, 0.92, cracks=2, split=True))            # split + ember fill
+
     def lit_col(t, x):
         d = ImageDraw.Draw(t)
-        d.rectangle([x, 0, x, 15], fill='#e8a54e')
+        d.rectangle([x, 0, x, 15], fill=(232, 165, 78))        # lit pit-facing edge
         d.rectangle([x + (1 if x == 0 else -1), 2,
-                     x + (1 if x == 0 else -1), 15], fill='#8a4030')
+                     x + (1 if x == 0 else -1), 15], fill=(138, 64, 48))
         return t
-    put(2, lit_col(surface(48, 96, 292), 0))             # pit to the LEFT
-    put(3, lit_col(surface(200, 260, 300), 15))          # pit to the RIGHT
-    un = calm(stone(210, 306), 0.45).copy(); dU = ImageDraw.Draw(un)
-    dU.rectangle([0, 15, 15, 15], fill='#1d0b10')        # underside lip
-    dU.rectangle([0, 14, 15, 14], fill='#3a1216')
+    put(2, lit_col(surface(3, cracks=0, embers=1), 0))         # pit to the LEFT
+    put(3, lit_col(surface(17, cracks=0, embers=1), 15))       # pit to the RIGHT
+
+    un = masonry(41, 0.8)                                      # underside lip
+    dU = ImageDraw.Draw(un)
+    dU.rectangle([0, 15, 15, 15], fill=(29, 11, 16))
+    dU.rectangle([0, 14, 15, 14], fill=(58, 18, 22))
     put(4, un)
-    for i, sx, lx in ((8, 130, 0), (9, 330, 15)):        # pit walls: darker,
-        t = calm(stone(sx, 320), 0.5).point(lambda v: int(v * 0.62))
+
+    for i, seed, lx in ((8, 51, 0), (9, 63, 15)):              # pit walls: darker
+        t = masonry(seed, 0.62)
         dP = ImageDraw.Draw(t)
-        dP.rectangle([lx, 0, lx, 15], fill='#b06030')    # lit pit-facing edge
+        dP.rectangle([lx, 0, lx, 15], fill=(176, 96, 48))      # lit pit-facing edge
         rng = random.Random(11 + i)
         for _ in range(2):
             x, y = rng.randrange(3, 13), rng.randrange(2, 14)
             dP.line([x, y, x + rng.randrange(1, 3), y + rng.randrange(1, 4)],
-                    fill='#c2540f')                       # ember crack
+                    fill=(194, 84, 15))                        # ember crack
         put(i, t)
     return quantize_to(im, palimg)
 

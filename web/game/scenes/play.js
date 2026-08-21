@@ -867,28 +867,35 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         // decomposes per cell and BAKES — as does the pit void — which is why
         // neither costs a per-frame pass any more (the perf probe priced the
         // live full-width fills at ~2ms a frame at 4x throttle).
-        const bandAlpha = ty => ty < floorTy + 3 ? 0 : ty < floorTy + 5 ? 0.15
-                              : ty < floorTy + 8 ? 0.3 : 0.45;
+        // Retuned for the masonry tileset (fix round): the direction sheet
+        // fades its stonework to near-black by the fourth course, and the
+        // old gentle .15/.30 ramp left eight rows of full-brightness blocks
+        // — busier than the approved look and worse for sprite pop.
+        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 3 ? 0.18
+                              : ty < floorTy + 5 ? 0.38 : ty < floorTy + 8 ? 0.55 : 0.7;
         const g = tileScratch.getContext('2d');
-        // Strata decals over the fill frames. Measured against the approved
-        // mocks, the shipped fill cells alone read too sparse: the mock floor
-        // carries ~1.5x the sediment dashes plus stone flecks and the odd
-        // bright ember pip per few cells. This stamps that detail back in —
-        // deterministic per coordinate, exact palette entries only, and baked
-        // into the cache so it costs nothing per frame.
+        // Per-cell decals over the fill frames, retuned for the masonry
+        // tileset (fix round): the fill frames repeat the same stone every
+        // 16px, so this stamps coordinate-hashed weathering ON the block
+        // body (mottle inside the 1..13 interior, clear of the mortar seams)
+        // plus the odd ember pip glowing IN a seam. Deterministic per
+        // coordinate, exact palette entries only, baked into the cache so it
+        // costs nothing per frame.
         const decal = (tx, ty, cx, cy) => {
           let h = hash2(tx + 0x9e37, ty);
           const px = (col, x, y, w2) => { g.fillStyle = col; g.fillRect(cx + x, cy + y, w2, 1); };
-          for (let i = 0, nd = 2 + (h & 1); i < nd; i++) {   // sediment dashes
+          for (let i = 0, nd = 1 + (h & 1); i < nd; i++) {   // block mottle
             h = hash2(h, i);
-            px('#16040f', h % 12, 2 + (h >>> 4) % 13, 2 + (h >>> 8) % 3);
+            px('#4f1212', 2 + h % 11, 3 + (h >>> 4) % 10, 1 + (h >>> 8) % 2);
           }
-          h = hash2(h, 77);                                   // stone flecks
-          px('#4f1212', h % 14, (h >>> 4) % 15, 1 + (h >>> 8) % 2);
-          if ((h >>> 12) % 3 === 0) px('#70140d', (h >>> 16) % 15, (h >>> 20) % 15, 1);
-          h = hash2(h, 9);                                    // ember pip
-          if (h % 4 === 0)
-            px((h >>> 8) & 1 ? '#e46016' : '#cb5316', 1 + h % 14, 2 + (h >>> 4) % 12, 1);
+          h = hash2(h, 77);                                   // a lighter scuff
+          if ((h >>> 12) % 3 === 0) px('#70140d', 2 + (h >>> 16) % 11, 3 + (h >>> 20) % 10, 2);
+          h = hash2(h, 9);                                    // ember pip in a seam
+          if (h % 4 === 0) {
+            const inRight = (h >>> 4) & 1;                    // right column vs bottom row
+            px((h >>> 8) & 1 ? '#e46016' : '#cb5316',
+               inRight ? 15 : 2 + h % 12, inRight ? 2 + h % 12 : 15, 1);
+          }
         };
         g.clearRect(0, 0, tileScratch.width, tileScratch.height);
         // Same-epoch window shift: copy the overlap, draw only exposed cells.
