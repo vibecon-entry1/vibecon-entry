@@ -1105,12 +1105,23 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // shots). DOWN-shots are skipped: their recorded origin sits 6px above the
       // feet, right on top of the boot flame above, and the two stacked flames
       // read as one fat smear rather than a thruster. The boots own that beat now.
+      //
+      // ART-ORIGIN CORRECTION (fix-round, user screenshot): the blast_muzzle
+      // cell is authored with its flash CORE ~15px LEFT of the cell centre
+      // (the streak side owns the rest of the cell), so drawCentered at the
+      // recorded barrel tip parked the visible core back on the gun sprite.
+      // The correction is measured from the shipped atlas frame (spark
+      // frame's art centre vs cell centre), never hardcoded, and applied
+      // along the shot direction so both facings land the core on the tip.
       if (player.muzzle && !player.muzzle.dy) {
         const m = player.muzzle;
+        const muz = atlas.anims.blast_muzzle, mf0 = atlas.frames[muz.frames[0]];
+        const mx = m.x + m.dx * (muz.cw / 2 - (mf0.ox + mf0.w / 2));
+        const my = m.y + muz.ch / 2 - (mf0.oy + mf0.h / 2);
         ctx.save();
-        if (m.dx < 0) { ctx.translate(m.x, m.y); ctx.scale(-1, 1); ctx.translate(-m.x, -m.y); }
+        if (m.dx < 0) { ctx.translate(mx, my); ctx.scale(-1, 1); ctx.translate(-mx, -my); }
         atlas.drawCentered(ctx, 'blast_muzzle',
-          animFrame(atlas.anims.blast_muzzle, m.t), m.x, m.y, 0);
+          animFrame(atlas.anims.blast_muzzle, m.t), mx, my, 0);
         ctx.restore();
       }
 

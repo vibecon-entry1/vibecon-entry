@@ -322,8 +322,10 @@ test('muzzle origin recorded; cleared by pit respawn', () => {
   const PIT = parseChunk(['.......', '.......', '.......', '..P....', '###....']);
   const pl = makePlayer(PIT.spawn); drive(pl, PIT, 150, () => ({}));
   drive(pl, PIT, 1, () => ({ fire: true }));
+  // (+26, -31): the grounded barrel tip, measured from the shipped atlas
+  // stand pose (fix-round muzzle alignment).
   assert.equal(pl.muzzle.x, pl.body.x + pl.facing * 26);
-  assert.equal(pl.muzzle.y, pl.body.y - 30);
+  assert.equal(pl.muzzle.y, pl.body.y - 31);
   drive(pl, PIT, 400, i => ({ right: true, fire: i % 8 === 0 }));
   assert.equal(pl.state, 'spawn');
   assert.equal(pl.muzzle, null);
