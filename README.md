@@ -65,6 +65,8 @@ S           SHARE your run (end screens) — copies a link + a score card
 Esc         such pause.    R  very restart    M  mute    D  display mode
 ```
 
+**on phone** 📱 — left thumb drags = move (drag ↓ = slide). right thumb taps = blast (drag ↓ while holding = hop/boost). every button is a fat tappable plate. landscape only — very rotate. much thumb.
+
 3 hearts. pits cost a heart. 0 hearts = u ded (aliens come back, score gets docked — very fair). beatable in under 4 minutes (VibeCon requires entries playable in 1–5 — such compliance). your first clear will not be under 4 minutes.
 
 ## very tech
@@ -79,6 +81,18 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
   game's own parallax Mars. A link to a run goes through a 120-line stateless
   Cloudflare worker (`share-worker/`, deployed with two curls and no wrangler)
   that rewrites the OpenGraph tags to that run's score
+
+## very smol
+
+| thing | size |
+|---|---|
+| the entire game code (unminified, every comment intact) | ~320 KB |
+| the sprite atlas (every frame of everything) | 84 KB |
+| share cards + banner | ~400 KB |
+| soundtrack (14 tracks) | ~33 MB — **streams on demand, loads nothing up front** |
+| what your browser downloads before you're playing | well under 1 MB |
+
+no bundler. no minifier. no engine. the whole playable game is smaller than one modern webpage's cookie banner. such diet.
 
 ## run it yourself
 
@@ -98,14 +112,14 @@ this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans
 | player verb state machine, boss, level design, scene wiring, rendering passes | Claude Opus 5 |
 | systems (enemies, coins, score, audio engine), test suites, most implementation | Claude Sonnet 5 |
 | mechanical fixes, scaffolding, docs | Claude Haiku 4.5 |
-| soundtrack | Suno (commercial license) |
+| soundtrack | Suno |
 
-all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 30+ real bugs before any human ever hit them. such process.
+all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 40+ real bugs before any human ever hit them. such process.
 
 ## very credits
 
 - **Dogelon Mars** — the official character sprites, ship, enemies and effects are from the [VibeCon asset pack](https://dogelonmars.com/blog/announcing-vibecon-2026-build-a-game-on-mars/), and the logo + stickers are from the official [dogelon-assets](https://github.com/DogelonMars/dogelon-assets) repo. wow. thank you.
-- everything else (tileset, parallax Mars, coins, hearts, UI, fonts) — generated pixel art, palette-locked to the official sprites
+- **every other asset is self-created for this game** — tileset, parallax Mars, skies, props, flora, coins, hearts, UI, fonts, share cards: all generated pixel art made for SUCH BLAST. only the official Dogelon sprites (above) and the soundtrack came from outside. much homemade.
 - made for the Dogelon Mars community. much love. very mars. 🚀
 
 ## license
