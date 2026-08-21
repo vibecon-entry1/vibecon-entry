@@ -117,3 +117,52 @@ busy edge — not chased further.
 
 Awaiting the user's final pick across all SIX directions (dir1-dir4 +
 hybrid_a/b); dir2 production remains ON HOLD per coordinator.
+
+## Round 6 — PRODUCTION (hybrid_b_late_afternoon picked by the user)
+
+Full production set built from the prod_* raws by tools/genart_v2_prod.py;
+every round scored by an independent vision review of the six full-scene
+mocks in production/mocks/ (READ / HARM / EXEC as before, plus HERO_SEP =
+hero-vs-backdrop separation). Four review rounds; per-mock scores
+(READ/HARM/EXEC/HERO_SEP):
+
+| mock | round 1 | round 2 | round 3 | round 4 (final) |
+|---|---|---|---|---|
+| gauntlet_early | 5/6/4/6 | 6/6/5/6 | 6/5/5/6 | 6/6/5/7 |
+| gauntlet_late | 6/6/5/6 | 6/6/5/6 | 6/6/5/6 | 6/6/5/6 |
+| boss_arena | 6/6/4/6 | 6/5/4/6 | 6/5/4/6 | 6/6/5/6 |
+| wow_zone | 5/6/5/6 | 6/6/5/6 | 6/6/5/6 | 6/6/5/7 |
+| title | 5/6/6/6 | 6/6/7/6 | 5/6/6/7 | 5/6/6/6 |
+| win_ship | 5/5/4/4 | 6/5/4/6 | 5/6/4/5 | 5/6/4/6 |
+
+What each round fixed:
+
+- R1→R2: skies rebuilt as clean banded gradients (row-mean + ordered dither
+  between palette neighbors) killing the blotchy upscaled dither; pit went
+  from flat gap to void gradient + lit-edge surface tiles + ember-cracked
+  wall frames; sun cameo enlarged with slat cuts moved above center so they
+  survive the mesa overlap; wow sky recropped so the furnace glow clears the
+  horizon; win hero repositioned off the busy rock cluster (HERO_SEP 4→6).
+- R2→R3: per-sky 8-color ramps folded into the master palette (smoother
+  band steps); interior fills flattened harder; mesa haze push 0.18→0.28.
+- R3→R4: interior fill made near-flat (a 16px repeat cannot hide texture —
+  the repetition complaint appeared in every prior round and died here);
+  rock strip haze-pushed + darkened another step; wow embers raised into
+  the visible sky band.
+- Post-R4 micro-fix: walkable crust edge brightened (recurring READ note in
+  all four rounds).
+
+Verdict: scores plateaued at READ 5-6 / HARM 6 / EXEC 4-6 / HERO_SEP 6-7
+with round-4 feedback oscillating against round-3 fixes (e.g. "add texture
+variation" vs round 3's "reduce texture noise", "add gradient to the flat
+sky" against the deliberate dread-flat boss sky) — the reviewer is now
+churning on taste, not finding defects. HERO_SEP >= 6 in every mock (the
+hard gate). Much premium; top shelf wow. Remaining sub-7 EXEC notes are
+runtime-wiring items (tile variant probability, pit void fill, coin-band
+tint), logged in INTEGRATION_NOTES.md open questions.
+
+Tileability: skies uniform per row (tile by construction, seam 0.0); mesas
+3.99 / rocks 0.0 on the strip-averaged seam metric; all three verified
+visually at worst-case 320px offset wrap.
+
+Locked palette: 43 master colors, 43 used across all assets (pixel-exact).
