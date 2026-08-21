@@ -11,7 +11,14 @@ import { makeSharePrompt, shareTapBand } from '../shareui.js';
 
 const VW = 640, VH = 360;
 
-export function makeWowEnd({ breakdown, best, input, go, sfx, tapNeed }) {
+// Same strip helper as win.js — duplicated rather than promoted for the same
+// reason its softPlate is: four lines, no other shared geometry.
+function strip(ctx, atlas, name, dy) {
+  const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
+  ctx.drawImage(atlas.img, f.x, f.y, f.w, f.h, f.ox, dy + f.oy, f.w, f.h);
+}
+
+export function makeWowEnd({ atlas, breakdown, best, input, go, sfx, tapNeed }) {
   const { score, kills, coins, timeS, chunks, seed } = breakdown;
   // Ties count as records, same call win.js makes and for the same reason:
   // matching your own best still earns the line, and the alternative is a
@@ -56,13 +63,23 @@ export function makeWowEnd({ breakdown, best, input, go, sfx, tapNeed }) {
     },
 
     render(ctx) {
-      ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, VW, VH);
-      // Red-shifted wash instead of win.js's purple: same shape of screen,
-      // unmistakably the other outcome at a glance.
+      // The zone's own dusk, dimmed the same way win.js dims the gauntlet's:
+      // this screen and that one are the same game, different outcome.
+      ctx.fillStyle = '#16040f'; ctx.fillRect(0, 0, VW, VH);
+      ctx.globalAlpha = 0.72;
+      strip(ctx, atlas, 'sky_wow', 0);              // the zone's own sky
+      strip(ctx, atlas, 'par_mesas', VH - 120);
+      strip(ctx, atlas, 'par_rocks', VH - 80);
+      ctx.globalAlpha = 1;
+      // Red-shifted wash (palette #70140d) instead of win.js's plain dusk:
+      // same shape of screen, unmistakably the other outcome at a glance.
       const g = ctx.createLinearGradient(0, 0, 0, VH);
-      g.addColorStop(0, 'rgba(90,26,32,0.55)'); g.addColorStop(0.6, 'rgba(11,11,18,0)');
-      g.addColorStop(1, 'rgba(11,11,18,0)');
+      g.addColorStop(0, 'rgba(112,20,13,0.42)'); g.addColorStop(0.55, 'rgba(22,4,15,0.42)');
+      g.addColorStop(1, 'rgba(22,4,15,0.66)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+      // Same tally plate as win.js, pulled up to also carry the subtitle line.
+      ctx.fillStyle = 'rgba(11,4,8,0.62)';
+      ctx.fillRect(0, 60, VW, 284);
 
       drawTextShadow(ctx, 'WOW. U DED.', VW / 2, 36,
                      { align: 'center', scale: 3 }, '#e2413f', '#2a1c33');

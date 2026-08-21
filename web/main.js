@@ -469,7 +469,7 @@ async function boot() {
     if (!save.data.wowUnlocked) save.patch({ wowUnlocked: true });
     // Fanfare lives here rather than in win.js for the same reason the best
     // score does: the win scene stays a pure layout of numbers it was handed.
-    return makeWin({ breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx,
+    return makeWin({ atlas, breakdown, best: Math.max(prevBest, breakdown.score), input, go, sfx,
                      tapNeed });
   };
 
@@ -480,7 +480,7 @@ async function boot() {
   scenes.wowend = (breakdown) => {
     const prevBest = save.data.best.wow;
     if (breakdown.score > prevBest) save.patch({ best: { wow: breakdown.score } });
-    return makeWowEnd({ breakdown, best: Math.max(prevBest, breakdown.score),
+    return makeWowEnd({ atlas, breakdown, best: Math.max(prevBest, breakdown.score),
                         input, go, sfx, tapNeed });
   };
 

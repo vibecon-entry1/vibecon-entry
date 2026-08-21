@@ -115,10 +115,13 @@ export function makeAudition({ input, save, sfx, go, touchUI, tapNeed }) {
     },
 
     render(ctx) {
-      ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, VW, VH);
+      // Page-black in the production dusk family (palette #16040f), with a
+      // warm ember wash up top where the old purple one sat — the utility
+      // screen keeps its quiet dark ground, on the new planet's palette.
+      ctx.fillStyle = '#16040f'; ctx.fillRect(0, 0, VW, VH);
       const g = ctx.createLinearGradient(0, 0, 0, VH);
-      g.addColorStop(0, 'rgba(60,36,72,0.55)'); g.addColorStop(0.6, 'rgba(11,11,18,0)');
-      g.addColorStop(1, 'rgba(11,11,18,0)');
+      g.addColorStop(0, 'rgba(125,49,24,0.35)'); g.addColorStop(0.6, 'rgba(22,4,15,0)');
+      g.addColorStop(1, 'rgba(22,4,15,0)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
 
       drawTextShadow(ctx, 'SUCH SOUND CHECK', VW / 2, 12,

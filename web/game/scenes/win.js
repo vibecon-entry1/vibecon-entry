@@ -31,6 +31,16 @@ function softPlate(ctx, cx, cy, r) {
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 }
 
+// Backdrop strip: one untrimmed full-width atlas cell (sky/mesas/rocks),
+// pinned by its top edge. Same direct source math as play.js's band() — the
+// production strips are authored 640 wide, so at rest there is no seam to
+// stitch. Duplicated in wowend.js under the softPlate rule above: four lines,
+// and the two scenes share no other geometry.
+function strip(ctx, atlas, name, dy) {
+  const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
+  ctx.drawImage(atlas.img, f.x, f.y, f.w, f.h, f.ox, dy + f.oy, f.w, f.h);
+}
+
 // Sparkle emitter: eight motes on lazy elliptical orbits around the sticker.
 // Phases/radii/rates are a fixed table rather than Math.random — the reward
 // screen should look the same in every screenshot, and "random" here would buy
@@ -63,7 +73,7 @@ function makeConfetti() {
 }
 const CONFETTI_G = 520;                       // px/s^2
 
-export function makeWin({ breakdown, best, input, go, sfx, tapNeed }) {
+export function makeWin({ atlas, breakdown, best, input, go, sfx, tapNeed }) {
   const { kills, coins, deaths, timeS, timeBonus, score } = breakdown;
   // main.js resolves `best` to max(previous, this run) before building us, so a
   // record is "we ARE the best". An exact tie with a previous best reads as a
@@ -155,11 +165,23 @@ export function makeWin({ breakdown, best, input, go, sfx, tapNeed }) {
     },
 
     render(ctx) {
-      ctx.fillStyle = '#0b0b12'; ctx.fillRect(0, 0, VW, VH);
+      // Late-afternoon Mars, same planet the run just crossed: the production
+      // sky and skyline drawn dimmed under a dusk wash (palette #16040f
+      // family), with the tally on a dark plate. The backdrop is scenery, not
+      // content — it stays quiet so the numbers stay the loudest thing here.
+      ctx.fillStyle = '#16040f'; ctx.fillRect(0, 0, VW, VH);
+      ctx.globalAlpha = 0.72;
+      strip(ctx, atlas, 'par_stars', 0);            // the gauntlet's sunset sky
+      strip(ctx, atlas, 'par_mesas', VH - 120);
+      strip(ctx, atlas, 'par_rocks', VH - 80);
+      ctx.globalAlpha = 1;
       const g = ctx.createLinearGradient(0, 0, 0, VH);
-      g.addColorStop(0, 'rgba(60,36,72,0.55)'); g.addColorStop(0.6, 'rgba(11,11,18,0)');
-      g.addColorStop(1, 'rgba(11,11,18,0)');
+      g.addColorStop(0, 'rgba(22,4,15,0.30)'); g.addColorStop(1, 'rgba(22,4,15,0.66)');
       ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);   // full height: a short rect leaves a seam
+      // The plate the tally sits on: full-width, same page-black family as the
+      // title's legend band, spanning the ledger through the hint line.
+      ctx.fillStyle = 'rgba(11,4,8,0.62)';
+      ctx.fillRect(0, 96, VW, 248);
 
       drawTextShadow(ctx, 'MUCH MARS. VERY HOME.', VW / 2, 36,
                      { align: 'center', scale: 3 }, '#eec548', '#2a1c33');
