@@ -490,7 +490,11 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   //           the new opaque ridge would have swallowed it whole).
   const PROPS = [
     { name: 'prop_spire', x: 1504, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 46 },
-    { name: 'prop1',      x: 2900, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: 7 },
+    // prop1's anchor nudged a few strip px left onto a measured FLAT stretch
+    // of the new skyline (opaque top edge at strip row 9 across its whole
+    // footprint, measured programmatically) with its feet two px into the
+    // crest — the old y left it hovering over a gap in the repainted ridge.
+    { name: 'prop1',      x: 2858, fx: 0.30, fy: 0.12, bias: 4,  bh: 120, y: -17 },
     { name: 'prop_arch',  x: 4650, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 22, front: true },
     { name: 'prop_wreck', x: 6200, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 38, front: true },
     { name: 'prop2',      x: 9700, fx: 0.60, fy: 0.20, bias: 10, bh: 80,  y: 56, front: true },
@@ -863,9 +867,29 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         // decomposes per cell and BAKES — as does the pit void — which is why
         // neither costs a per-frame pass any more (the perf probe priced the
         // live full-width fills at ~2ms a frame at 4x throttle).
-        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 5 ? 0.15
+        const bandAlpha = ty => ty < floorTy + 3 ? 0 : ty < floorTy + 5 ? 0.15
                               : ty < floorTy + 8 ? 0.3 : 0.45;
         const g = tileScratch.getContext('2d');
+        // Strata decals over the fill frames. Measured against the approved
+        // mocks, the shipped fill cells alone read too sparse: the mock floor
+        // carries ~1.5x the sediment dashes plus stone flecks and the odd
+        // bright ember pip per few cells. This stamps that detail back in —
+        // deterministic per coordinate, exact palette entries only, and baked
+        // into the cache so it costs nothing per frame.
+        const decal = (tx, ty, cx, cy) => {
+          let h = hash2(tx + 0x9e37, ty);
+          const px = (col, x, y, w2) => { g.fillStyle = col; g.fillRect(cx + x, cy + y, w2, 1); };
+          for (let i = 0, nd = 2 + (h & 1); i < nd; i++) {   // sediment dashes
+            h = hash2(h, i);
+            px('#16040f', h % 12, 2 + (h >>> 4) % 13, 2 + (h >>> 8) % 3);
+          }
+          h = hash2(h, 77);                                   // stone flecks
+          px('#4f1212', h % 14, (h >>> 4) % 15, 1 + (h >>> 8) % 2);
+          if ((h >>> 12) % 3 === 0) px('#70140d', (h >>> 16) % 15, (h >>> 20) % 15, 1);
+          h = hash2(h, 9);                                    // ember pip
+          if (h % 4 === 0)
+            px((h >>> 8) & 1 ? '#e46016' : '#cb5316', 1 + h % 14, 2 + (h >>> 4) % 12, 1);
+        };
         g.clearRect(0, 0, tileScratch.width, tileScratch.height);
         // Same-epoch window shift: copy the overlap, draw only exposed cells.
         // An epoch change (gate carve) invalidates the pixels, so it redraws
@@ -885,6 +909,7 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
               const f = pickTileFrame(level, tx, ty);
               atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
                                  cx + 8, cy + 8);
+              if (f === 1 || f === 7) decal(tx, ty, cx, cy);
             }
             const ba = bandAlpha(ty);
             if (ba) { g.fillStyle = `rgba(0,0,0,${ba})`; g.fillRect(cx, cy, TILE, TILE); }
@@ -1093,9 +1118,16 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // top-right corner (see main.js), and at 630 the score ran straight under
       // the speaker glyph. Caught in the branding pass's visual check.
       // y is now the TOP of the 14px-tall text box (scale 2), not a baseline.
-      // Shadowed since the sky overhaul: gold on the pale-gold sky band was
-      // invisible; the deep-crimson drop restores it on every area's sky.
-      drawTextShadow(ctx, `wow ${score.value()}`, 608, 8, { scale: 2, align: 'right' },
+      // Plated and shadowed since the sky overhaul: gold on the pale-gold sky
+      // band was invisible bare, and thin on a shadow alone. Same page-black
+      // plate family as the shell buttons; it stretches to cover the wow
+      // progress line when there is one.
+      const scoreTxt = `wow ${score.value()}`;
+      const chunkTxt = wow ? `CHUNK ${chunkIndex}/${WOW_LEN}` : '';
+      const spw = Math.max(measure(scoreTxt, 2), wow ? measure(chunkTxt, 2) : 0) + 10;
+      ctx.fillStyle = 'rgba(11,11,18,0.45)';
+      ctx.fillRect(613 - spw, 4, spw, wow ? 38 : 22);
+      drawTextShadow(ctx, scoreTxt, 608, 8, { scale: 2, align: 'right' },
                      '#eec548', '#3b190f');
       // Wow's progress readout, under the score. The gauntlet has signs, a boss
       // and a ship to tell you where you are; wow is 40 anonymous chunks, so the
