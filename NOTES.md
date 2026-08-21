@@ -78,11 +78,10 @@ Streaming only. `web/engine/audio.js` is a pooled jukebox over plain
 `HTMLAudioElement`s: `web/assets/audio/manifest.json` (650 bytes) is the ONLY
 thing a boot fetches, and a track's element isn't constructed — let alone
 loaded — until that track is selected (`preload='none'`, src assigned at
-selection). 27MB of mp3 on disk, one streamed file at a time, served over
+selection). 33MB of mp3 on disk (14 tracks), one streamed file at a time, served over
 Range/206 by `tools/serve.mjs`.
 
-Pools: title[4], run[4], wow[2] (wired, unused until the endless mode exists),
-fanfare[2] (one-shot). Per pool the session's FIRST track is random and never
+Pools: title[4], run[4], wow[2] (the endless mode's own set), fanfare[2] (one-shot). Per pool the session's FIRST track is random and never
 the one the last session opened with — `save.data.audio.lastFirst[pool]`, banked
 before a note plays — then it cycles in order on 'ended', wrapping.
 
@@ -114,4 +113,34 @@ asserting zero mp3 requests before a gesture.
   pinned under a ceiling) = backward bolt + forward burst, and you STAY seated — hold
   the chord and mash X to chain up to BURST_MAX. Tapping X in the first 0.12s of a
   slide still hops instead (the running pit-saver).
-Plan 3 delivers: full arc (M4) — title/intro, MEGA SAUCER boss + gate, ship extraction, win screen with best-score persistence, pause. M4 gate: user plays start → win before Plan 4 (WOW ZONE, audio, share card).
+## World art (the overhaul)
+Every environment pixel is generated: late-afternoon Mars in a locked 43-color
+palette harmonized with the official sprites. Pipeline: image-generation raws +
+prompts committed under `assets-wow/raw/`, craft pass in `tools/genart_v2_prod.py`
+(deterministic, seeded), ingested by `tools/build_assets.py`'s PROD table.
+Terrain is a 133-frame organic-masonry tileset picked per tile by
+`web/game/tiles.js` — pure f(coords), which is what keeps the scrolled tile
+cache valid. Share cards regenerate from the same art via `tools/gencards.py`.
+
+## Sound effects
+14 sounds ship as small rendered files (`web/assets/sfx/`, ~240KB total,
+fetched+decoded on the first user gesture, never under `?test`); the old
+param-synth recipes in `web/engine/sfx.js` remain as the decode-failure
+fallback. Renderer + rankings live in `assets-wow/sfx2/`.
+
+## Share links
+S on an end screen copies a LINK (text only). The link hits a 120-line stateless
+Cloudflare worker (`share-worker/`) that rewrites OpenGraph tags to that run's
+score and instantly redirects humans to the game — that's how a static Pages
+site gets per-score unfurls. Card image URLs carry `?v=N`; bump it whenever the
+card art changes or scrapers keep serving their cached copies.
+
+## Deploying
+gh-pages = `web/` at the repo root (orphan commit, force-push). Asset requests
+carry the build stamp from `web/index.html`'s `?v=` on the module entry
+(`web/engine/version.js`) — bump that one line on every deploy or returning
+browsers will mix old code with new assets.
+
+STATUS: v1.0.0 tagged — full game shipped (gauntlet, MEGA SAUCER, ship finale,
+WOW ZONE endless, share chain, touch controls, world+sound overhaul). Remaining
+work is submission clicks and playtest polish.
