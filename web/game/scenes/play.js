@@ -303,9 +303,6 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     };
   }
 
-  // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
-  // transparent margins, so we go through drawCentered with the cell centre —
-  // that re-applies the frame's ox/oy and lands the art where it was authored.
   const gateIsOpen = () => level.gate.every(([tx, ty]) => !level.solidAt(tx, ty));
 
   // Ship extraction cutscene. The world is FROZEN for its duration — no player
@@ -458,6 +455,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
     }
   }
 
+  // Draw a full parallax cell with its top-left at (sx, sy). The atlas trims
+  // transparent margins, so we go through drawCentered with the cell centre —
+  // that re-applies the frame's ox/oy and lands the art where it was authored.
   function drawLayer(ctx, name, sx, sy) {
     const a = atlas.anims[name];
     atlas.drawCentered(ctx, name, a.frames[0], sx + a.cw / 2, sy + a.ch / 2);

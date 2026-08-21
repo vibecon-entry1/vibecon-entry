@@ -80,7 +80,7 @@ export function makeAudition({ input, save, sfx, go, touchUI, tapNeed }) {
       // reported — without this guard every first poke also banked whatever
       // row the cursor happened to be on. touchActive() is presence: true on
       // exactly the frames a finger could have forged this edge.
-      if (input.pressed('fire') && !input.touchActive()) keep();
+      if (input.pressed('fire') && !input.touchActive?.()) keep();
 
       const taps = input.taps?.() ?? [];
       if (taps.length) {
