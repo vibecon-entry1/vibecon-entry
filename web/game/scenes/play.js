@@ -38,13 +38,28 @@ const AIR_FRAME = 6;
 
 const wrap = (v, m) => ((v % m) + m) % m;   // JS % keeps the sign; scrolling needs it positive
 
+// Tutorial boards, translated into thumbs. Keyed by the authored keyboard
+// string (chunks.js SIGN_TEXTS) and applied at the sign draw only while the
+// touch UI is live — same doge voice, near the same length so every board
+// still sits its post the same way.
+const TOUCH_SIGNS = {
+  'press X. very pew.':
+    'tap FIRE side. very pew.',
+  'hold DOWN + X. shoot ground. trust me bro.':
+    'drag FIRE down. shoot ground. trust me bro.',
+  'DOWN+X in air = boost. 3 pips. kills refill.':
+    'drag FIRE down in air = boost. 3 pips. kills refill.',
+  'DOWN+move = slide. wait a beat, THEN X = zoom zoom.':
+    'drag down-forward = slide. wait a beat, THEN FIRE = zoom zoom.',
+};
+
 // One scene serves both modes. The split is deliberately narrow: WOW ZONE
 // changes the LEVEL (seeded chunk order), the MUSIC pool, what a death means
 // (run over, not respawn) and the HUD's progress readout. Everything else —
 // the verb, the enemies, the scoring, the camera, the parallax — is the same
 // game, which is the whole point of an endless mode built out of the campaign's
 // own chunks. `mode` is the only branch key; `seed` is meaningless in gauntlet.
-export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn,
+export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn, touchUI,
                            mode = 'gauntlet', seed = 0 }) {
   const wow = mode === 'wow';
   jukebox?.playPool(wow ? 'wow' : 'run');   // no-op if we're already on that pool (R-restart)
@@ -774,7 +789,13 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // it's upshifted at draw — the glyphs fold caps anyway, this just keeps
       // measure() and drawText() looking at the same string.
       for (const sg of level.signs) {
-        const upper = sg.text.toUpperCase();
+        // Touch players get the same board in their own verbs. Swapped AT
+        // DRAW, keyed by the authored string: level data never changes, so
+        // chunks.js's signTexts-count invariant and wow's stripped-signs rule
+        // are untouched, and a keyboard mid-run stays word-for-word as
+        // authored. Signs with no key names in them fall through unmapped.
+        const text = touchUI?.() ? (TOUCH_SIGNS[sg.text] ?? sg.text) : sg.text;
+        const upper = text.toUpperCase();
         const bw = Math.round(measure(upper)) + 8;
         ctx.fillStyle = '#5b4a3a'; ctx.fillRect(sg.x - 2, sg.y - 20, 4, 20);      // post
         ctx.fillStyle = '#1b1420'; ctx.fillRect(sg.x - bw / 2, sg.y - 32, bw, 13); // board
@@ -797,7 +818,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         atlas.drawCentered(ctx, 'coin', animFrame(atlas.anims.coin, c.t), c.x, c.y);
       });
 
-      // (6) enemies — draw only the camera window (+80 for the widest cell).
+      // (6) enemies — draw only the camera window (+80: comfortably past the
+      // widest 42px enemy cell).
       // The roster is 40+ and the sleeping off-screen majority was a solid
       // block of wasted drawImage calls in the phone profile. Sim untouched:
       // enemies.update keeps its own 1400px sleep gate.

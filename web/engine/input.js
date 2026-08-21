@@ -155,7 +155,7 @@ export function createInput(target = window) {
       const pointers = [];
       for (const p of track.values())
         if (!p.claimed) pointers.push({ zone: p.zone, ox: p.ox, oy: p.oy, x: p.x, y: p.y });
-      return { seen: touchSeen, pointers };
+      return { pointers };
     },
     /** Taps that completed THIS frame (virtual coords). Cleared in endFrame. */
     taps() { return uiTaps; },
