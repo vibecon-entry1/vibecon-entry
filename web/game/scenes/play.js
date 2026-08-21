@@ -736,12 +736,17 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // ones: the horizon should breathe when you fly, not swing.
       const drift = f => -Math.round((cam.y - camY0) * f);
       // each band is authored 640 wide, so it is drawn twice to cover the seam
+      // Bands draw as the exact visible slice (two source-rect cuts across
+      // the wrap seam), like the sky: the draw-the-cell-twice seam pattern
+      // rasterized a second full strip for nothing. The production strips are
+      // untrimmed 640-wide cells, so source math is direct.
       const band = (name, fx, fy, bias) => {
-        const a = atlas.anims[name];
-        const ox = -Math.round(wrap(cam.x * fx, VW));
+        const a = atlas.anims[name], f = atlas.frames[a.frames[0]];
         const oy = restLine + bias - a.ch + drift(fy);   // cell BOTTOM sits `bias` below the horizon
-        drawLayer(ctx, name, ox, oy);
-        drawLayer(ctx, name, ox + VW, oy);
+        const off = Math.round(wrap(cam.x * fx, VW));
+        const w1 = Math.min(VW, a.cw - off);
+        ctx.drawImage(atlas.img, f.x + off, f.y, w1, a.ch, 0, oy, w1, a.ch);
+        if (w1 < VW) ctx.drawImage(atlas.img, f.x, f.y, VW - w1, a.ch, w1, oy, VW - w1, a.ch);
       };
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
       const dr = dread(cam.x);
@@ -839,6 +844,27 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
           tileCanvas.width = tileScratch.width = cw;
           tileCanvas.height = tileScratch.height = ch;
         }
+        // The pit-void gradient the cache paints under its cells. Uniform in
+        // x, so a 16px-wide strip is enough; sliced per cell row below.
+        const floorTy = level.hTiles - 8;
+        if (!voidGrad) {
+          voidGrad = document.createElement('canvas');
+          voidGrad.width = TILE; voidGrad.height = 8 * TILE;
+          const vg = voidGrad.getContext('2d');
+          const lg = vg.createLinearGradient(0, 0, 0, voidGrad.height);
+          lg.addColorStop(0, '#3b190f');
+          lg.addColorStop(0.45, '#27030b');
+          lg.addColorStop(1, '#010800');
+          vg.fillStyle = lg;
+          vg.fillRect(0, 0, TILE, voidGrad.height);
+        }
+        // Depth-band darkening for a floor row: the walked slab reads as a
+        // dead flat wall without it. All the stops are tile-aligned, so it
+        // decomposes per cell and BAKES — as does the pit void — which is why
+        // neither costs a per-frame pass any more (the perf probe priced the
+        // live full-width fills at ~2ms a frame at 4x throttle).
+        const bandAlpha = ty => ty < floorTy + 2 ? 0 : ty < floorTy + 5 ? 0.15
+                              : ty < floorTy + 8 ? 0.3 : 0.45;
         const g = tileScratch.getContext('2d');
         g.clearRect(0, 0, tileScratch.width, tileScratch.height);
         // Same-epoch window shift: copy the overlap, draw only exposed cells.
@@ -849,53 +875,24 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         for (let ty = ty0; ty <= ty1; ty++)
           for (let tx = tx0; tx <= tx1; tx++) {
             if (shift && tx >= w.tx0 && tx <= w.tx1 && ty >= w.ty0 && ty <= w.ty1) continue;
-            if (!level.solidAt(tx, ty)) continue;
-            const f = pickTileFrame(level, tx, ty);
-            atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
-                               (tx - tx0) * TILE + 8, (ty - ty0) * TILE + 8);
+            const cx = (tx - tx0) * TILE, cy = (ty - ty0) * TILE;
+            // Void behind the cell: solid tiles cover it; pit columns keep it,
+            // which turns a hole in the floor into depth instead of a window
+            // onto the parallax haze.
+            if (ty >= floorTy)
+              g.drawImage(voidGrad, 0, (ty - floorTy) * TILE, TILE, TILE, cx, cy, TILE, TILE);
+            if (level.solidAt(tx, ty)) {
+              const f = pickTileFrame(level, tx, ty);
+              atlas.drawCentered(g, tilesName, atlas.anims[tilesName].frames[f],
+                                 cx + 8, cy + 8);
+            }
+            const ba = bandAlpha(ty);
+            if (ba) { g.fillStyle = `rgba(0,0,0,${ba})`; g.fillRect(cx, cy, TILE, TILE); }
           }
         [tileCanvas, tileScratch] = [tileScratch, tileCanvas];
         tileWin = { tx0, ty0, tx1, ty1, epoch: tileEpoch };
       }
-      // Pit void: a dark vertical falloff painted UNDER the tile blit across
-      // the whole floor band. Solid tiles cover it; only pit columns show it,
-      // which is what turns a hole in the floor into depth instead of a
-      // window onto the parallax haze. Built once — world-space y is constant.
-      const floorTopWorldY = level.h - 8 * TILE;
-      if (!voidGrad && typeof document !== 'undefined') {
-        // Baked once: a live gradient fill every frame is real money on the
-        // frame budget; a canvas blit of the same pixels is not.
-        voidGrad = document.createElement('canvas');
-        voidGrad.width = VW; voidGrad.height = 8 * TILE;
-        const vg = voidGrad.getContext('2d');
-        const lg = vg.createLinearGradient(0, 0, 0, voidGrad.height);
-        lg.addColorStop(0, '#3b190f');
-        lg.addColorStop(0.45, '#27030b');
-        lg.addColorStop(1, '#010800');
-        vg.fillStyle = lg;
-        vg.fillRect(0, 0, VW, voidGrad.height);
-      }
-      if (voidGrad) ctx.drawImage(voidGrad, Math.round(cam.x), floorTopWorldY);
       if (tileCanvas) ctx.drawImage(tileCanvas, tx0 * TILE, ty0 * TILE);
-
-      // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
-      // the same flat tile (chunks.js), which reads as a dead purple slab
-      // rather than ground receding into shadow. Three stepped darkening
-      // bands over the tile texture (world coords, drawn OVER the tiles we
-      // just placed) fake depth without new art. floorLineWorldY is the same
-      // horizon restLine anchors to, just left in world space (no camY0
-      // subtraction) since we're inside cam.apply here. Kept OUT of the tile
-      // cache: the incremental shift only redraws exposed cells, and band
-      // strips do not decompose along cell edges.
-      const floorLineWorldY = level.h - 8 * TILE;
-      const bandX0 = cam.x, bandX1 = cam.x + VW;
-      const bandStops = [floorLineWorldY + 2 * TILE, floorLineWorldY + 5 * TILE,
-                          floorLineWorldY + 8 * TILE, level.h];
-      const bandAlphas = [0.15, 0.3, 0.45];
-      for (let i = 0; i < bandAlphas.length; i++) {
-        ctx.fillStyle = `rgba(0,0,0,${bandAlphas[i]})`;
-        ctx.fillRect(bandX0, bandStops[i], bandX1 - bandX0, bandStops[i + 1] - bandStops[i]);
-      }
 
       // (2c) ground flora: decor scattered along the walked floor, a pure
       // function of the world column (tiles.js floraIndexAt) — deterministic,
