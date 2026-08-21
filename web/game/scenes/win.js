@@ -84,6 +84,10 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
 
   const share = makeSharePrompt({ score, kills, deaths, mode: 'gauntlet' }, { sfx });
 
+  // The share line's y (top of its scale-2 text box) — the touch band in
+  // update() derives its centre from this, so moving the line moves the button.
+  const SHARE_Y = 304;
+
   // Two-column ledger: label left-aligned at LX, value right-aligned at RX, so
   // the numbers stack into a readable column instead of drifting with label
   // length. Kept inside the middle 340px so nothing hugs the frame edge.
@@ -144,7 +148,7 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
       // moment can't skip the screen it just earned.
       const taps = input.taps?.() ?? [];
       if (t > 0.5 && taps.length) {
-        if (Math.abs(taps[0].y - 311) <= 22) share.tap();
+        if (Math.abs(taps[0].y - (SHARE_Y + 7)) <= 22) share.tap();   // ±22 around the text centre
         else { sfx?.play('uiclick'); go('title'); }
       }
     },
@@ -192,7 +196,7 @@ export function makeWin({ breakdown, best, input, go, sfx }) {
         ctx.globalAlpha = 1;
       }
 
-      share.render(ctx, 304);
+      share.render(ctx, SHARE_Y);
 
       ctx.fillStyle = '#6f6a86';
       drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });

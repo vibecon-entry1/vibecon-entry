@@ -26,6 +26,10 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
   // same reason — an endless level never increments player.deaths.
   const share = makeSharePrompt({ score, kills, deaths: 1, mode: 'wow' }, { sfx });
 
+  // Same contract as win.js: the share line's y anchors both the draw and the
+  // touch band, so the two can never drift apart.
+  const SHARE_Y = 304;
+
   // Two-column ledger on the same LX/RX rails as win.js, so the two end screens
   // read as the same game rather than two different UIs.
   const LX = 170, RX = 470;
@@ -45,7 +49,7 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
       // else is the primary action. Same 0.5s arming beat, same reason.
       const taps = input.taps?.() ?? [];
       if (t > 0.5 && taps.length) {
-        if (Math.abs(taps[0].y - 311) <= 22) share.tap();
+        if (Math.abs(taps[0].y - (SHARE_Y + 7)) <= 22) share.tap();   // ±22 around the text centre
         else { sfx?.play('uiclick'); go('title'); }
       }
     },
@@ -97,7 +101,7 @@ export function makeWowEnd({ breakdown, best, input, go, sfx }) {
       // is the number they can hand someone tomorrow.
       ctx.fillStyle = '#6f6a86';
       drawText(ctx, `seed ${seed}`, VW / 2, 282, { align: 'center' });
-      share.render(ctx, 304);
+      share.render(ctx, SHARE_Y);
       drawText(ctx, 'R = very again', VW / 2, 328, { ...T2, align: 'center' });
     },
 
