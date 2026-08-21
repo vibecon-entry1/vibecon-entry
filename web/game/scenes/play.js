@@ -1031,10 +1031,28 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // simply hundreds of tiles off to the right, so no gating is needed.
       // No ship in wow — there is no extraction to earn, and level.shipPad is
       // null because no wow chunk carries a 'T'.
-      if (level.shipPad)
+      //
+      // PARKED GROUNDING (user screenshot fix). The ship cell's shared feet
+      // line (feetY) is the max art bottom across the 18-frame hover loop —
+      // set by the mid-cycle exhaust frames. The parked frame's own art
+      // bottom sits higher, so anchoring it at feetY hovered the whole ship
+      // above the pad, its skid resting exactly on the dark haze shelf the
+      // parallax pass paints behind the floor lip — which read as a ship sunk
+      // in a pit void, un-sinking only when a jump shifted the bands. The
+      // correction is MEASURED from the shipped atlas (parked frame's real
+      // bottom vs feetY), never hardcoded, and melts to zero over the first
+      // ~0.1s of takeoff so the authored lift/bob keeps its own anchors.
+      // Draw order stays: the ship goes down AFTER the tile-cache blit that
+      // bakes the pit-void gradient and the floor depth bands, so nothing in
+      // the terrain pass can cover it — the pad e2e probes exactly that band.
+      if (level.shipPad) {
+        const sa = atlas.anims.ship, sf = atlas.frames[sa.frames[0]];
+        const ground = Math.max(0, sa.feetY - (sf.oy + sf.h));
+        const sink = takeoff >= 0 ? Math.max(0, ground - liftY) : ground;
         atlas.drawFeet(ctx, 'ship', takeoff >= 0 ? animFrame(atlas.anims.ship, takeoff)
                                                  : atlas.anims.ship.frames[0],
-                       level.shipPad.x, level.shipPad.y - liftY);
+                       level.shipPad.x, level.shipPad.y - liftY + sink);
+      }
 
       // (7) player — blink through iframes, but a corpse always stays visible.
       // NO separate rider during takeoff: the 'ship' art already carries a dog
