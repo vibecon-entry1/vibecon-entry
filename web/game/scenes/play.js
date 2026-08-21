@@ -444,7 +444,9 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // Slow motes falling across the frame. Every mote's whole trajectory is a
   // function of its index and the clock — no array, no spawn bookkeeping, and
   // the same 24 specks every session.
-  const DECO_COL = ['#982c2c', '#eec548', '#ffa900'];
+  // Retuned for the sunset palette: the old red/gold specks vanished into a
+  // world that is gold wall to wall. Pink / ice / warm white carry the disco.
+  const DECO_COL = ['#ff5ad9', '#aee6ff', '#fffdf0'];
   function drawDeco2(ctx) {
     for (let i = 0; i < 24; i++) {
       const sp = 16 + (i % 5) * 5;

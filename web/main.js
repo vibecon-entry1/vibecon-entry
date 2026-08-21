@@ -525,12 +525,13 @@ async function boot() {
       // it: two full-frame passes on the 640x360 buffer, which is the cheapest
       // surface in the pipeline and the only one every scene shares.
       //
-      // The colour crawls between a cool rose and a warm ember on an 8s sine,
+      // The colour crawls between a hot rose and a cool violet on an 8s sine,
       // and 'overlay' keeps it a tint rather than a coat of paint — blacks stay
       // black, highlights stay bright, and the midtones (the rock, the dirt,
-      // the sky bands) are what actually move. The swing is deliberately narrow
-      // and both ends of it are warm: this is the light changing over the same
-      // red planet, not a rainbow.
+      // the sky bands) are what actually move. Retuned for the sunset palette:
+      // the old rose-to-ember swing disappeared into a world that is now ember
+      // wall to wall, so the swing runs pink-to-violet instead — unmistakably
+      // the disco dressing, still reading as coloured LIGHT on the same planet.
       //
       // The second pass is the same phase read as brightness: a flat grey ADDED
       // at the ember end and MULTIPLIED in at the rose end, which is a +/-8%
@@ -541,8 +542,8 @@ async function boot() {
         const mix = (a, b) => Math.round(a + (b - a) * u);
         ctx.save();
         ctx.globalCompositeOperation = 'overlay';
-        ctx.globalAlpha = 0.22;
-        ctx.fillStyle = `rgb(${mix(158, 255)},${mix(40, 140)},${mix(108, 42)})`;
+        ctx.globalAlpha = 0.30;
+        ctx.fillStyle = `rgb(${mix(214, 110)},${mix(48, 64)},${mix(150, 214)})`;
         ctx.fillRect(0, 0, VW, VH);
         const bv = Math.round(Math.abs(sw) * 20);
         ctx.globalCompositeOperation = sw >= 0 ? 'lighter' : 'multiply';
