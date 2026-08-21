@@ -176,7 +176,8 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
   // so no frame ever pays for the full window twice. Sized for the worst-case
   // window (+1 tile each axis for the partial edges).
   let tileCanvas = null, tileScratch = null, tileWin = null;
-  let voidGrad = null;            // pit-void gradient, built on first render
+  let voidGrad = null;            // pit-void gradient strip, baked on first render
+  let haloCanvas = null;          // boss separation halo, baked on first use
   let tileEpoch = 0;              // bumped by the one thing that edits tiles: the gate carve
   // --- boss state ------------------------------------------------------------
   // bossSpawned is a ONE-WAY latch: it stays true through the boss's death AND
@@ -744,11 +745,15 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       };
       const sox = -Math.round(wrap(cam.x * 0.10, VW));
       const dr = dread(cam.x);
-      drawLayer(ctx, skyName, sox, drift(0.05));      // sky: pinned to the top
-      drawLayer(ctx, skyName, sox + VW, drift(0.05));
-      if (dr > 0) {
-        // Arena dread: the boss sky fades over the sunset as the camera closes
-        // on the arena and back out on the victory lap — a blend, never a pop.
+      // Arena dread: the boss sky fades over the sunset as the camera closes
+      // on the arena and back out on the victory lap — a blend, never a pop.
+      // At the blend's ENDS only one sky is drawn: the whole boss fight sits
+      // at dr === 1, and four full-frame sky draws a frame there is exactly
+      // the kind of cost the perf gate exists to catch.
+      const baseSky = dr >= 1 ? 'sky_boss' : skyName;
+      drawLayer(ctx, baseSky, sox, drift(0.05));      // sky: pinned to the top
+      drawLayer(ctx, baseSky, sox + VW, drift(0.05));
+      if (dr > 0 && dr < 1) {
         ctx.globalAlpha = dr;
         drawLayer(ctx, 'sky_boss', sox, drift(0.05));
         drawLayer(ctx, 'sky_boss', sox + VW, drift(0.05));
@@ -837,14 +842,20 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
       // which is what turns a hole in the floor into depth instead of a
       // window onto the parallax haze. Built once — world-space y is constant.
       const floorTopWorldY = level.h - 8 * TILE;
-      if (!voidGrad) {
-        voidGrad = ctx.createLinearGradient(0, floorTopWorldY, 0, level.h);
-        voidGrad.addColorStop(0, '#3b190f');
-        voidGrad.addColorStop(0.45, '#27030b');
-        voidGrad.addColorStop(1, '#010800');
+      if (!voidGrad && typeof document !== 'undefined') {
+        // Baked once: a live gradient fill every frame is real money on the
+        // frame budget; a canvas blit of the same pixels is not.
+        voidGrad = document.createElement('canvas');
+        voidGrad.width = VW; voidGrad.height = 8 * TILE;
+        const vg = voidGrad.getContext('2d');
+        const lg = vg.createLinearGradient(0, 0, 0, voidGrad.height);
+        lg.addColorStop(0, '#3b190f');
+        lg.addColorStop(0.45, '#27030b');
+        lg.addColorStop(1, '#010800');
+        vg.fillStyle = lg;
+        vg.fillRect(0, 0, VW, voidGrad.height);
       }
-      ctx.fillStyle = voidGrad;
-      ctx.fillRect(cam.x, floorTopWorldY, VW, level.h - floorTopWorldY);
+      if (voidGrad) ctx.drawImage(voidGrad, Math.round(cam.x), floorTopWorldY);
       if (tileCanvas) ctx.drawImage(tileCanvas, tx0 * TILE, ty0 * TILE);
 
       // (2b) floor depth bands: the walked floor is FLOOR_PAD repeat rows of
@@ -939,12 +950,21 @@ export function makePlay({ atlas, input, save, go, jukebox, sfx, toggleMute, xOn
         // Separation halo, proposed off the arena-mock feedback: against the
         // near-black boss sky the 3x red dome read as a flat blob. A faint
         // warm radial behind it (render-only — the sprite is untouched)
-        // restores the silhouette. See the integration report screenshot.
-        const halo = ctx.createRadialGradient(boss.x, boss.y, 12, boss.x, boss.y, 105);
-        halo.addColorStop(0, 'rgba(249,210,129,0.22)');
-        halo.addColorStop(1, 'rgba(249,210,129,0)');
-        ctx.fillStyle = halo;
-        ctx.fillRect(boss.x - 105, boss.y - 105, 210, 210);
+        // restores the silhouette. Baked ONCE into its own canvas: a live
+        // createRadialGradient fill every frame was a measurable chunk of the
+        // arena's frame budget on the perf probe.
+        if (!haloCanvas && typeof document !== 'undefined') {
+          haloCanvas = document.createElement('canvas');
+          haloCanvas.width = haloCanvas.height = 210;
+          const hg = haloCanvas.getContext('2d');
+          const halo = hg.createRadialGradient(105, 105, 12, 105, 105, 105);
+          halo.addColorStop(0, 'rgba(249,210,129,0.22)');
+          halo.addColorStop(1, 'rgba(249,210,129,0)');
+          hg.fillStyle = halo;
+          hg.fillRect(0, 0, 210, 210);
+        }
+        if (haloCanvas)
+          ctx.drawImage(haloCanvas, Math.round(boss.x - 105), Math.round(boss.y - 105));
         ctx.save();
         ctx.translate(boss.x, boss.y);
         ctx.scale(3, 3);
