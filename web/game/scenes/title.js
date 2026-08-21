@@ -4,6 +4,7 @@
 // to play. The old seeded starfield is gone with the night sky — the backdrop
 // is a static cell, so screenshots stay diffable for free.
 import { getSticker, BRAND } from '../../engine/sticker.js';
+import { animFrame } from '../../engine/assets.js';
 // Screen text goes through the 5x7 bitmap font, not canvas fillText: see the
 // header of engine/font.js for why. Everything below positions by the TOP of
 // the text box, so the old fillText baselines were each shifted up by the
@@ -286,6 +287,22 @@ export function makeTitle({ atlas, input, go, save, jukebox, sfx, toggleMute, to
 
         ctx.fillStyle = '#6f6a86';
         LEGEND.forEach((l, i) => drawText(ctx, l, VW / 2, 316 + i * 11, C));
+
+        // The hero, staged lower-left with a soft contact shadow — the
+        // approved title mock (assets-wow/production/mocks/title.png) places
+        // him exactly here and the shipped screen had silently dropped him.
+        // The OFFICIAL sprite drawn live by the scene (idle loop), never
+        // baked into title.png: the backdrop stays pure environment art and
+        // the doge stays pixel-identical to his in-game self. Drawn after
+        // the legend plate so his boots read over it, like the mock's
+        // uncovered ground. Ellipse, not rects: softPlate already put
+        // anti-aliased gradients on this screen, and a soft shadow is the
+        // one thing a hard pixel stack sells worse.
+        ctx.fillStyle = 'rgba(20,6,8,0.43)';
+        ctx.beginPath();
+        ctx.ellipse(102, 348, 22, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        atlas.drawFeet(ctx, 'stand', animFrame(atlas.anims.stand, t), 102, 348);
 
         drawRocketBuffer(ctx, t);
       } else {
