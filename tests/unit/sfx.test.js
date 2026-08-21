@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SOUNDS, CANDIDATES, WAVES, MASTER, envelopeTimes, makeSfx, resolvePatch }
+import { SOUNDS, CANDIDATES, WAVES, MASTER, envelopeTimes, makeSfx, resolvePatch,
+         COMBO, comboAdvance, comboRate, SFX_BASE }
   from '../../web/engine/sfx.js';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // The synthesis itself is browser-only (AudioContext), exactly like input.js's
 // DOM half: what CAN be tested offline is the param table's integrity and the
@@ -11,7 +14,8 @@ import { SOUNDS, CANDIDATES, WAVES, MASTER, envelopeTimes, makeSfx, resolvePatch
 // without a patch, play() silently no-ops — this list is the guard against that
 // happening quietly.
 const REQUIRED = ['pew', 'hop', 'boost', 'burst', 'coin', 'hurt', 'ded',
-                  'killpop', 'bosshit', 'bossdown', 'minionpop', 'uiclick'];
+                  'killpop', 'bosshit', 'bossdown', 'minionpop', 'uiclick',
+                  'takeoff', 'afktick'];        // the two SFX v2 additions
 
 test('the param table covers every wired event and nothing else', () => {
   assert.deepEqual(Object.keys(SOUNDS).sort(), [...REQUIRED].sort());
@@ -172,8 +176,8 @@ test('resolvePatch: junk is tolerated, never trusted', () => {
   assert.equal(resolvePatch('no-such-sound', { 'no-such-sound': 'b' }), null);
   // Unknown/garbage variant values fall back to the default — a hand-edited
   // save must not be able to schedule a patch that does not exist.
-  for (const junk of ['z', 'c', 42, {}, [], true]) {
-    const r = resolvePatch('pew', { pew: junk });     // pew has no 'c' on purpose
+  for (const junk of ['z', 'd', 42, {}, [], true]) {
+    const r = resolvePatch('pew', { pew: junk });   // 'd': one past the b/c scheme
     assert.equal(r.patch, SOUNDS.pew, `pew pick ${JSON.stringify(junk)} must fall back`);
     assert.equal(r.variant, 'a');
   }
@@ -201,4 +205,75 @@ test('the play log is bounded so a long run cannot grow it forever', () => {
   assert.equal(st.plays, 500);
   assert.ok(st.log.length <= 64, `log grew to ${st.log.length}`);
   assert.equal(st.log[st.log.length - 1], 'pew');
+});
+
+// --- SFX v2: rendered files ---------------------------------------------------
+
+test('every sound and every candidate names a rendered file, and every shipped file is named', () => {
+  const referenced = [];
+  for (const [name, p] of Object.entries(SOUNDS)) {
+    assert.match(p.file ?? '', /^[a-z]+_[abc]\.m4a$/, `${name}: bad or missing file`);
+    referenced.push(p.file);
+  }
+  for (const [name, vs] of Object.entries(CANDIDATES))
+    for (const [v, p] of Object.entries(vs)) {
+      assert.match(p.file ?? '', /^[a-z]+_[abc]\.m4a$/, `${name}#${v}: bad or missing file`);
+      referenced.push(p.file);
+    }
+  // No two slots may share a file: engine a/b/c letters are remapped onto
+  // render-candidate letters, and a duplicate would mean two auditions that
+  // sound identical — exactly the drift this bijection check exists to catch.
+  assert.equal(new Set(referenced).size, referenced.length, 'duplicate file reference');
+  // ...and the references tile the shipped directory exactly (42 = 14 * 3).
+  const dir = fileURLToPath(new URL(`../../web/${SFX_BASE}`, import.meta.url));
+  const shipped = fs.readdirSync(dir).filter(f => f.endsWith('.m4a')).sort();
+  assert.deepEqual([...referenced].sort(), shipped);
+});
+
+test('rendered winners match the review rankings', () => {
+  // The frozen winner table (assets-wow sfx2 rankings). A typo'd remap would
+  // silently ship a runner-up as the default — this pins each one.
+  assert.deepEqual(Object.fromEntries(Object.entries(SOUNDS).map(([n, p]) => [n, p.file])), {
+    pew: 'pew_c.m4a', hop: 'hop_b.m4a', boost: 'boost_b.m4a', burst: 'burst_a.m4a',
+    coin: 'coin_a.m4a', hurt: 'hurt_a.m4a', ded: 'ded_a.m4a', killpop: 'killpop_b.m4a',
+    bosshit: 'bosshit_a.m4a', bossdown: 'bossdown_c.m4a', minionpop: 'minionpop_a.m4a',
+    uiclick: 'uiclick_a.m4a', takeoff: 'takeoff_b.m4a', afktick: 'afktick_a.m4a',
+  });
+});
+
+// --- coin combo (S1) ----------------------------------------------------------
+
+test('comboAdvance: streak climbs inside the window, caps, resets on a gap', () => {
+  let s = comboAdvance(undefined, 10);              // first coin ever
+  assert.equal(s.streak, 0);
+  s = comboAdvance(s, 10.5);                        // inside 1.5s
+  assert.equal(s.streak, 1);
+  s = comboAdvance(s, 11.9);                        // window slides per pickup
+  assert.equal(s.streak, 2);
+  s = comboAdvance(s, 11.9 + COMBO.window);         // exactly at the edge: still in
+  assert.equal(s.streak, 3);
+  for (let i = 0; i < 30; i++) s = comboAdvance(s, s.last + 0.1);
+  assert.equal(s.streak, COMBO.cap);                // capped, never past it
+  s = comboAdvance(s, s.last + COMBO.window + 0.01);
+  assert.equal(s.streak, 0);                        // a gap resets to the root
+});
+
+test('comboRate: one semitone per step, an octave at twelve', () => {
+  assert.equal(comboRate(0), 1);
+  assert.ok(Math.abs(comboRate(1) - Math.pow(2, 1 / 12)) < 1e-12);
+  assert.equal(comboRate(12), 2);
+  // Monotone: every step is strictly up.
+  for (let i = 1; i <= COMBO.cap; i++) assert.ok(comboRate(i) > comboRate(i - 1));
+});
+
+test('the engine advances the combo off coin plays alone, on the injected clock', () => {
+  let t = 0;
+  const sfx = makeSfx({ enabled: false, clock: () => t });
+  sfx.play('coin');                assert.equal(sfx.current().combo, 0);
+  t = 0.4; sfx.play('coin');       assert.equal(sfx.current().combo, 1);
+  t = 0.8; sfx.play('pew');        // other sounds neither advance...
+  t = 1.0; sfx.play('coin');       assert.equal(sfx.current().combo, 2);
+  t = 9.0; sfx.play('killpop');    // ...nor reset the streak; only time does
+  t = 9.1; sfx.play('coin');       assert.equal(sfx.current().combo, 0);
+  t = 9.2; sfx.play('coin');       assert.equal(sfx.current().combo, 1);
 });

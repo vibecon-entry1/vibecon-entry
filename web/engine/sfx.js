@@ -1,12 +1,16 @@
-// Synthesized sound effects. Zero assets, zero bytes on the wire: every sound
-// in the game is a handful of numbers turned into an OscillatorNode (or a
-// noise buffer) with a gain envelope, jsfxr-style. The whole SFX budget is the
-// ~3KB of param table below.
+// Sound effects: pre-rendered, layered sound design served from tiny AAC
+// files, with the original synthesized recipes kept underneath as the
+// degraded-but-never-silent fallback.
 //
-// Why synthesis and not a sprite sheet of wavs: the music is already 27MB of
-// streamed mp3 (engine/audio.js), and a blip-per-shot layer on top of that
-// would either add a second preload budget or arrive late on the frame it was
-// needed. A scheduled oscillator is sample-accurate and costs nothing to boot.
+// THE SFX v2 SHAPE. Every sound in the tables below carries BOTH a `file`
+// (a rendered candidate in web/assets/sfx/, ~1.5-27KB of AAC-LC .m4a — the
+// one compressed container every browser's decodeAudioData accepts) and the
+// original synth patch params. play() prefers the decoded buffer; a buffer
+// that hasn't resolved yet — or never will (cold offline cache, CDN 404, a
+// broken decoder) — falls through to the recipe voice, so the game sounds
+// like last release instead of going silent, and never waits on audio.
+// Fetch+decode happens at unlock() (the first user gesture), gated on
+// `enabled` so the ?test build stays fetch-free as well as silent.
 //
 // Doctrine shared with the jukebox, deliberately mirrored:
 //   * nothing exists before a user gesture — the AudioContext itself is not
@@ -29,8 +33,20 @@
 /** SFX sit UNDER the music: half gain, so a blip never fights the run track. */
 export const MASTER = 0.5;
 
+import { stamp } from './version.js';
+
+/** Where the rendered files live; every fetch goes through stamp() like the
+ *  atlas and the music, so a deploy can never mix stale audio with new code. */
+export const SFX_BASE = 'assets/sfx/';
+
 /**
- * The param table. Every entry is a tiny synth patch:
+ * The param table. Every entry is a rendered file + a tiny synth patch:
+ *   file      the rendered winner in SFX_BASE (see the header note) — what a
+ *             player actually hears once its buffer has decoded. Variant
+ *             letters in FILE NAMES are render-candidate ids and do NOT line
+ *             up with the engine's a/b/c pick scheme: engine 'a' is "the
+ *             shipped default", which for coin happens to be coin_a.m4a but
+ *             for pew is pew_c.m4a (the review's winner).
  *   wave      'square' | 'triangle' | 'sawtooth' | 'noise'
  *   f0, f1    start/end frequency in Hz; the pitch sweeps exponentially between
  *             them across `duration` (equal-ratio, i.e. musical, not linear).
@@ -49,70 +65,90 @@ export const SOUNDS = {
   // The gun. Short, dry, and deliberately the quietest thing here: it fires
   // several times a second and anything fatter turns into a buzzsaw. Ultra-short
   // sawtooth — no high end left to fatigue at rapid fire.
-  pew:       { wave: 'sawtooth', f0: 960,  f1: 420,  duration: 0.065, attack: 0.002, decay: 0.05, volume: 0.28 },
+  pew:       { wave: 'sawtooth', f0: 960,  f1: 420,  duration: 0.065, attack: 0.002, decay: 0.05, volume: 0.28, file: 'pew_c.m4a' },
   // Down-shot off the ground: an UP-chirp, because the body goes up.
-  hop:       { wave: 'triangle', f0: 300,  f1: 520,  duration: 0.12, attack: 0.008, decay: 0.09, volume: 0.42 },
+  hop:       { wave: 'triangle', f0: 300,  f1: 520,  duration: 0.12, attack: 0.008, decay: 0.09, volume: 0.42, file: 'hop_b.m4a' },
   // Mid-air boost: same gesture, wider sweep, a bigger noise swell for thrust
   // with some body to it.
-  boost:     { wave: 'triangle', f0: 170,  f1: 780,  duration: 0.19, attack: 0.012, decay: 0.14, volume: 0.48, noise: 0.28 },
+  boost:     { wave: 'triangle', f0: 170,  f1: 780,  duration: 0.19, attack: 0.012, decay: 0.14, volume: 0.48, noise: 0.28, file: 'boost_b.m4a' },
   // Slide-burst chord: a downward saw punch. The only shot that MOVES you
   // horizontally, so the heavy low-end noise sells it as a shove, not a shot.
-  burst:     { wave: 'sawtooth', f0: 190,  f1: 60,   duration: 0.15, attack: 0.003, decay: 0.11, volume: 0.52, noise: 0.45 },
+  burst:     { wave: 'sawtooth', f0: 190,  f1: 60,   duration: 0.15, attack: 0.003, decay: 0.11, volume: 0.52, noise: 0.45, file: 'burst_a.m4a' },
   // Pickup: bright, stepped a full octave (C6→C7), above everything else in the
   // mix's frequency range so it survives a kill and a landing on top of it.
-  coin:      { wave: 'square',   f0: 1047, f1: 2093, duration: 0.12, attack: 0.003, decay: 0.07, volume: 0.30, notes: [1047, 2093] },
+  coin:      { wave: 'square',   f0: 1047, f1: 2093, duration: 0.12, attack: 0.003, decay: 0.07, volume: 0.30, notes: [1047, 2093], file: 'coin_a.m4a' },
   // Taking damage: a stepped FALLING square under heavy noise. Must not be
   // confusable with any shot — the steps make it unmistakable.
-  hurt:      { wave: 'square',   f0: 220,  f1: 92,   duration: 0.16, attack: 0.004, decay: 0.12, volume: 0.50, noise: 0.50, notes: [220, 156, 92] },
+  hurt:      { wave: 'square',   f0: 220,  f1: 92,   duration: 0.16, attack: 0.004, decay: 0.12, volume: 0.50, noise: 0.50, notes: [220, 156, 92], file: 'hurt_a.m4a' },
   // Death: four descending squares, properly sad. The only jingle in the set.
-  ded:       { wave: 'square',   f0: 523,  f1: 262,  duration: 0.70, attack: 0.005, decay: 0.16, volume: 0.40, notes: [523, 392, 330, 262] },
+  ded:       { wave: 'square',   f0: 523,  f1: 262,  duration: 0.70, attack: 0.005, decay: 0.16, volume: 0.40, notes: [523, 392, 330, 262], file: 'ded_a.m4a' },
   // Kill: tight transient, a whisper of noise — it plays hundreds of times.
-  killpop:   { wave: 'sawtooth', f0: 620,  f1: 120,  duration: 0.11, attack: 0.003, decay: 0.085, volume: 0.40, noise: 0.10 },
+  killpop:   { wave: 'sawtooth', f0: 620,  f1: 120,  duration: 0.11, attack: 0.003, decay: 0.085, volume: 0.40, noise: 0.10, file: 'killpop_b.m4a' },
   // Boss taking a hit: a dull heavy thud, no transient click to clash with the
   // player's own fire on the same frame.
-  bosshit:   { wave: 'sawtooth', f0: 140,  f1: 50,   duration: 0.13, attack: 0.003, decay: 0.09, volume: 0.52, noise: 0.22 },
+  bosshit:   { wave: 'sawtooth', f0: 140,  f1: 50,   duration: 0.13, attack: 0.003, decay: 0.09, volume: 0.52, noise: 0.22, file: 'bosshit_a.m4a' },
   // Boss down: the one BIG sound. Slow noise swell under a square rising three
   // and a half octaves — long attack on purpose, it is a payoff not a hit.
-  bossdown:  { wave: 'square',   f0: 90,   f1: 990,  duration: 0.80, attack: 0.100, decay: 0.45, volume: 0.55, noise: 0.65 },
+  bossdown:  { wave: 'square',   f0: 90,   f1: 990,  duration: 0.80, attack: 0.100, decay: 0.45, volume: 0.55, noise: 0.65, file: 'bossdown_c.m4a' },
   // Boss-summoned minion: a smaller, higher killpop so a minion death is
   // audibly not a roster kill.
-  minionpop: { wave: 'square',   f0: 990,  f1: 1320, duration: 0.07, attack: 0.003, decay: 0.05, volume: 0.30 },
+  minionpop: { wave: 'square',   f0: 990,  f1: 1320, duration: 0.07, attack: 0.003, decay: 0.05, volume: 0.30, file: 'minionpop_a.m4a' },
   // UI: a short down-step, atonal and non-grating.
-  uiclick:   { wave: 'square',   f0: 880,  f1: 660,  duration: 0.045, attack: 0.002, decay: 0.035, volume: 0.30 },
+  uiclick:   { wave: 'square',   f0: 880,  f1: 660,  duration: 0.045, attack: 0.002, decay: 0.035, volume: 0.30, file: 'uiclick_a.m4a' },
+  // NEW in SFX v2 — ship-takeoff roar for the win finale. The rendered asset
+  // is ~3s on purpose (its tail rings past the 2.5s frozen-world window into
+  // the win screen, which has no entry sting of its own) and is mixed
+  // rumble-forward so it never fights the fanfare's melody. The synth
+  // fallback is a shorter noise-heavy saw swell: a degraded roar, not a
+  // replica — it only exists so a failed decode still marks the moment.
+  takeoff:   { wave: 'sawtooth', f0: 42,   f1: 130,  duration: 0.95, attack: 0.20, decay: 0.55, volume: 0.50, noise: 0.85, file: 'takeoff_b.m4a' },
+  // NEW in SFX v2 — the AFK countdown tick, once per second, up to 180 times
+  // an incident: bone-dry with near-zero tail BY DESIGN (the render review's
+  // own note: restraint is the repetition-safe choice). Fallback matches.
+  afktick:   { wave: 'square',   f0: 1100, f1: 880,  duration: 0.05, attack: 0.002, decay: 0.04, volume: 0.30, file: 'afktick_a.m4a' },
 };
 
 /**
- * Audition candidates: the hidden sound-test's B/C options per sound. Same
- * patch vocabulary as SOUNDS — variant 'a' IS the SOUNDS entry and is never
- * listed here. 'b' is the previously-shipped recipe (or the first alternate,
- * where the shipped one already won and stayed the default); 'c' is a second
- * alternate where one survived review. pew and hurt have no 'c' on purpose:
- * their remaining alternates were reviewed as not-shippable, and a sound test
- * offering a known-bad option is a trap, not a choice.
+ * Audition candidates: the hidden sound-test's B/C options per sound. Since
+ * SFX v2 these are the rendered RUNNERS-UP (B the higher-scoring of the two,
+ * C the other — per-round scores in assets-wow's sfx2 rankings), each with a
+ * `file` like the SOUNDS entries. The synth params on each slot are its
+ * decode-failure fallback: the previously-shipped recipes stay where they
+ * lived, and slots that never had a bespoke recipe (pew/hurt 'c', all of
+ * takeoff/afktick) borrow their sound's default recipe — a fallback marks
+ * the event, it doesn't impersonate the render.
+ * Every sound now runs three-wide: with all 42 candidates rendered there are
+ * no known-bad synth slots left to hide.
  */
 export const CANDIDATES = {
-  pew:       { b: { wave: 'square',   f0: 880,  f1: 440,  duration: 0.08, attack: 0.004, decay: 0.06, volume: 0.30 } },
-  hop:       { b: { wave: 'triangle', f0: 240,  f1: 620,  duration: 0.13, attack: 0.006, decay: 0.10, volume: 0.44, noise: 0.08 },
-               c: { wave: 'square',   f0: 330,  f1: 660,  duration: 0.10, attack: 0.005, decay: 0.08, volume: 0.36, notes: [330, 494, 660] } },
-  boost:     { b: { wave: 'triangle', f0: 200,  f1: 660,  duration: 0.15, attack: 0.010, decay: 0.11, volume: 0.46, noise: 0.15 },
-               c: { wave: 'sawtooth', f0: 150,  f1: 620,  duration: 0.16, attack: 0.010, decay: 0.12, volume: 0.42, noise: 0.22 } },
-  burst:     { b: { wave: 'sawtooth', f0: 150,  f1: 90,   duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.50, noise: 0.30 },
-               c: { wave: 'square',   f0: 140,  f1: 65,   duration: 0.13, attack: 0.004, decay: 0.10, volume: 0.50, noise: 0.35 } },
-  coin:      { b: { wave: 'square',   f0: 1320, f1: 1760, duration: 0.09, attack: 0.004, decay: 0.05, volume: 0.30, notes: [1320, 1760] },
-               c: { wave: 'triangle', f0: 1568, f1: 2349, duration: 0.11, attack: 0.003, decay: 0.06, volume: 0.36, notes: [1568, 1976, 2349] } },
-  hurt:      { b: { wave: 'sawtooth', f0: 220,  f1: 110,  duration: 0.18, attack: 0.005, decay: 0.14, volume: 0.50, noise: 0.60 } },
-  ded:       { b: { wave: 'square',   f0: 440,  f1: 220,  duration: 0.50, attack: 0.005, decay: 0.12, volume: 0.40, notes: [440, 330, 220] },
-               c: { wave: 'triangle', f0: 494,  f1: 220,  duration: 0.62, attack: 0.006, decay: 0.20, volume: 0.46, notes: [494, 370, 294, 220], noise: 0.08 } },
-  killpop:   { b: { wave: 'square',   f0: 660,  f1: 110,  duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.40 },
-               c: { wave: 'square',   f0: 780,  f1: 90,   duration: 0.14, attack: 0.003, decay: 0.10, volume: 0.42, noise: 0.18 } },
-  bosshit:   { b: { wave: 'sawtooth', f0: 110,  f1: 70,   duration: 0.10, attack: 0.004, decay: 0.07, volume: 0.50 },
-               c: { wave: 'square',   f0: 100,  f1: 58,   duration: 0.10, attack: 0.003, decay: 0.075, volume: 0.50, noise: 0.12 } },
-  bossdown:  { b: { wave: 'square',   f0: 110,  f1: 880,  duration: 0.60, attack: 0.080, decay: 0.35, volume: 0.55, noise: 0.50 },
-               c: { wave: 'sawtooth', f0: 110,  f1: 880,  duration: 0.72, attack: 0.060, decay: 0.40, volume: 0.52, noise: 0.45, notes: [110, 220, 440, 880] } },
-  minionpop: { b: { wave: 'square',   f0: 880,  f1: 1568, duration: 0.08, attack: 0.002, decay: 0.06, volume: 0.30, noise: 0.08 },
-               c: { wave: 'triangle', f0: 1046, f1: 1480, duration: 0.06, attack: 0.002, decay: 0.045, volume: 0.36 } },
-  uiclick:   { b: { wave: 'square',   f0: 660,  f1: 660,  duration: 0.04, attack: 0.002, decay: 0.03, volume: 0.30 },
-               c: { wave: 'triangle', f0: 990,  f1: 990,  duration: 0.035, attack: 0.001, decay: 0.028, volume: 0.38 } },
+  pew:       { b: { wave: 'square',   f0: 880,  f1: 440,  duration: 0.08, attack: 0.004, decay: 0.06, volume: 0.30, file: 'pew_b.m4a' },
+               c: { wave: 'sawtooth', f0: 960,  f1: 420,  duration: 0.065, attack: 0.002, decay: 0.05, volume: 0.28, file: 'pew_a.m4a' } },
+  hop:       { b: { wave: 'triangle', f0: 240,  f1: 620,  duration: 0.13, attack: 0.006, decay: 0.10, volume: 0.44, noise: 0.08, file: 'hop_a.m4a' },
+               c: { wave: 'square',   f0: 330,  f1: 660,  duration: 0.10, attack: 0.005, decay: 0.08, volume: 0.36, notes: [330, 494, 660], file: 'hop_c.m4a' } },
+  boost:     { b: { wave: 'triangle', f0: 200,  f1: 660,  duration: 0.15, attack: 0.010, decay: 0.11, volume: 0.46, noise: 0.15, file: 'boost_c.m4a' },
+               c: { wave: 'sawtooth', f0: 150,  f1: 620,  duration: 0.16, attack: 0.010, decay: 0.12, volume: 0.42, noise: 0.22, file: 'boost_a.m4a' } },
+  burst:     { b: { wave: 'sawtooth', f0: 150,  f1: 90,   duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.50, noise: 0.30, file: 'burst_b.m4a' },
+               c: { wave: 'square',   f0: 140,  f1: 65,   duration: 0.13, attack: 0.004, decay: 0.10, volume: 0.50, noise: 0.35, file: 'burst_c.m4a' } },
+  coin:      { b: { wave: 'square',   f0: 1320, f1: 1760, duration: 0.09, attack: 0.004, decay: 0.05, volume: 0.30, notes: [1320, 1760], file: 'coin_c.m4a' },
+               c: { wave: 'triangle', f0: 1568, f1: 2349, duration: 0.11, attack: 0.003, decay: 0.06, volume: 0.36, notes: [1568, 1976, 2349], file: 'coin_b.m4a' } },
+  hurt:      { b: { wave: 'sawtooth', f0: 220,  f1: 110,  duration: 0.18, attack: 0.005, decay: 0.14, volume: 0.50, noise: 0.60, file: 'hurt_c.m4a' },
+               c: { wave: 'square',   f0: 220,  f1: 92,   duration: 0.16, attack: 0.004, decay: 0.12, volume: 0.50, noise: 0.50, notes: [220, 156, 92], file: 'hurt_b.m4a' } },
+  ded:       { b: { wave: 'square',   f0: 440,  f1: 220,  duration: 0.50, attack: 0.005, decay: 0.12, volume: 0.40, notes: [440, 330, 220], file: 'ded_b.m4a' },
+               c: { wave: 'triangle', f0: 494,  f1: 220,  duration: 0.62, attack: 0.006, decay: 0.20, volume: 0.46, notes: [494, 370, 294, 220], noise: 0.08, file: 'ded_c.m4a' } },
+  killpop:   { b: { wave: 'square',   f0: 660,  f1: 110,  duration: 0.12, attack: 0.004, decay: 0.09, volume: 0.40, file: 'killpop_c.m4a' },
+               c: { wave: 'square',   f0: 780,  f1: 90,   duration: 0.14, attack: 0.003, decay: 0.10, volume: 0.42, noise: 0.18, file: 'killpop_a.m4a' } },
+  bosshit:   { b: { wave: 'sawtooth', f0: 110,  f1: 70,   duration: 0.10, attack: 0.004, decay: 0.07, volume: 0.50, file: 'bosshit_c.m4a' },
+               c: { wave: 'square',   f0: 100,  f1: 58,   duration: 0.10, attack: 0.003, decay: 0.075, volume: 0.50, noise: 0.12, file: 'bosshit_b.m4a' } },
+  bossdown:  { b: { wave: 'square',   f0: 110,  f1: 880,  duration: 0.60, attack: 0.080, decay: 0.35, volume: 0.55, noise: 0.50, file: 'bossdown_b.m4a' },
+               c: { wave: 'sawtooth', f0: 110,  f1: 880,  duration: 0.72, attack: 0.060, decay: 0.40, volume: 0.52, noise: 0.45, notes: [110, 220, 440, 880], file: 'bossdown_a.m4a' } },
+  minionpop: { b: { wave: 'square',   f0: 880,  f1: 1568, duration: 0.08, attack: 0.002, decay: 0.06, volume: 0.30, noise: 0.08, file: 'minionpop_c.m4a' },
+               c: { wave: 'triangle', f0: 1046, f1: 1480, duration: 0.06, attack: 0.002, decay: 0.045, volume: 0.36, file: 'minionpop_b.m4a' } },
+  uiclick:   { b: { wave: 'square',   f0: 660,  f1: 660,  duration: 0.04, attack: 0.002, decay: 0.03, volume: 0.30, file: 'uiclick_b.m4a' },
+               c: { wave: 'triangle', f0: 990,  f1: 990,  duration: 0.035, attack: 0.001, decay: 0.028, volume: 0.38, file: 'uiclick_c.m4a' } },
+  takeoff:   { b: { wave: 'sawtooth', f0: 42,   f1: 130,  duration: 0.95, attack: 0.20, decay: 0.55, volume: 0.50, noise: 0.85, file: 'takeoff_a.m4a' },
+               c: { wave: 'sawtooth', f0: 42,   f1: 130,  duration: 0.95, attack: 0.20, decay: 0.55, volume: 0.50, noise: 0.85, file: 'takeoff_c.m4a' } },
+  afktick:   { b: { wave: 'square',   f0: 1100, f1: 880,  duration: 0.05, attack: 0.002, decay: 0.04, volume: 0.30, file: 'afktick_c.m4a' },
+               c: { wave: 'square',   f0: 1100, f1: 880,  duration: 0.05, attack: 0.002, decay: 0.04, volume: 0.30, file: 'afktick_b.m4a' } },
 };
 
 /**
@@ -161,6 +197,23 @@ export function envelopeTimes(p) {
   return { attack: a, sustain, decay: d, peakAt: a, releaseAt: a + sustain, total };
 }
 
+/**
+ * Coin combo (juice pass S1): rapid successive pickups climb in pitch, one
+ * semitone per coin banked inside the window, capped, reset by any gap. Pure
+ * and exported for the unit suite; the engine below just threads a clock
+ * through it. Deterministic from pickup TIMING alone — no randomness, no sim
+ * state, and the muted/silent builds advance it identically so what the mix
+ * would have played never depends on whether anyone could hear it.
+ */
+export const COMBO = { window: 1.5, cap: 12 };            // seconds, semitones
+export function comboAdvance(state, now) {
+  const streak = state && now - state.last <= COMBO.window
+    ? Math.min(state.streak + 1, COMBO.cap) : 0;
+  return { last: now, streak };
+}
+/** Equal-tempered: each streak step is one semitone of playbackRate. */
+export const comboRate = streak => Math.pow(2, streak / 12);
+
 // WebAudio's exponentialRampToValueAtTime throws on a zero/negative target, and
 // a gain that ramps to exactly 0 is the common way to hit that. Everything here
 // ramps toward this floor instead and then hard-stops the node.
@@ -179,11 +232,46 @@ export function makeSfx({
   enabled = true,
   CtxCtor = typeof AudioContext !== 'undefined' ? AudioContext
           : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null,
+  // Combo clock, injectable for the unit suite. Defaults to the audio
+  // context's own clock (sample-accurate, and what the voices schedule
+  // against anyway) with a wall-clock stand-in before unlock/in the silent
+  // build so streak bookkeeping stays live everywhere.
+  clock = null,
 } = {}) {
   let inert = !enabled || !CtxCtor;
   let ctx = null, master = null, noiseBuf = null;
   let muted = !!save?.data?.audio?.muted;
   let warned = false;
+  // Decoded rendered sounds, keyed by FILE name (not sound name: the audition
+  // candidates share the map). `loaded` counts only the 14 defaults so the
+  // live probe can assert preload health against a known target.
+  const buffers = new Map();
+  const fetching = new Set();
+  const DEFAULT_FILES = new Set(Object.values(SOUNDS).map(p => p.file));
+  let loaded = 0;
+
+  /**
+   * Fetch+decode one rendered file into the buffer map — ONE attempt per file
+   * per session. Every failure mode (network, HTTP status, decoder) is
+   * swallowed whole and NOT retried: the trigger sites include play() itself,
+   * so a dropped guard would turn a browser with no AAC decoder into a fetch
+   * per pew — a storm, not a heal. The synth fallback carries the session and
+   * the next page load starts fresh. Never runs before unlock(): it needs the
+   * ctx for decodeAudioData, and inert (the ?test build) bails before any
+   * fetch happens at all.
+   */
+  function fetchBuf(file) {
+    if (inert || !ctx || !file || fetching.has(file)) return;
+    fetching.add(file);
+    fetch(stamp(SFX_BASE + file))
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(ab => ctx.decodeAudioData(ab))
+      .then(buf => {
+        buffers.set(file, buf);
+        if (DEFAULT_FILES.has(file)) loaded++;
+      })
+      .catch(() => { /* stays a synth voice this session */ });
+  }
   // Diagnostics for the live probe: a bounded log of what the game ASKED for,
   // recorded even in the silent build. Bounded because a full run fires
   // thousands of shots and an unbounded array would be a slow leak.
@@ -192,6 +280,12 @@ export function makeSfx({
   const LOG_MAX = 64;
 
   const warn = msg => { if (!warned) { warned = true; console.warn(`[sfx] ${msg}`); } };
+
+  // --- coin combo (S1) -------------------------------------------------------
+  let combo = { last: -Infinity, streak: 0 };
+  const now = () => clock ? clock()
+    : ctx ? ctx.currentTime
+    : typeof performance !== 'undefined' ? performance.now() / 1000 : Date.now() / 1000;
 
   function gain() { return muted ? 0 : MASTER; }
 
@@ -251,6 +345,26 @@ export function makeSfx({
     src.onended = () => { try { src.disconnect(); g.disconnect(); } catch { /* already gone */ } };
   }
 
+  /**
+   * One rendered voice: a decoded AudioBuffer through a trim gain into the
+   * master. The files are peak-normalized with their loudness relationships
+   * mastered in (role-banded RMS), so the per-sound trim is `gain` — a table
+   * column defaulting to 1 — rather than the synth patches' `volume`.
+   * `rate` bends playbackRate (the coin combo rides this); buffer sources
+   * end themselves, so there is no stop() to schedule.
+   */
+  function bufferVoice(buf, t0, vol, rate) {
+    const g = ctx.createGain();
+    g.gain.value = Math.max(FLOOR, vol);
+    g.connect(master);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    if (rate && rate !== 1) src.playbackRate.value = rate;
+    src.connect(g);
+    src.start(t0);
+    src.onended = () => { try { src.disconnect(); g.disconnect(); } catch { /* already gone */ } };
+  }
+
   // `variant` is the sound test's preview channel: an explicit candidate id
   // trumps the persisted pick for this one play, so the screen can audition
   // 'b' while your saved pick is 'a'. Every normal caller passes only a name
@@ -266,18 +380,37 @@ export function makeSfx({
     // pick-persistence e2e has to see. Default plays keep the bare name.
     log.push(r.variant === 'a' ? name : `${name}#${r.variant}`);
     if (log.length > LOG_MAX) log.shift();
+    // Coin combo: advanced ABOVE the mute/inert bail, for the same reason the
+    // log is — the streak is a fact about what the game asked for, and its
+    // pitch on unmute must match what a hearing player would have gotten.
+    let rate = 1;
+    if (name === 'coin') {
+      combo = comboAdvance(combo, now());
+      rate = comboRate(combo.streak);
+    }
     // Muted still counts as a play: the log is what the GAME asked for, and the
     // probe needs it to line up with the events regardless of the mix.
     if (inert || !ctx || muted) return;
     try {
-      const env = envelopeTimes(p);
-      if (env.total <= 0) return;
       // A context can fall back to 'suspended' when a tab is backgrounded; a
       // resume() here is cheap and keeps sound alive on return without needing
       // a fresh gesture.
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const t0 = ctx.currentTime + 0.001;                  // never schedule in the past
-      const plan = p.notes?.length ? { steps: p.notes } : { sweep: [p.f0, p.f1] };
+      // Rendered-first: a decoded buffer wins outright. A miss falls through
+      // to the synth recipe AND kicks off the fetch — which is how the
+      // audition screen's B/C candidates lazy-load (they are not preloaded;
+      // the first poke warms them for every poke after), and how a file that
+      // failed at unlock gets another chance.
+      const buf = p.file ? buffers.get(p.file) : null;
+      if (buf) { bufferVoice(buf, t0, p.gain ?? 1, rate); return; }
+      if (p.file) fetchBuf(p.file);
+      const env = envelopeTimes(p);
+      if (env.total <= 0) return;
+      // The combo rate bends the synth fallback identically: every frequency
+      // scales, so the recipe steps up the same semitones the render does.
+      const plan = p.notes?.length ? { steps: rate === 1 ? p.notes : p.notes.map(n => n * rate) }
+                                   : { sweep: [p.f0 * rate, p.f1 * rate] };
       voice(p.wave, plan, t0, p.volume, env);
       if (p.noise > 0) voice('noise', plan, t0, p.volume * p.noise, env);
     } catch {
@@ -298,6 +431,17 @@ export function makeSfx({
       master.gain.value = gain();
       master.connect(ctx.destination);
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      // First gesture: start the 14 default files (plus any banked candidate
+      // picks, so a saved 'b' ear is warm from the first trigger too).
+      // ~85KB over 14 requests — a non-event even on 3G, and any play()
+      // arriving before its buffer resolves falls through to the synth voice.
+      for (const p of Object.values(SOUNDS)) fetchBuf(p.file);
+      const picks = save?.data?.sfxPicks;
+      if (picks && typeof picks === 'object')
+        for (const name of Object.keys(SOUNDS)) {
+          const v = picks[name];
+          if (v && v !== 'a') fetchBuf(CANDIDATES[name]?.[v]?.file);
+        }
     } catch {
       ctx = null; master = null; inert = true;
       warn('AudioContext unavailable — sfx disabled');
@@ -324,6 +468,11 @@ export function makeSfx({
       state: ctx ? ctx.state : null,
       plays,
       log: [...log],
+      // Preload health for the live probe: how many of the 14 default
+      // rendered files have decoded. 0 in the silent build, by construction.
+      loaded,
+      // The live coin-combo streak (S1) — observability for probes and specs.
+      combo: combo.streak,
     }),
   };
 }

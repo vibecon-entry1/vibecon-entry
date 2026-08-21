@@ -10,10 +10,13 @@
 // KEYMAP entry, and no risk of stealing a key from the sim: this scene never
 // runs while a player is holding down to slide.
 //
-// NO NETWORK. Pressing S writes a string and a picture to the clipboard. The
-// URL it copies points at the unfurl worker, but the GAME never fetches it.
+// NO NETWORK. Pressing S writes ONE string — the run's link — to the
+// clipboard. The URL points at the unfurl worker, but the GAME never fetches
+// it: the card the reader sees comes from the link's own OpenGraph unfurl.
+// (It used to also copy the card PNG; chat apps pasted the picture and
+// dropped the link. See copyShare.)
 import { drawText } from '../engine/font.js';
-import { copyShare, shareUrl, shareText, renderShareCanvas } from './share.js';
+import { copyShare, shareUrl, shareText } from './share.js';
 
 const CX = 320;                   // VW/2 — both end screens are 640 wide
 const OK_T = 3.0;                 // how long "very copied." stays up
@@ -39,20 +42,14 @@ export function shareTapBand(y, need = 0) {
 export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
   const url = shareUrl(run);
   let status = 'idle';            // idle | busy | ok | fail
-  let withImage = false;
   let okT = 0;
   let armT = 0;                   // scene age; the share can't fire before ARM_T
-  let canvas = null;              // built on first press, never before
 
   async function fire() {
     if (status === 'busy') return;
     status = 'busy';
     try {
-      // The card is rendered inside the keypress task so Safari still counts
-      // the clipboard write as user-initiated.
-      canvas ||= renderShareCanvas(run);
-      const res = await copy(run, { canvas });
-      withImage = !!res.image;
+      await copy(run);
       status = 'ok'; okT = 0;
     } catch {
       // Clipboard denied, or no clipboard at all (http:// on a non-localhost
@@ -106,7 +103,7 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
     render(ctx, y) {
       if (status === 'ok') {
         ctx.fillStyle = '#eec548';
-        drawText(ctx, withImage ? 'very copied. much picture.' : 'very copied.',
+        drawText(ctx, 'link copied. paste it. much unfurl.',
                  CX, y, { align: 'center', scale: 2 });
         return;
       }
@@ -128,7 +125,6 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
     // Test hook. The e2e prefers reading the real clipboard, but headless
     // permission grants are a per-browser lottery, so the payload the game
     // BELIEVES it copied is exposed here as the fallback assertion surface.
-    state: () => ({ shareUrl: url, shareText: shareText(run), shareStatus: status,
-                    shareImage: withImage }),
+    state: () => ({ shareUrl: url, shareText: shareText(run), shareStatus: status }),
   };
 }

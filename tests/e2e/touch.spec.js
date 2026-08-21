@@ -194,10 +194,11 @@ test('sound check: tap hears a candidate, the same tap again keeps it', async ({
   await page.waitForFunction(() => window.__blast.state().scene === 'audition',
                              null, { timeout: 5000 });
   const t = await touchRig(page);
-  // coin's B cell centre (row 4, second column). The 44px floor inflates the
-  // 15px-tall cells across their neighbours; nearest-centre must resolve the
-  // dead-centre tap to exactly this row.
-  await t.tap(414, 139);
+  // coin's B cell centre (row 4, second column; ROW_H 17 since the SFX v2
+  // list grew to 14 rows). The 44px floor inflates the 15px-tall cells across
+  // their neighbours; nearest-centre must resolve the dead-centre tap to
+  // exactly this row.
+  await t.tap(414, 132);
   await page.waitForFunction(() => {
     const s = window.__blast.state();
     return s.sound === 'coin' && s.variant === 'b';
@@ -205,11 +206,12 @@ test('sound check: tap hears a candidate, the same tap again keeps it', async ({
   // First tap auditions, never commits.
   expect((await st(page)).picks.coin).toBeUndefined();
   expect(await page.evaluate(() => window.__blast.sfx.current().log.at(-1))).toBe('coin#b');
-  await t.tap(414, 139);                        // same cell again: keep it
+  await t.tap(414, 132);                        // same cell again: keep it
   await page.waitForFunction(() => window.__blast.state().picks?.coin === 'b',
                              null, { timeout: 5000 });
+  // Stamped with the pick generation (save.js SFX_PICKS_V), like every keep.
   expect(await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('suchblast_v1')).sfxPicks)).toEqual({ coin: 'b' });
+    JSON.parse(localStorage.getItem('suchblast_v1')).sfxPicks)).toEqual({ v: 2, coin: 'b' });
   await t.tap(14, 13);                          // the back plate
   await page.waitForFunction(() => window.__blast.state().scene === 'title',
                              null, { timeout: 5000 });
