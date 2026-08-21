@@ -492,6 +492,78 @@ def darken_keep_alpha(im, k, palimg):
                 px[x, y] = (int(r * k), int(g * k), int(b * k), a)
     return quantize_to(o, palimg)
 
+
+def rock_texture(im, palimg, seed=4451):
+    """Fix-round craft pass for the NEAR rock band: as shipped, its interior
+    was one flat maroon — the largest flat area on screen ("makes everything
+    else look bland", user playtest). This carves the hybrid_b sheet's
+    canyon-face reading back in: soft strata bands, erosion streaks, sparse
+    warm highlight veins — all kept DARK so player/enemies still pop. The
+    strata wobble is periodic in x (sin over the 640 band) and the streaks
+    wrap by mod, so the strip still tiles seam-free; the lit rim + existing
+    crack highlights are preserved (bright pixels untouched)."""
+    import math
+    o = im.copy(); px = o.load()
+    W, H = o.size
+    rng = random.Random(seed)
+    top = []
+    for x in range(W):
+        t = H
+        for y in range(H):
+            if px[x, y][3] > 0:
+                t = y
+                break
+        top.append(t)
+    for x in range(W):
+        for y in range(top[x], H):
+            r, g, b, a = px[x, y]
+            if a == 0 or r > 120:
+                continue
+            wob = (math.sin(2 * math.pi * 3 * x / W) * 2.5
+                   + math.sin(2 * math.pi * 7 * x / W + 1.7) * 1.5)
+            band = math.sin((y + wob) * 1.15) + 0.5 * math.sin((y + wob) * 0.41 + 2.2)
+            # Explicit strata targets (palette-family colors): a plain +/-11%
+            # multiply died in quantize — every dark maroon snapped back to
+            # the same entry — but mixing toward a neighbouring entry survives.
+            if band > 0.8:
+                tgt, m = (117, 61, 57), 0.38
+            elif band < -0.8:
+                tgt, m = (33, 5, 16), 0.42
+            else:
+                tgt, m = None, 0.0
+            h = ((x * 374761393 + y * 668265263) ^ 0x9e37) & 0xffff
+            if h < 5200:
+                tgt, m = (59, 25, 15), 0.5
+            if tgt:
+                r = round(r + (tgt[0] - r) * m)
+                g = round(g + (tgt[1] - g) * m)
+                b = round(b + (tgt[2] - b) * m)
+            px[x, y] = (r, g, b, a)
+    for _ in range(26):                                    # erosion streaks
+        x0 = rng.randrange(W); y0 = rng.randrange(6, H - 8)
+        x = x0
+        for i in range(rng.randrange(8, 26)):
+            y = y0 + i
+            if y >= H:
+                break
+            if rng.random() < 0.3:
+                x += rng.choice([-1, 1])
+            c = px[x % W, y]
+            if c[3] and c[0] <= 120:
+                px[x % W, y] = (int(c[0] * 0.76), int(c[1] * 0.76), int(c[2] * 0.76), c[3])
+    for _ in range(14):                                    # highlight veins
+        x0 = rng.randrange(W); y0 = rng.randrange(10, H - 4)
+        y = y0
+        for i in range(rng.randrange(6, 16)):
+            x = (x0 + i) % W
+            if rng.random() < 0.25:
+                y += rng.choice([-1, 1])
+            yy = min(H - 1, max(0, y))
+            c = px[x, yy]
+            if c[3] and c[0] <= 120 and yy > top[x] + 3:
+                px[x, yy] = (148, 73, 35, c[3])
+    return quantize_to(o, palimg)
+
 def ember_shift(im, palimg):
     """WOW-zone push: warm the tileset toward ember and re-lock to palette."""
     rgb = im.convert('RGB')
@@ -589,6 +661,7 @@ def main():
     A['rocks'] = build_strip('prod_rocks_strip', (VW, 80), palimg)
     A['rocks'] = haze_push(A['rocks'], (120, 52, 34), 0.22, palimg)
     A['rocks'] = darken_keep_alpha(A['rocks'], 0.80, palimg)
+    A['rocks'] = rock_texture(A['rocks'], palimg)
     A['tiles'] = build_tiles(palimg, base_sheet)
     A['tiles_wow'] = ember_shift(A['tiles'], palimg)
     props = build_objects('prod_props', [64, 56, 40], palimg)
