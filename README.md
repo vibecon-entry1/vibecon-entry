@@ -34,6 +34,7 @@
 - press **S** on any end screen → your run, on your clipboard, as a link that
   unfurls into its own score card. much brag.
 - there is **no jump button**. the gun is the jump button. this is the whole game.
+- the sun goes down as you run. much cinema. very golden hour.
 
 31 chunks of hand-built Mars gauntlet with ramping difficulty, 39 rude aliens, 151 $ELON coins, a MEGA SAUCER boss that summons very minions, a ship extraction finale, and a soundtrack that streams like real games do it.
 
@@ -57,12 +58,12 @@ beat it once and **WOW ZONE** unlocks: an endless mode that re-deals the same ha
 
 ```
 ←→ / AD     move
-X / Z / ␣   blast (the only verb)
+X / Z / ␣   blast (it does everything)
 ↓ + X       shoot ground = hop
 ↓+X in air  boost (watch the pips)
 ↓ + move    slide · settle in, THEN tap X = zoom zoom (X too soon = hop)
 W           WOW ZONE (endless — unlocks when you beat the gauntlet)
-S           SHARE your run (end screens) — copies a link + a score card
+S           SHARE your run (end screens) — copies a link that unfurls into your score card
 Esc         such pause.    R  very restart    M  mute    D  display mode
 ```
 
@@ -76,7 +77,8 @@ Esc         such pause.    R  very restart    M  mute    D  display mode
 - **213 unit tests + 75 end-to-end browser tests** drive the actual game with frame-indexed input tapes and screenshot every milestone
 - **no `Math.random` anywhere in the sim** — WOW ZONE deals its level from a seeded mulberry32 stream, so a run is a pure function of one integer and an input tape replays it exactly
 - levels are ASCII art. the atlas is built by a Python pipeline that recovers native pixels losslessly from the official sheets. every gap in every level is machine-verified clearable before a human ever plays it
-- music streams progressively (Range/206) — nothing preloads, just like the big games do it
+- **the whole world is generated pixel art** — a curated 43-color palette harmonized with the official sprites, and a 133-frame organic masonry tileset where every tile is picked by a pure coordinate hash. deterministic bricks. very geology.
+- music streams progressively (Range/206) — nothing preloads, just like the big games do it. the sound effects are 42 hand-layered rendered files that load lazily after your first tap, with the old synth as a backup band
 - **share cards are generated art too**: nine tier cards + the banner above come
   out of `tools/gencards.py`, typeset in the game's own 5x7 bitmap font over the
   game's own parallax Mars. A link to a run goes through a 120-line stateless
@@ -112,7 +114,7 @@ an old script with a new atlas. very fresh.
 
 ## built with much AI
 
-this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans made the calls; the models made the commits:
+this is an AI-assisted jam entry (that's the whole point of VibeCon). **no human wrote any code. all ai. much wow.** the human made the calls — direction, taste, playtests. the models made the commits:
 
 | part | model |
 |---|---|
@@ -120,6 +122,8 @@ this is an AI-assisted jam entry (that's the whole point of VibeCon). the humans
 | player verb state machine, boss, level design, scene wiring, rendering passes | Claude Opus 5 |
 | systems (enemies, coins, score, audio engine), test suites, most implementation | Claude Sonnet 5 |
 | mechanical fixes, scaffolding, docs | Claude Haiku 4.5 |
+| full visual overhaul — world art generation + vision critique loops | Gemini |
+| sound-effect design ranking (audio review) | Gemini |
 | soundtrack | Suno |
 
 all of it ran on a Claude Pro subscription at medium effort level. every feature ran a two-stage review (spec compliance → code quality) with adversarial verification before merging. the reviews caught 40+ real bugs before any human ever hit them. such process.
