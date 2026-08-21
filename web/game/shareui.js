@@ -40,11 +40,11 @@ export function shareTapBand(y, need = 0) {
  * @param copy — injectable for tests; defaults to the real clipboard path.
  */
 export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
-  // The URL starts as the unsigned shape and picks up its `g=` signature as
-  // soon as crypto.subtle answers — HMAC signing is async, this constructor is
+  // The URL starts as the legacy readable shape and becomes the `?r=<token>`
+  // form as soon as the HMAC lands — signing is async, this constructor is
   // not, and the scene builds its UI once. Signing is milliseconds; a player
   // cannot press S before it lands. Where subtle doesn't exist (http:// off
-  // localhost) the URL simply stays unsigned and unfurls generic — see share.js.
+  // localhost) the token carries sig "0" and unfurls generic — see share.js.
   let url = shareUrl(run);
   signedShareUrl(run).then((u) => { url = u; }).catch(() => {});
   let status = 'idle';            // idle | busy | ok | fail
@@ -117,10 +117,12 @@ export function makeSharePrompt(run, { copy = copyShare, sfx } = {}) {
         ctx.fillStyle = '#e2413f';
         drawText(ctx, 'no clipboard. very manual:', CX, y - 12, { align: 'center' });
         ctx.fillStyle = '#8fa';
-        // The bitmap font is CAPS-only, so the URL comes out shouted. Hosts are
-        // case-insensitive and the worker lower-cases its query keys for exactly
-        // this reason, so what a player reads off the screen and types still
-        // resolves to their run.
+        // The bitmap font is CAPS-only, so the URL comes out shouted. The host
+        // survives that (case-insensitive) and the worker lower-cases its query
+        // keys, so a retyped URL still reaches the game — but the r= token is
+        // base64url and case-SENSITIVE, so a shouted retype unfurls generic
+        // rather than the run. Accepted: this path is the last-ditch fallback,
+        // and generic still links the game.
         drawText(ctx, url, CX, y + 1, { align: 'center' });
         return;
       }

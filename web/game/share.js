@@ -53,11 +53,11 @@ export function shareUrl(run) {
 }
 
 // --- the signature ----------------------------------------------------------
-// A share URL carries `g=` — the first 10 hex chars of HMAC-SHA256 over the
-// canonical string "s.k.d.m" (the four params, that order, dot-joined). The
-// worker recomputes it and serves the generic no-score page when it doesn't
-// match, so editing a score out of a copied URL stops producing a bragging
-// unfurl.
+// A share URL is `?r=<token>`: base64url of "s.k.d.m.SIG" — the canonical
+// string (the four params, that order, dot-joined) plus the first 10 hex chars
+// of its HMAC-SHA256. The worker decodes, recomputes the HMAC, and serves the
+// generic no-score page when it doesn't match — so the score isn't a visible
+// number inviting an edit, and a decoded-and-edited token fails the check.
 //
 // SPEED BUMP, NOT A LOCK. This repo is public, so the key below is readable by
 // anyone who cares to look; the split is only so the URL can't be forged by
@@ -86,10 +86,22 @@ export async function signParams(p, subtle = globalThis.crypto?.subtle) {
   }
 }
 
-/** shareUrl plus its `g=` signature; the bare URL when signing isn't possible. */
+/** base64url, no padding — the token has to survive a URL untouched. */
+const b64url = (s) =>
+  btoa(s).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+
+/** The opaque token: base64url("s.k.d.m.SIG"). SIG is the 10-hex HMAC, or the
+ *  literal "0" when signing wasn't possible — the worker treats that as
+ *  unverified and unfurls generic, same as any bad signature. */
+export function encodeToken(p, sig) {
+  return b64url(`${canonical(p)}.${sig || '0'}`);
+}
+
+/** The share URL: `?r=<token>`. Always this shape — an unsigned token (no
+ *  crypto.subtle, i.e. http:// off localhost) just unfurls generic. */
 export async function signedShareUrl(run, subtle) {
-  const g = await signParams(shareParams(run), subtle);
-  return g ? `${shareUrl(run)}&g=${g}` : shareUrl(run);
+  const p = shareParams(run);
+  return `${WORKER}?r=${encodeToken(p, await signParams(p, subtle))}`;
 }
 
 /** What lands in the clipboard. The URL is last so every client links it.

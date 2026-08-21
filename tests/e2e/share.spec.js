@@ -21,14 +21,19 @@ import { boot, runTape } from './helpers.mjs';
 
 const WORKER = 'https://sb-share.vibecon-entry.workers.dev/';
 
-// The URL carries a g= signature (share.js). Signing is async — the scene
-// builds with the unsigned shape and the g= lands a beat later — so specs wait
-// for it before comparing URLs. localhost is a secure context, so crypto.subtle
-// exists here and the signed shape is the one a player actually copies.
-const SIG = /&g=[0-9a-f]{10}$/;
+// The URL is an opaque signed token: ?r=base64url("s.k.d.m.SIG") — share.js.
+// Signing is async — the scene builds with a readable placeholder and the ?r=
+// form lands a beat later — so specs wait for it before comparing URLs.
+// localhost is a secure context, so crypto.subtle exists here and the signed
+// token is the shape a player actually copies. The specs decode the token
+// (it's obfuscation, not secrecy) to assert the run really rides inside it.
+const SIG = /\?r=[A-Za-z0-9_-]+$/;
 const waitForSig = (page) =>
-  page.waitForFunction(() => /&g=[0-9a-f]{10}$/.test(window.__blast.state().shareUrl),
+  page.waitForFunction(() => /\?r=[A-Za-z0-9_-]+$/.test(window.__blast.state().shareUrl),
                        null, { timeout: 5000 });
+/** "s.k.d.m.SIG" out of a share URL. */
+const decodeTok = (url) =>
+  Buffer.from(url.split('?r=')[1], 'base64url').toString();
 
 async function grantClipboard(context) {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'],
@@ -67,16 +72,18 @@ test('win screen: S copies this run to the clipboard', async ({ page, context })
   const before = await page.evaluate(() => window.__blast.state());
   expect(before.shareStatus).toBe('idle');
   expect(before.shareUrl).toContain(WORKER);
-  expect(before.shareUrl).toContain(`s=${before.finalScore}`);
-  expect(before.shareUrl).toContain('m=g');          // gauntlet
-  expect(before.shareUrl).toMatch(SIG);              // the tamper signature
+  expect(before.shareUrl).toMatch(SIG);              // the opaque signed token
+  const tok = decodeTok(before.shareUrl).split('.');
+  expect(tok[0]).toBe(String(before.finalScore));    // the score rides IN the token
+  expect(tok[3]).toBe('g');                          // gauntlet
+  expect(tok[4]).toMatch(/^[0-9a-f]{10}$/);          // signed, not the "0" fallback
 
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clip).toContain(`s=${before.finalScore}`);  // the score rides IN the url
   expect(clip).toContain(WORKER);
-  expect(clip).toMatch(SIG);                         // ...signed, so it unfurls the score
+  expect(clip).toMatch(SIG);
+  expect(decodeTok(clip).startsWith(`${before.finalScore}.`)).toBe(true);
   expect(clip).toBe(before.shareUrl);                // the bare link, nothing else
   // ...and no image representation on the clipboard beside it: an image is
   // exactly what made chat apps drop the link.
@@ -110,16 +117,17 @@ test('wowend: S copies the zone run, mode and all', async ({ page, context }) =>
 
   await waitForSig(page);
   const before = await page.evaluate(() => window.__blast.state());
-  expect(before.shareUrl).toContain('m=w');          // the zone, not the gauntlet
-  expect(before.shareUrl).toContain('d=1');          // the death that ended it
   expect(before.shareUrl).toMatch(SIG);
+  const tok = decodeTok(before.shareUrl).split('.');
+  expect(tok[3]).toBe('w');                          // the zone, not the gauntlet
+  expect(tok[2]).toBe('1');                          // the death that ended it
 
   expect(await pressShare(page)).toBe('ok');
 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clip).toContain(`s=${before.finalScore}`);
   expect(clip).toContain(WORKER);
   expect(clip).toMatch(SIG);
+  expect(decodeTok(clip).startsWith(`${before.finalScore}.`)).toBe(true);
   expect(clip).toBe(before.shareUrl);
   await page.screenshot({ path: 'tests/artifacts/share-wowend.png' });
   expect(errors).toEqual([]);

@@ -5,9 +5,15 @@
 // page and never runs the game's JS — so a run link points here instead, and
 // this hands the scraper tags built from the query string.
 //
+// GET /?r=TOKEN                                →  200, the run's tags if the
+//                                                  token verifies, generic if not
 // GET /?s=SCORE&k=KILLS&d=DEATHS&m=g|w&g=SIG  →  200 text/html, the run's tags
 // ...with g missing or wrong                   →  200, the generic no-score tags
 // anything but GET                             →  405
+//
+// Both query shapes live forever: ?r= is what the game emits now, and the
+// readable ?s=&k=&d=&m=&g= form is every link already pasted somewhere — those
+// must keep unfurling exactly as they did.
 //
 // It stores nothing and logs nothing: the whole state of a share is in the URL
 // the player copied, which is why this can be a single stateless file with no
@@ -39,23 +45,51 @@ function clampInt(raw, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-// THE SIGNATURE. `g=` is the first 10 hex chars of HMAC-SHA256 over "s.k.d.m"
-// (the clamped params, that order, dot-joined) — same construction, same
-// split-assembled key as web/game/share.js. SPEED BUMP, NOT A LOCK: both files
-// are public, so anyone can read the key and forge a link; the point is only
-// that editing a score out of a URL stops working without doing that. A bad or
-// missing g is NOT an error — the link still unfurls, just into the generic
-// no-score page — so every pre-signature link in the wild degrades gracefully.
+// THE SIGNATURE. The sig is the first 10 hex chars of HMAC-SHA256 over
+// "s.k.d.m" (the params, that order, dot-joined) — same construction, same
+// split-assembled key as web/game/share.js. It arrives either inside an ?r=
+// token (base64url of "s.k.d.m.SIG") or as the legacy bare &g= param.
+// SPEED BUMP, NOT A LOCK: both files are public, so anyone can read the key
+// and forge a link; the point is only that editing a score out of a URL stops
+// working without doing that. A bad or missing sig is NOT an error — the link
+// still unfurls, just into the generic no-score page — so old and mangled
+// links degrade gracefully.
 const KEY = ['much-', 'auth-', 'very-', 'wow'].join('');
 
 const canonical = (p) => `${p.s}.${p.k}.${p.d}.${p.m}`;
 
-async function signParams(p) {
+async function signRaw(str) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey('raw', enc.encode(KEY),
                                             { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(canonical(p))));
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(str)));
   return Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 10);
+}
+
+const signParams = (p) => signRaw(canonical(p));
+
+// Decode an ?r= token: base64url("s.k.d.m.SIG"). Returns {canon, sig, run} or
+// null when it isn't one — a null, like a bad sig, means the generic page, not
+// an error. The sig is verified over the DECODED canon bytes (exactly what the
+// game signed); the run values are re-clamped anyway, out of habit.
+function decodeToken(r) {
+  try {
+    const raw = atob(String(r).replaceAll('-', '+').replaceAll('_', '/'));
+    const parts = raw.split('.');
+    if (parts.length !== 5) return null;
+    return {
+      canon: parts.slice(0, 4).join('.'),
+      sig: parts[4],
+      run: {
+        s: clampInt(parts[0], S_MIN, S_MAX),
+        k: clampInt(parts[1], 0, S_MAX),
+        d: clampInt(parts[2], 0, S_MAX),
+        m: parts[3] === 'w' ? 'w' : 'g',
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function tierFor(score) {
@@ -141,19 +175,31 @@ export default {
     // sends ?S=..&K=.. — and that has to resolve to their run, not to zero.
     const q = new Map();
     for (const [k, v] of new URL(request.url).searchParams) q.set(k.toLowerCase(), v);
-    const m = (q.get('m') || '').toLowerCase();
-    const run = {
-      s: clampInt(q.get('s'), S_MIN, S_MAX),
-      k: clampInt(q.get('k'), 0, S_MAX),
-      d: clampInt(q.get('d'), 0, S_MAX),
-      m: m === 'w' ? 'w' : 'g',
-    };
-    // Signature check. Lower-cased like every other value — the manual-copy
-    // path shouts the URL in a CAPS-only font, and hex is case-insensitive to
-    // a human retyping it.
-    const g = (q.get('g') || '').toLowerCase();
-    const good = g !== '' && g === await signParams(run);
-    return new Response(good ? scorePage(run) : genericPage(), {
+
+    let run = null;   // stays null → generic page
+    const r = q.get('r');
+    if (r != null) {
+      // The token path. The value is case-SENSITIVE (base64url) — only the
+      // query KEY is case-folded above. sig "0" is the game's explicit
+      // couldn't-sign marker; it can never equal a 10-hex HMAC.
+      const t = decodeToken(r);
+      if (t && t.sig === await signRaw(t.canon)) run = t.run;
+    } else {
+      // The legacy readable path, kept byte-for-byte: every ?s=&k=&d=&m=&g=
+      // link already pasted somewhere must go on unfurling exactly as it did.
+      const m = (q.get('m') || '').toLowerCase();
+      const legacy = {
+        s: clampInt(q.get('s'), S_MIN, S_MAX),
+        k: clampInt(q.get('k'), 0, S_MAX),
+        d: clampInt(q.get('d'), 0, S_MAX),
+        m: m === 'w' ? 'w' : 'g',
+      };
+      // Lower-cased like every other value — the manual-copy path shouted the
+      // URL in a CAPS-only font, and hex is case-insensitive to a human.
+      const g = (q.get('g') || '').toLowerCase();
+      if (g !== '' && g === await signParams(legacy)) run = legacy;
+    }
+    return new Response(run ? scorePage(run) : genericPage(), {
       status: 200,
       headers: {
         'content-type': 'text/html; charset=utf-8',

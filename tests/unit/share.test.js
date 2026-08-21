@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   TIERS, S_MIN, S_MAX, WORKER, tierFor, shareParams, shareUrl, shareText,
-  canonical, signParams, signedShareUrl,
+  canonical, signParams, signedShareUrl, encodeToken,
   copyShare, drawShareCard, renderShareCanvas,
 } from '../../web/game/share.js';
 
@@ -68,13 +68,21 @@ test('signature: known answer, deterministic, 10 lowercase hex chars', async () 
   assert.notEqual(await signParams({ ...p, s: 12438 }), await signParams(p));
 });
 
-test('signedShareUrl appends g=; without subtle it degrades to unsigned', async () => {
+test('the token: base64url of canonical + sig, no padding chars', async () => {
+  // Known answer end to end: "12437.9.2.g.7b79df86bf" base64url'd.
+  const p = { s: 12437, k: 9, d: 2, m: 'g' };
+  assert.equal(encodeToken(p, '7b79df86bf'), 'MTI0MzcuOS4yLmcuN2I3OWRmODZiZg');
   const run = { score: 12437, kills: 9, deaths: 2, mode: 'gauntlet' };
-  assert.equal(await signedShareUrl(run), `${shareUrl(run)}&g=7b79df86bf`);
-  // http:// off localhost has no crypto.subtle: the URL goes out unsigned
-  // (unfurls generic) rather than the share crashing. null, not undefined —
-  // undefined would re-trigger the default parameter.
-  assert.equal(await signedShareUrl(run, null), shareUrl(run));
+  assert.equal(await signedShareUrl(run), `${WORKER}?r=MTI0MzcuOS4yLmcuN2I3OWRmODZiZg`);
+  assert.match(await signedShareUrl(run), /\?r=[A-Za-z0-9_-]+$/);   // URL-safe, unpadded
+  // Round-trip: the token decodes back to exactly what was signed.
+  const tok = encodeToken(p, await signParams(p));
+  assert.equal(Buffer.from(tok, 'base64url').toString(),
+               `${canonical(p)}.${await signParams(p)}`);
+  // http:// off localhost has no crypto.subtle: sig "0" marks the token
+  // unverifiable (the worker unfurls it generic) rather than the share
+  // crashing. null, not undefined — undefined re-triggers the default param.
+  assert.equal(await signedShareUrl(run, null), `${WORKER}?r=${encodeToken(p, '0')}`);
 });
 
 // The worker has no imports by design (one file, no bundler), so the ladder and
@@ -104,19 +112,41 @@ test('worker and card generator agree with the game on the tier ladder', () => {
 
 // The worker imports nothing, but node can import IT — so the sig gate is
 // exercised for real: same fetch handler, real Request/Response.
-test('worker: good sig unfurls the score, bad or missing sig unfurls generic', async () => {
+const workerGet = async (qs) => {
   const { default: worker } = await import('../../share-worker/worker.js');
-  const get = async (qs) => {
-    const res = await worker.fetch(new Request(`https://sb-share.example/?${qs}`));
-    assert.equal(res.status, 200);
-    return res.text();
-  };
+  const res = await worker.fetch(new Request(`https://sb-share.example/?${qs}`));
+  assert.equal(res.status, 200);
+  return res.text();
+};
+const GENERIC = 'SUCH BLAST — much game. very mars.';
+
+test('worker: a good ?r= token unfurls the score, a mangled one unfurls generic', async () => {
+  const p = { s: 12437, k: 9, d: 2, m: 'g' };
+  const tok = encodeToken(p, await signParams(p));
+  const good = await workerGet(`r=${tok}`);
+  assert.match(good, /i got 12437 WOW in SUCH BLAST/);
+  assert.match(good, /card-10\.png/);                // tier card, not the hero
+
+  // One flipped character — anywhere — and the claim dies to generic.
+  const flip = tok.slice(0, 4) + (tok[4] === 'A' ? 'B' : 'A') + tok.slice(5);
+  const bad = await workerGet(`r=${flip}`);
+  assert.match(bad, new RegExp(GENERIC));
+  assert.ok(!bad.includes('12437 WOW'), 'flipped token must not claim the score');
+
+  // The unsigned-fallback token (sig "0") and outright garbage: generic, not 500.
+  assert.match(await workerGet(`r=${encodeToken(p, '0')}`), new RegExp(GENERIC));
+  assert.match(await workerGet('r=%%%not-base64%%%'), new RegExp(GENERIC));
+  assert.match(await workerGet('r='), new RegExp(GENERIC));
+});
+
+test('worker legacy path: readable params + g= behave exactly as before', async () => {
+  const get = workerGet;
   const g = await signParams({ s: 12437, k: 9, d: 2, m: 'g' });
   const signed = await get(`s=12437&k=9&d=2&m=g&g=${g}`);
   assert.match(signed, /i got 12437 WOW in SUCH BLAST/);
   assert.match(signed, /card-10\.png/);              // tier card, not the hero
 
-  const generic = 'SUCH BLAST — much game. very mars.';
+  const generic = GENERIC;
   const tampered = await get(`s=9999999&k=9&d=2&m=g&g=${g}`);   // score edited
   assert.match(tampered, new RegExp(generic));
   assert.ok(!tampered.includes('9999999'), 'tampered score must not be claimed');
@@ -154,7 +184,7 @@ test('copyShare writes the bare link, and only the link', async () => {
   const url = await signedShareUrl({ score: 500, kills: 1, deaths: 0 });
   assert.equal(writes.length, 1);
   assert.equal(writes[0], url);             // the (signed) link, nothing else
-  assert.match(url, /&g=[0-9a-f]{10}$/);    // signature rides at the end
+  assert.match(url, /\?r=[A-Za-z0-9_-]+$/); // the opaque token, nothing readable
   assert.equal(res.url, url);
   assert.equal(res.text, url);
 });
